@@ -1,0 +1,19 @@
+target-version = "py312"
+
+respect-gitignore = true
+force-exclude = true
+line-length = 120
+indent-width = 4
+
+extend-exclude = []
+
+[format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+preview = false
+docstring-code-format = true
+
+skip-magic-trailing-comma = false
+docstring-code-line-length = "dynamic"

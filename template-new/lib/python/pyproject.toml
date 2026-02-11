@@ -1,0 +1,15 @@
+[project]
+name = "demo"
+version = "0.1.0"
+requires-python = ">=3.12"
+license = "MIT OR Apache-2.0"
+description = "this is demo library"
+
+dependencies = []
+
+[dependency-groups]
+dev = ["ruff", "pytest", "pyright"]
+
+[build-system]
+requires = ["uv_build"]
+build-backend = "uv_build"

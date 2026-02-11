@@ -1,0 +1,7 @@
+{
+    "name": "__user__/__name__",
+    "type": "project",
+    "require": {
+        "php": "^8.3"
+    }
+}

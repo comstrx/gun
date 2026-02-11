@@ -1,0 +1,29 @@
+{
+    "name": "user/demo",
+    "version": "0.1.0",
+    "description": "this is demo library",
+    "license": ["MIT", "Apache-2.0"],
+    "type": "library",
+    "require": {
+        "php": ">=8.3"
+    },
+    "autoload": {
+        "psr-4": {
+            "User\\Demo\\": "src/"
+        },
+        "files": []
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "User\\Demo\\Tests\\": "tests/"
+        }
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0"
+    },
+    "scripts": {
+        "test": "phpunit"
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

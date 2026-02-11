@@ -1,0 +1,16 @@
+[package]
+name = "__name__"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = "1.49.0"
+
+[profile.release]
+codegen-units = 1
+opt-level = 3
+lto = "fat"
+panic = "abort"
+strip = "symbols"
+incremental = false
+overflow-checks = false
