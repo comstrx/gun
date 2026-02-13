@@ -1,10 +1,9 @@
 [package]
-name = "__name__"
+name = "demo"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-tokio = "1.49.0"
 
 [profile.release]
 codegen-units = 1

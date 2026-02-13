@@ -1,5 +1,5 @@
 {
-    "name": "__user__/__name__",
+    "name": "user/demo",
     "type": "project",
     "require": {
         "php": "^8.3"

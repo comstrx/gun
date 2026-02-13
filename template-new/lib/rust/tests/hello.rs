@@ -1,6 +1,6 @@
-use demo::hello_world;
+use demo::Demo;
 
 #[test]
 fn hello_world_test() {
-    assert_eq!(hello_world(), "Hello World");
+    assert_eq!(Demo::hello_world(), "Hello World");
 }

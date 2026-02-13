@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest"
-import { hello } from "../src/index"
+import { hello_world } from "../src/index"
 
 describe("hello", () => {
     it("returns Hello World", () => {
-        expect(hello()).toBe("Hello World");
+        expect(hello_world()).toBe("Hello World");
     });
 });

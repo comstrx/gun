@@ -1,0 +1,15 @@
+[project]
+name = "workspace-name"
+version = "0.1.0"
+requires-python = ">=3.12"
+
+dependencies = ["demo"]
+
+[tool.uv.workspace]
+members = ["libs/*"]
+
+[dependency-groups]
+dev = ["pytest", "ruff", "pyright"]
+
+[tool.uv.sources]
+demo = { workspace = true }

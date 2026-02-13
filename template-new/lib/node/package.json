@@ -4,11 +4,17 @@
     "description": "this is demo library",
     "license": "(MIT AND Apache-2.0)",
     "type": "module",
+    "packageManager": "pnpm@10.29.3",
     "main": "./dist/index.cjs",
     "module": "./dist/index.js",
     "types": "./dist/index.d.ts",
+    "files": ["dist"],
     "exports": {
         ".": {
+            "types": {
+                "import": "./dist/index.d.ts",
+                "require": "./dist/index.d.cts"
+            },
             "import": "./dist/index.js",
             "require": "./dist/index.cjs"
         }

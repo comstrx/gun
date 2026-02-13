@@ -1,3 +1,3 @@
-module github.com/__user__/__name__
+module github.com/user/demo
 
 go 1.25
