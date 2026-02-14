@@ -1,19 +1,21 @@
 {
     "name": "@user/name",
-    "version": "0.1.0",
     "description": "this is demo library",
-    "license": "(MIT AND Apache-2.0)",
+
     "type": "module",
+    "version": "0.1.0",
+    "license": "(MIT OR Apache-2.0)",
+
+    "sideEffects": false,
+    "files": ["dist"],
+
     "main": "./dist/index.cjs",
     "module": "./dist/index.js",
     "types": "./dist/index.d.ts",
-    "files": ["dist"],
+
     "exports": {
         ".": {
-            "types": {
-                "import": "./dist/index.d.ts",
-                "require": "./dist/index.d.cts"
-            },
+            "types": "./dist/index.d.ts",
             "import": "./dist/index.js",
             "require": "./dist/index.cjs"
         }
@@ -22,10 +24,15 @@
         "build": "tsup",
         "test": "vitest run",
         "typecheck": "tsc -p tsconfig.json --noEmit",
-        "typecheck:test": "tsc -p tsconfig.test.json --noEmit",
-        "prepublishOnly": "pnpm test && pnpm typecheck && pnpm typecheck:test && pnpm build"
+        "prepublishOnly": "pnpm test && pnpm typecheck && pnpm build"
     },
-    "engines": {
-        "node": ">=24"
+    "devDependencies": {
+        "tsup": "^8.5.1",
+        "vitest": "^2.1.9",
+        "typescript": "^5.7.3",
+        "@types/node": "latest"
+    },
+    "publishConfig": {
+        "access": "public"
     }
 }

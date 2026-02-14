@@ -1,0 +1,13 @@
+{
+    "name": "workspace",
+    "type": "module",
+    "private": true,
+
+    "workspaces": ["libs/*"],
+
+    "scripts": {
+        "test": "bun --filter './libs/*' test",
+        "build": "bun --filter './libs/*' build",
+        "typecheck": "bun --filter './libs/*' typecheck"
+    }
+}

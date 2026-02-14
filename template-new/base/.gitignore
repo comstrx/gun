@@ -1,5 +1,4 @@
 .DS_Store
-.DS_Store?
 .Spotlight-V100
 .Trashes
 Thumbs.db
@@ -46,6 +45,8 @@ lerna-debug.log*
 tmp/
 .temp/
 *.cache
+.eslintcache
+*.tsbuildinfo
 
 coverage/
 .nyc_output/
@@ -75,7 +76,6 @@ build/
 .svelte-kit/
 .parcel-cache/
 .turbo/
-.eslintcache
 .pnp.*
 .yarn/*
 !.yarn/patches
@@ -120,6 +120,7 @@ bin/
 *.dll
 *.exe
 *.out
+*.tgz
 
 CMakeFiles/
 CMakeCache.txt
@@ -150,5 +151,4 @@ composer.phar
 /storage/framework/views/*
 /storage/logs/*
 /bootstrap/cache/*
-Homestead.json
-Homestead.yaml
+Homestead.*
