@@ -1,0 +1,139 @@
+version: "2"
+
+run:
+  timeout: 10m
+  relative-path-mode: gitroot
+  tests: true
+  modules-download-mode: readonly
+  allow-parallel-runners: false
+  allow-serial-runners: true
+
+output:
+  formats:
+    text:
+      print-linter-name: true
+      print-issued-lines: false
+      colors: true
+
+  sort-order:
+    - linter
+    - severity
+    - file
+
+  show-stats: false
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  uniq-by-line: true
+
+linters:
+  default: none
+
+  enable:
+    - govet
+    - staticcheck
+    - errcheck
+    - ineffassign
+    - unused
+    - typecheck
+    - unconvert
+    - wastedassign
+
+    - errorlint
+    - nilerr
+    - nilnil
+    - noctx
+    - unparam
+
+    - gosec
+    - bodyclose
+    - bidichk
+
+    - revive
+    - gocritic
+    - misspell
+
+    - nolintlint
+    - godox
+    - forbidigo
+
+  settings:
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+
+      settings:
+        shadow:
+          strict: true
+
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+      disable-default-exclusions: true
+
+    staticcheck:
+      checks: ["all"]
+
+    unparam:
+      check-exported: false
+
+    gosec:
+      severity: low
+      confidence: low
+
+    misspell:
+      locale: US
+
+    revive:
+      severity: error
+      enable-all-rules: false
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: early-return
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: exported
+        - name: if-return
+        - name: increment-decrement
+        - name: receiver-naming
+        - name: superfluous-else
+        - name: time-naming
+        - name: unexported-return
+        - name: var-naming
+
+    gocritic:
+      enabled-checks: ["all"]
+      disabled-checks:
+        - unnamedResult
+
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+      allow-unused: false
+
+    forbidigo:
+      analyze-types: true
+      exclude-godoc-examples: true
+      forbid:
+        - p: "^panic$"
+        - p: "^log\\.Fatal.*$"
+        - p: "^log\\.Panic.*$"
+        - p: "^os\\.Exit$"
+        - p: "^fmt\\.Print.*$"
+
+  exclusions:
+    warn-unused: true
+    generated: strict
+    paths:
+      - ".*\\.gen\\.go$"
+      - ".*_mock\\.go$"
+    rules:
+      - path: _test\.go
+        linters:
+          - gosec
+          - forbidigo
+          - godox

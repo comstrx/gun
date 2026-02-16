@@ -292,3 +292,92 @@ prepare_git () {
     GIT_HOST="${host}" cmd_init "${repo:-${name}}" "${branch}" "${kwargs[@]}"
 
 }
+
+
+
+resolve_path () {
+
+    local name="${1:-}" root="${2:-}" base="" try=""
+    local pure="pure" lib="lib" ws="mono" web="web"
+
+    name="${name%%[[:space:]]*}"
+    name="${name##*/}"
+    name="${name//_/-}"
+    name="${name,,}"
+
+    name="${name%js}"
+    name="${name//c++/cpp}"
+    name="${name/workspace/ws}"
+    name="${name/monorepo/ws}"
+    name="${name/crate/lib}"
+    name="${name/python/py}"
+    name="${name/golang/go}"
+    name="${name/dotnet/csharp}"
+
+    if [[ "${name}" == *-pure ]]; then
+        try="${pure}/${name%-pure}"
+        [[ -d "${root}/${try}" ]] && { printf '%s\n' "${try}" ; return 0 ; }
+    fi
+    if [[ "${name}" == *-lib ]]; then
+        try="${lib}/${name%-lib}"
+        [[ -d "${root}/${try}" ]] && { printf '%s\n' "${try}" ; return 0 ; }
+    fi
+    if [[ "${name}" == *-ws ]]; then
+        try="${ws}/${name%-ws}"
+        [[ -d "${root}/${try}" ]] && { printf '%s\n' "${try}" ; return 0 ; }
+    fi
+    if [[ "${name}" == *-web ]]; then
+        try="${web}/${name%-web}"
+        [[ -d "${root}/${try}" ]] && { printf '%s\n' "${try}" ; return 0 ; }
+    fi
+
+    for base in "${pure}" "${web}" "${lib}" "${ws}"; do
+        try="${base}/${name}"
+        [[ -d "${root}/${try}" ]] && { printf '%s\n' "${try}" ; return 0 ; }
+    done
+
+    return 1
+
+}
+add_config () {
+
+    local src_dir="${1:-}" cfg="${2:-}" rel="" out="" f=""
+    [[ -d "${src_dir}" ]] || return 0
+
+    while IFS= read -r -d '' f; do
+
+        rel="${f#${src_dir}/}"
+        out="${dest_dir}/${rel}"
+
+        (( ! github )) && [[ "${cfg}" == "infra" && "${rel}" == *github* ]] && continue
+        (( ! gitlab )) && [[ "${cfg}" == "infra" && "${rel}" == *gitlab* ]] && continue
+        (( ! docker )) && [[ "${cfg}" == "infra" && "${rel}" == *docker* ]] && continue
+        (( ! k8s ))    && [[ "${cfg}" == "infra" && "${rel}" == k8s/* ]]    && continue
+
+        [[ -e "${out}" ]] && continue
+        mkdir -p "${out%/*}" && cp -p "${f}" "${out}"
+
+    done < <(find "${src_dir}" -type f -print0)
+
+}
+resolve_config () {
+
+    source <(parse "$@" -- \
+        :name :config_dir :dest_dir \
+        env:bool=true docs:bool=true license:bool=true quality:bool=true security:bool=true \
+        fmt:bool=true lint:bool=true audit:bool=true coverage:bool=true semver:bool=true \
+        infra:bool=true github:bool=true gitlab:bool=false docker:bool=false k8s:bool=false \
+    )
+
+    local -a configs=( env docs license infra quality security coverage semver fmt lint audit )
+
+    for cfg in "${configs[@]}"; do
+
+        declare -n _flag="${cfg}" 2>/dev/null && (( ! _flag )) && continue
+
+        add_config "${config_dir}/${cfg}/${name}" "${cfg}"
+        add_config "${config_dir}/${cfg}/_global" "${cfg}"
+
+    done
+
+}
