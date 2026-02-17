@@ -352,7 +352,7 @@ gh_remove_repo () {
     source <(parse "$@" -- :name force:bool)
 
     local full="${name}"
-    (( YES_ENV || force )) && kwargs+=( --yes )
+    (( YES || force )) && kwargs+=( --yes )
 
     if [[ "${full}" != */* ]]; then
 

@@ -22,22 +22,22 @@ cmd_add_var () {
     gh_var_action add variable "${repo}" "${name}" "${value}" "${kwargs[@]}"
 
 }
-cmd_remove_var () {
-
-    source <(parse "$@" -- :name value repo)
-    gh_var_action remove variable "${repo}" "${name}" "${value}" "${kwargs[@]}"
-
-}
 cmd_add_secret () {
 
     source <(parse "$@" -- :name value repo)
     gh_var_action add secret "${repo}" "${name}" "${value}" "${kwargs[@]}"
 
 }
+cmd_remove_var () {
+
+    source <(parse "$@" -- :name repo)
+    gh_var_action remove variable "${repo}" "${name}" "${kwargs[@]}"
+
+}
 cmd_remove_secret () {
 
-    source <(parse "$@" -- :name value repo)
-    gh_var_action remove secret "${repo}" "${name}" "${value}" "${kwargs[@]}"
+    source <(parse "$@" -- :name repo)
+    gh_var_action remove secret "${repo}" "${name}" "${kwargs[@]}"
 
 }
 
