@@ -63,7 +63,7 @@ load_source () {
 
     [[ -n "${MODULES_LOADED:-}" ]] && return 0
     MODULES_LOADED=1
-    load_walk "${ROOT_DIR}/${MODULE_DIR}"
+    load_walk "${ROOT_DIR:-}/${MODULE_DIR:-}"
 
 }
 normalize () {

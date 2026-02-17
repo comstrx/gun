@@ -1,105 +1,5 @@
 #!/usr/bin/env bash
 
-excluded_files () {
-
-    local lang="${1:-}"
-    local -a excluded=()
-
-    lang="${lang##*/}"
-    lang="${lang%%[[:space:]]*}"
-
-    case "${lang,,}" in
-        rust*|crate*|workspace*)       excluded=( biome golang php pint py ruff ) ;;
-        go*|golang*)                   excluded=( biome php pint py ruff clippy deny rust ) ;;
-        py*|django*|flask*|fastapi*)   excluded=( biome golang php pint clippy deny rust ) ;;
-        php*|laravel*)                 excluded=( biome golang py ruff clippy deny rust ) ;;
-        node*|express*|react*|next*)   excluded=( golang php pint py ruff clippy deny rust ) ;;
-        *)                             excluded=( biome golang php pint py ruff clippy deny rust );
-    esac
-
-    printf '%s\n' "${excluded[@]}"
-
-}
-copy_missing_files () {
-
-    ensure_pkg mkdir find cp
-
-    local base="${1:-}" dest="${2:-}" lang="${3:-}" p="" rel="" d="" bn="" pat=""
-    local -a excluded=()
-
-    [[ -n "${base}" && -d "${base}" ]] || return 0
-    [[ -n "${dest}" && -d "${dest}" ]] || die "dest dir not found: ${dest}"
-
-    mapfile -t excluded < <(excluded_files "${lang}")
-
-    while IFS= read -r -d '' p; do
-
-        rel="${p#${base}/}"
-        [[ -n "${rel}" ]] || continue
-
-        bn="${rel##*/}"
-        for pat in "${excluded[@]}"; do
-            [[ "${bn}" == .${pat}* || "${bn}" == *.${pat}* ]] && continue 2
-        done
-
-        d="${dest}/${rel}"
-        [[ -e "${d}" ]] && continue
-
-        if [[ "${d}" == */* ]]; then mkdir -p "${d%/*}" 2>/dev/null || die "mkdir failed: ${d}"; fi
-        cp -pPR "${p}" "${d}" 2>/dev/null || cp -a "${p}" "${d}" 2>/dev/null || die "copy failed: ${p} -> ${d}"
-
-    done < <(find "${base}" -mindepth 1 \( -type f -o -type l \) -print0)
-
-}
-
-resolve_template () {
-
-    local t="${1:-}" dir="${2:-}" p="" n="" nl="" a="" b=""
-    local exact="" first="" second="" nullglob_was_set=0
-
-    [[ -n "${t}" ]] || { printf '%s\n' empty; return; }
-    t="${t,,}"
-    a="${t%%-*}"
-    [[ "${t}" == *-* ]] && b="${t#*-}" || b=""
-
-    shopt -q nullglob && nullglob_was_set=1
-    shopt -s nullglob
-
-    for p in "${dir}"/*/; do
-
-        n="${p%/}"; n="${n##*/}"
-        nl="${n,,}"
-
-        [[ -z "${exact}" && "${nl}" == "${t}" ]] && exact="${n}"
-        [[ -z "${first}" && "${nl}" == "${a}" ]] && first="${n}"
-        [[ -z "${second}" && -n "${b}" && "${nl}" == "${b}" ]] && second="${n}"
-
-    done
-
-    (( nullglob_was_set )) || shopt -u nullglob
-    printf '%s\n' "${exact:-${first:-${second:-empty}}}"
-
-}
-copy_template () {
-
-    ensure_pkg mkdir find tar grep
-
-    local src="${1:-}" dest="${2:-}"
-    local -a tar_out=()
-
-    [[ -n "${src}" && -d "${src}" ]] || die "src dir not found: ${src}"
-    [[ -n "${dest}" ]] || die "empty dest"
-
-    mkdir -p -- "${dest}" 2>/dev/null || die "cannot create dir: ${dest} (pass --dir or fix permissions)"
-    [[ -n "$(find "${dest}" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null || true)" ]] && die "target dir not empty: ${dest}"
-
-    tar_out=( tar -C "${dest}" -xf - )
-    ( tar --help 2>/dev/null || true ) | grep -q -- '--no-same-owner' && tar_out=( tar --no-same-owner -C "${dest}" -xf - )
-
-    tar -C "${src}" -cf - . | "${tar_out[@]}" || die "copy failed: ${src} -> ${dest}"
-
-}
-
 replace_all () {
 
     ensure_pkg find mktemp rm perl xargs
@@ -112,7 +12,7 @@ replace_all () {
     local -n map="${map_name}"
     ((${#map[@]})) || return 0
 
-    local -a ignore_list=( ".git" "target" "node_modules" "dist" "build" ".next" ".venv" "venv" ".vscode" "__pycache__" )
+    local -a ignore_list=( .git target node_modules dist build vendor .next .nuxt .venv venv .vscode __pycache__ )
     local -a find_cmd=( find "${root}" -type d "(" )
 
     kv="$(mktemp "${TMPDIR:-/tmp}/replace.map.XXXXXX")" || die "replace: mktemp failed"
@@ -178,15 +78,15 @@ default_branch () {
     printf '%s' "${b}"
 
 }
-prepare_placeholders () {
 
-    local root="${1:-}" name="${2:-}" alias="${3:-}" user="${4:-}" repo="${5:-}" branch="${6:-}" description="${7:-}"
-    local discord_url="${8:-}" docs_url="${9:-}" site_url="${10:-}" github_host="${11:-}"
+set_placeholders () {
 
+    source <(parse "$@" -- :root name alias user repo branch description discord_url docs_url site_url host)
     cd -- "${root}"
+
     [[ -n "${branch}" ]] || branch="$(default_branch "${root}")"
-    [[ -n "${github_host}" ]] || github_host="https://github.com"
-    [[ "${github_host}" == *"://"* ]] || github_host="https://${github_host}"
+    [[ -n "${host}" ]] || host="https://github.com"
+    [[ "${host}" == *"://"* ]] || host="https://${host}"
 
     local -A ph_map=()
 
@@ -197,8 +97,10 @@ prepare_placeholders () {
 
         ph_map["__${k,,}__"]="${v}"
         ph_map["__${k^^}__"]="${v}"
+
         ph_map["--${k,,}--"]="${v}"
         ph_map["--${k^^}--"]="${v}"
+
         ph_map["{{${k,,}}}"]="${v}"
         ph_map["{{${k^^}}}"]="${v}"
 
@@ -229,7 +131,7 @@ prepare_placeholders () {
 
     if [[ -n "${user}" && -n "${repo}" ]]; then
 
-        local repo_url="${github_host}/${user}/${repo}"
+        local repo_url="${host}/${user}/${repo}"
         local issues_url="${repo_url}/issues"
         local new_issue_url="${repo_url}/issues/new/choose"
         local discussions_url="${repo_url}/discussions"
@@ -284,64 +186,34 @@ prepare_placeholders () {
     replace_all "${root}" ph_map
 
 }
-prepare_git () {
+set_git () {
 
-    source <(parse "$@" -- root name repo branch host)
-
+    source <(parse "$@" -- root name repo branch)
     cd -- "${root}"
-    GIT_HOST="${host}" cmd_init "${repo:-${name}}" "${branch}" "${kwargs[@]}"
+
+    cmd_init "${repo:-${name}}" "${kwargs[@]}"
 
 }
 
+copy_template () {
 
+    ensure_pkg mkdir find tar grep
 
-resolve_path () {
+    local src="${1:-}" dest="${2:-}"
+    local -a tar_out=()
 
-    local name="${1:-}" root="${2:-}" base="" try=""
-    local pure="pure" lib="lib" ws="mono" web="web"
+    mkdir -p -- "${dest}" 2>/dev/null || die "cannot create dir: ${dest}"
+    [[ -n "$(find "${dest}" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null || true)" ]] && die "dest dir not empty: ${dest}"
 
-    name="${name%%[[:space:]]*}"
-    name="${name##*/}"
-    name="${name//_/-}"
-    name="${name,,}"
+    tar_out=( tar -C "${dest}" -xf - )
+    ( tar --help 2>/dev/null || true ) | grep -q -- '--no-same-owner' && tar_out=( tar --no-same-owner -C "${dest}" -xf - )
 
-    name="${name%js}"
-    name="${name//c++/cpp}"
-    name="${name/workspace/ws}"
-    name="${name/monorepo/ws}"
-    name="${name/crate/lib}"
-    name="${name/python/py}"
-    name="${name/golang/go}"
-    name="${name/dotnet/csharp}"
-
-    if [[ "${name}" == *-pure ]]; then
-        try="${pure}/${name%-pure}"
-        [[ -d "${root}/${try}" ]] && { printf '%s\n' "${try}" ; return 0 ; }
-    fi
-    if [[ "${name}" == *-lib ]]; then
-        try="${lib}/${name%-lib}"
-        [[ -d "${root}/${try}" ]] && { printf '%s\n' "${try}" ; return 0 ; }
-    fi
-    if [[ "${name}" == *-ws ]]; then
-        try="${ws}/${name%-ws}"
-        [[ -d "${root}/${try}" ]] && { printf '%s\n' "${try}" ; return 0 ; }
-    fi
-    if [[ "${name}" == *-web ]]; then
-        try="${web}/${name%-web}"
-        [[ -d "${root}/${try}" ]] && { printf '%s\n' "${try}" ; return 0 ; }
-    fi
-
-    for base in "${pure}" "${web}" "${lib}" "${ws}"; do
-        try="${base}/${name}"
-        [[ -d "${root}/${try}" ]] && { printf '%s\n' "${try}" ; return 0 ; }
-    done
-
-    return 1
+    tar -C "${src}" -cf - . | "${tar_out[@]}" || die "copy failed: ${src} -> ${dest}"
 
 }
-add_config () {
+copy_config () {
 
-    local src_dir="${1:-}" cfg="${2:-}" rel="" out="" f=""
+    local src_dir="${1:-}" dest_dir="${2:-}" cfg="${3:-}" rel="" out="" f=""
     [[ -d "${src_dir}" ]] || return 0
 
     while IFS= read -r -d '' f; do
@@ -360,6 +232,62 @@ add_config () {
     done < <(find "${src_dir}" -type f -print0)
 
 }
+
+resolve_name () {
+
+    local name="${1:-}"
+
+    name="${name%%[[:space:]]*}"
+    name="${name##*/}"
+    name="${name//_/-}"
+    name="${name,,}"
+
+    name="${name%js}"
+    name="${name//c++/cpp}"
+    name="${name//c#/csharp}"
+    name="${name//dotnet/csharp}"
+    name="${name//workspace/ws}"
+    name="${name//monorepo/ws}"
+    name="${name//crate/lib}"
+    name="${name//golang/go}"
+
+    [[ "${name}" == "py" ]] && name="python"
+    [[ "${name}" == py-* ]] && name="python-${name#py-}"
+
+    printf '%s\n' "${name}"
+
+}
+resolve_path () {
+
+    local pure="pure" lib="lib" ws="mono" web="web" base="" try=""
+    local root="${1:-}" name="$(resolve_name "${2:-}")"
+
+    if [[ "${name}" == *-pure ]]; then
+        try="${pure}/${name%-pure}"
+        [[ -d "${root}/${try}" ]] && { printf '%s\n' "${root}/${try}" ; return 0 ; }
+    fi
+    if [[ "${name}" == *-lib ]]; then
+        try="${lib}/${name%-lib}"
+        [[ -d "${root}/${try}" ]] && { printf '%s\n' "${root}/${try}" ; return 0 ; }
+    fi
+    if [[ "${name}" == *-ws ]]; then
+        try="${ws}/${name%-ws}"
+        [[ -d "${root}/${try}" ]] && { printf '%s\n' "${root}/${try}" ; return 0 ; }
+    fi
+    if [[ "${name}" == *-web ]]; then
+        try="${web}/${name%-web}"
+        [[ -d "${root}/${try}" ]] && { printf '%s\n' "${root}/${try}" ; return 0 ; }
+    fi
+
+    for base in "${pure}" "${web}" "${lib}" "${ws}"; do
+        try="${base}/${name}"
+        [[ -d "${root}/${try}" ]] && { printf '%s\n' "${root}/${try}" ; return 0 ; }
+    done
+
+    printf '%s\n' ""
+    return 1
+
+}
 resolve_config () {
 
     source <(parse "$@" -- \
@@ -371,12 +299,15 @@ resolve_config () {
 
     local -a configs=( env docs license infra quality security coverage semver fmt lint audit )
 
+    name="$(resolve_name "${name}")"
+    name="${name%%-*}"
+
     for cfg in "${configs[@]}"; do
 
         declare -n _flag="${cfg}" 2>/dev/null && (( ! _flag )) && continue
 
-        add_config "${config_dir}/${cfg}/${name}" "${cfg}"
-        add_config "${config_dir}/${cfg}/_global" "${cfg}"
+        copy_config "${config_dir}/${cfg}/${name}" "${dest_dir}" "${cfg}"
+        copy_config "${config_dir}/${cfg}/_global" "${dest_dir}" "${cfg}"
 
     done
 

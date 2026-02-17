@@ -425,11 +425,6 @@ is_ci_push () {
     is_ci && [[ "${GITHUB_EVENT_NAME:-}" == "push" && "${GITHUB_REF:-}" == refs/tags/v* ]]
 
 }
-is_main () {
-
-    [[ "${BASH_SOURCE[0]-}" == "$0" ]]
-
-}
 is_wsl () {
 
     [[ -n "${WSL_INTEROP:-}" || -n "${WSL_DISTRO_NAME:-}" ]] && return 0
@@ -476,21 +471,16 @@ run () {
     (( $# )) || return 0
 
     if (( VERBOSE )); then
-
         local s="" a="" q=""
 
         for a in "$@"; do
-
             q="$(printf '%q' "${a}")"
-
             if [[ -z "${s}" ]]; then s="${q}"
             else s="${s} ${q}"
             fi
-
         done
 
         printf '%s\n' "+ ${s}" >&2
-
     fi
 
     "$@"

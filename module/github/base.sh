@@ -41,6 +41,7 @@ gh_repo () {
 
         local owner="$(gh_cmd api user -q .login "${kwargs[@]}" 2>/dev/null || true)"
         [[ -n "${owner}" ]] || die "Cannot detect owner. Login to gh or pass --repo owner/repo"
+
         repo="${owner}/${repo}"
 
     fi
@@ -82,6 +83,7 @@ gh_set_var () {
     if [[ "${action}" == "remove" ]]; then
 
         (( force )) || confirm "Delete ${type} '${name}' from ${repo}?" || return 0
+
         gh_cmd "${type}" delete "${name}" --repo "${repo}" "${kwargs[@]}"
         return 0
 
@@ -123,6 +125,7 @@ gh_sync_vars () {
 
     gh_cmd "${type}" set -f "${file}" --repo "${repo}" "${kwargs[@]}"
     (( force )) && gh_cleanup_vars "${type}" "${repo}" "${file}" "${kwargs[@]}" --force
+
     return 0
 
 }
@@ -139,15 +142,31 @@ gh_var_action () {
 
             file="${root}/.secrets"
             [[ -f "${file}" ]] || file="${root}/.secrets.example"
+            [[ -f "${file}" ]] || file="${root}/.secrets.dev"
+            [[ -f "${file}" ]] || file="${root}/.secrets.local"
+            [[ -f "${file}" ]] || file="${root}/.secrets.stg"
+            [[ -f "${file}" ]] || file="${root}/.secrets.stage"
+            [[ -f "${file}" ]] || file="${root}/.secrets.prod"
+            [[ -f "${file}" ]] || file="${root}/.secrets.production"
 
         elif [[ -z "${file}" ]]; then
 
             file="${root}/.vars"
-            [[ -f "${file}" ]] || file="${root}/.env"
             [[ -f "${file}" ]] || file="${root}/.vars.example"
+            [[ -f "${file}" ]] || file="${root}/.vars.dev"
+            [[ -f "${file}" ]] || file="${root}/.vars.local"
+            [[ -f "${file}" ]] || file="${root}/.vars.stg"
+            [[ -f "${file}" ]] || file="${root}/.vars.stage"
+            [[ -f "${file}" ]] || file="${root}/.vars.prod"
+            [[ -f "${file}" ]] || file="${root}/.vars.production"
+            [[ -f "${file}" ]] || file="${root}/.env"
             [[ -f "${file}" ]] || file="${root}/.env.example"
-            [[ -f "${file}" ]] || file="${root}/.env-local"
-            [[ -f "${file}" ]] || file="${root}/.env-production"
+            [[ -f "${file}" ]] || file="${root}/.env.dev"
+            [[ -f "${file}" ]] || file="${root}/.env.local"
+            [[ -f "${file}" ]] || file="${root}/.env.stg"
+            [[ -f "${file}" ]] || file="${root}/.env.stage"
+            [[ -f "${file}" ]] || file="${root}/.env.prod"
+            [[ -f "${file}" ]] || file="${root}/.env.production"
 
         fi
 
@@ -339,6 +358,7 @@ gh_remove_repo () {
 
         local owner="$(gh_cmd api user -q .login "${kwargs[@]}" 2>/dev/null || true)"
         [[ -n "${owner}" ]] || die "repo: use owner/repo (cannot detect owner)"
+
         full="${owner}/${full}"
 
     fi

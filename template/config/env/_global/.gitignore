@@ -5,14 +5,14 @@
 .secrets
 .secrets.*
 
-!.env.example
 !.env.sample
+!.env.example
 !.env.template
-!.secrets.example
 !.secrets.sample
+!.secrets.example
 !.secrets.template
-!.vars.example
 !.vars.sample
+!.vars.example
 !.vars.template
 
 *.log

@@ -26,7 +26,7 @@ cmd_new () {
 }
 cmd_done () {
 
-    source <(parse "$@" -- tag release:bool sync:bool=true backup:bool=false notify:bool=true)
+    source <(parse "$@" -- tag release:bool sync:bool=true backup:bool=false)
 
     cmd_format_fix
     cmd_format_check

@@ -76,7 +76,7 @@ install_launcher () {
 install () {
 
     local alias_name="${1:-}"
-    local bin_path="$(install_launcher "${ROOT_DIR}" "${alias_name}")"
+    local bin_path="$(install_launcher "${ROOT_DIR:-}" "${alias_name}")"
 
     ensure_path_once "${alias_name}"
     success "Installed: ( ${alias_name} ) at ${bin_path}"

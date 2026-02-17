@@ -75,10 +75,12 @@ cmd_remote_info () {
 cmd_init () {
 
     ensure_pkg git
-    source <(parse "$@" -- :repo branch=main remote=origin auth key create:bool=true)
+    source <(parse "$@" -- :repo branch=main remote=origin auth key host create:bool=true)
 
-    local host="${GIT_HOST:-github.com}" path="" url="" parsed=0 explicit=0 before_url="" after_url="" cur=""
+    local path="" url="" parsed=0 explicit=0 before_url="" after_url="" cur=""
+
     auth="${auth:-${GIT_AUTH:-ssh}}"
+    host="${host:-${GIT_HOST:-github.com}}"
 
     if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
 
@@ -97,12 +99,12 @@ cmd_init () {
 
         local key_path="$(git_resolve_ssh_key "${key}")"
         [[ -f "${key_path}" ]] && git_keymap_set "${key_path}" >/dev/null 2>&1 || true
-        [[ -f "${key_path}" ]] || cmd_add_ssh "${key}" --upload
+        [[ -f "${key_path}" ]] || cmd_add_ssh "${key}" "${host}" --upload
 
     fi
 
     before_url="$(git_remote_url "${remote}")"
-    (( create )) && (( explicit == 0 )) && cmd_new_repo "${repo}" "${kwargs[@]}"
+    (( create )) && (( explicit == 0 )) && cmd_new_repo --repo "${repo}" "${kwargs[@]}"
     after_url="$(git_remote_url "${remote}")"
 
     if (( explicit == 0 )) && (( create )) && [[ -n "${after_url}" && "${after_url}" != "${before_url}" ]]; then
@@ -131,13 +133,11 @@ cmd_init () {
         fi
 
         if (( parsed )); then
-
             path="$(git_norm_path_git "${path}")"
 
             if [[ "${auth}" == "ssh" ]]; then url="$(git_build_ssh_url "${host}" "${path}")" || die "Can't build ssh url"
             else url="$(git_build_https_url "${host}" "${path}")" || die "Can't build https url"
             fi
-
         else
             url="${repo}"
         fi
