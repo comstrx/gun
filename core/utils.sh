@@ -88,59 +88,25 @@ validate_alias () {
     return 0
 
 }
+
 config_file () {
 
-    local name="${1:-}" ext1="${2:-}" ext2="${3:-}" file=""
+    local name="${1:-}" ext1="${2:-}" ext2="${3:-}"
+    local base="${name%%-*}"
 
-    [[ -n "${ext1}" && -f "${name}.${ext1}" ]]  && file="${name}.${ext1}"
-    [[ -n "${ext1}" && -f ".${name}.${ext1}" ]] && file=".${name}.${ext1}"
-    [[ -n "${ext2}" && -f "${name}.${ext2}" ]]  && file="${name}.${ext2}"
-    [[ -n "${ext2}" && -f ".${name}.${ext2}" ]] && file=".${name}.${ext2}"
+    if [[ -n "${ext1}" && -f "${name}.${ext1}" ]]; then printf '%s\n' "${name}.${ext1}"; return 0; fi
+    if [[ -n "${ext1}" && -f ".${name}.${ext1}" ]]; then printf '%s\n' ".${name}.${ext1}"; return 0; fi
+    if [[ -n "${ext2}" && -f "${name}.${ext2}" ]]; then printf '%s\n' "${name}.${ext2}"; return 0; fi
+    if [[ -n "${ext2}" && -f ".${name}.${ext2}" ]]; then printf '%s\n' ".${name}.${ext2}"; return 0; fi
 
-    printf '%s\n' "${file}"
+    if [[ "${base}" != "${name}" ]]; then
+        if [[ -n "${ext1}" && -f "${base}.${ext1}" ]]; then printf '%s\n' "${base}.${ext1}"; return 0; fi
+        if [[ -n "${ext1}" && -f ".${base}.${ext1}" ]]; then printf '%s\n' ".${base}.${ext1}"; return 0; fi
+        if [[ -n "${ext2}" && -f "${base}.${ext2}" ]]; then printf '%s\n' "${base}.${ext2}"; return 0; fi
+        if [[ -n "${ext2}" && -f ".${base}.${ext2}" ]]; then printf '%s\n' ".${base}.${ext2}"; return 0; fi
+    fi
 
-}
-which_lang () {
-
-    local dir="${1:-${PWD}}" p=""
-
-    [[ -d "${dir}" ]] || dir="$(dirname -- "${dir}")"
-    [[ -d "${dir}" ]] || { printf '%s' "null"; return 0; }
-
-    while :; do
-
-        if [[ -f "${dir}/Cargo.toml" ]]; then
-            printf '%s' "rust"
-            return 0
-        fi
-        if [[ -f "${dir}/go.mod" ]]; then
-            printf '%s' "go"
-            return 0
-        fi
-        if [[ -f "${dir}/conanfile.txt" || -f "${dir}/conanfile.py" || -f "${dir}/CMakeLists.txt" || -f "${dir}/Makefile" ]]; then
-            printf '%s' "c"
-            return 0
-        fi
-        if [[ -f "${dir}/pyproject.toml" || -f "${dir}/requirements.txt" || -f "${dir}/Pipfile" || -f "${dir}/poetry.lock" ]]; then
-            printf '%s' "py"
-            return 0
-        fi
-        if [[ -f "${dir}/artisan" || -f "${dir}/composer.json" ]]; then
-            printf '%s' "php"
-            return 0
-        fi
-        if [[ -f "${dir}/package.json" ]]; then
-            printf '%s' "node"
-            return 0
-        fi
-
-        p="$(dirname -- "${dir}")"
-        [[ "${p}" != "${dir}" ]] || break
-        dir="${p}"
-
-    done
-
-    printf '%s' "null"
+    printf '\n'
 
 }
 ignore_list () {
@@ -151,13 +117,20 @@ ignore_list () {
         ".idea" \
         ".DS_Store" \
         "Thumbs.db" \
+        \
         "out" \
-        "coverage" \
-        "target" \
         "dist" \
         "build" \
+        "coverage" \
+        "target" \
         "vendor" \
+        \
         "node_modules" \
+        ".nyc_output" \
+        ".next" \
+        ".nuxt" \
+        ".turbo" \
+        \
         "__pycache__" \
         ".venv" \
         "venv" \
@@ -165,10 +138,122 @@ ignore_list () {
         ".mypy_cache" \
         ".ruff_cache" \
         ".cache" \
-        ".nyc_output" \
-        ".next" \
-        ".nuxt" \
-        ".turbo"
+        \
+        ".dart_tool" \
+        ".flutter-plugins" \
+        ".flutter-plugins-dependencies" \
+        "pubspec.lock" \
+        \
+        ".gradle" \
+        ".mvn" \
+        "obj" \
+        ".vs" \
+        \
+        ".xmake" \
+        ".build" \
+        ".ccls-cache" \
+        "compile_commands.json" \
+        \
+        ".zig-cache" \
+        "zig-out" \
+        \
+        ".mojo" \
+        ".modular"
+
+}
+which_lang () {
+
+    local dir="${1:-${PWD}}"
+
+    [[ -d "${dir}" ]] || dir="$(dirname "${dir}")"
+    [[ -d "${dir}" ]] || { printf '%s' "null"; return 0; }
+
+    while :; do
+
+        if [[ -f "${dir}/Cargo.toml" ]]; then
+            printf '%s' "rust"
+            return 0
+        fi
+        if [[ -f "${dir}/build.zig" || -f "${dir}/build.zig.zon" ]]; then
+            printf '%s' "zig"
+            return 0
+        fi
+        if [[ -f "${dir}/go.mod" || -f "${dir}/go.work" ]]; then
+            printf '%s' "go"
+            return 0
+        fi
+        if compgen -G "${dir}/*.sln" >/dev/null || compgen -G "${dir}/*.csproj" >/dev/null || compgen -G "${dir}/*.fsproj" >/dev/null || [[ -f "${dir}/Directory.Build.props" || -f "${dir}/Directory.Build.targets" || -f "${dir}/global.json" ]]; then
+            printf '%s' "csharp"
+            return 0
+        fi
+        if [[ -f "${dir}/settings.gradle" || -f "${dir}/settings.gradle.kts" || -f "${dir}/build.gradle" || -f "${dir}/build.gradle.kts" || -f "${dir}/pom.xml" || -f "${dir}/gradlew" || -f "${dir}/mvnw" ]]; then
+            printf '%s' "java"
+            return 0
+        fi
+        if [[ -f "${dir}/pubspec.yaml" ]]; then
+            printf '%s' "dart"
+            return 0
+        fi
+        if [[ -f "${dir}/composer.json" || -f "${dir}/artisan" ]]; then
+            printf '%s' "php"
+            return 0
+        fi
+        if [[ -f "${dir}/pyproject.toml" || -f "${dir}/uv.toml" || -f "${dir}/uv.lock" || -f "${dir}/requirements.txt" || -f "${dir}/Pipfile" || -f "${dir}/poetry.lock" ]]; then
+            printf '%s' "python"
+            return 0
+        fi
+        if [[ -f "${dir}/mojoproject.toml" || -f "${dir}/mod.toml" || -n "$(find "${dir}" -maxdepth 3 -type f -name '*.mojo' -print -quit 2>/dev/null || true)" ]]; then
+            printf '%s' "mojo"
+            return 0
+        fi
+        if [[ -f "${dir}/bun.lockb" || -f "${dir}/bun.lock" || -f "${dir}/bunfig.toml" ]]; then
+            printf '%s' "bun"
+            return 0
+        fi
+        if [[ -f "${dir}/package.json" ]]; then
+            printf '%s' "node"
+            return 0
+        fi
+        if [[ -f "${dir}/xmake.lua" || -f "${dir}/CMakeLists.txt" || -f "${dir}/meson.build" || -f "${dir}/Makefile" || -f "${dir}/conanfile.txt" || -f "${dir}/conanfile.py" ]]; then
+
+            local hit="$(find "${dir}" -maxdepth 6 -type f \( \
+                -name '*.cpp' -o -name '*.cc' -o -name '*.cxx' -o -name '*.C' -o \
+                -name '*.hpp' -o -name '*.hh' -o -name '*.hxx' -o \
+                -name '*.ipp' -o -name '*.inl' -o \
+                -name '*.ixx' -o -name '*.cppm' -o -name '*.cxxm' \
+            \) -print -quit 2>/dev/null || true)"
+
+            if [[ -n "${hit}" ]]; then
+                printf '%s' "cpp"
+                return 0
+            fi
+
+            printf '%s' "c"
+            return 0
+
+        fi
+        if [[ -f "${dir}/rocks.toml" ]] || compgen -G "${dir}/*.rockspec" >/dev/null; then
+            printf '%s' "lua"
+            return 0
+        fi
+        if [[ -n "$(find "${dir}" -maxdepth 2 -type f -name '*.lua' -print -quit 2>/dev/null || true)" ]]; then
+            printf '%s' "lua"
+            return 0
+        fi
+        if [[ -n "$(find "${dir}" -maxdepth 2 -type f -name '*.sh' -print -quit 2>/dev/null || true)" ]]; then
+            printf '%s' "bash"
+            return 0
+        fi
+        if [[ "$(dirname "${dir}")" != "${dir}" ]]; then
+            dir="$(dirname "${dir}")"
+            continue
+        fi
+
+        break
+
+    done
+
+    printf '%s' "null"
 
 }
 

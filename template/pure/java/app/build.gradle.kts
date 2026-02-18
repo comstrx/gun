@@ -1,6 +1,7 @@
 
 plugins {
     application
+    id("com.diffplug.spotless") version "8.2.1"
 }
 
 repositories {
@@ -16,6 +17,20 @@ testing {
         val test by getting(JvmTestSuite::class) {
             useJUnitJupiter("5.12.1")
         }
+    }
+}
+
+spotless {
+    ratchetFrom("origin/main")
+
+    java {
+        target("src/**/*.java")
+        targetExclude("**/build/**", "**/out/**")
+
+        googleJavaFormat("1.34.1")
+        removeUnusedImports()
+        trimTrailingWhitespace()
+        endWithNewline()
     }
 }
 
