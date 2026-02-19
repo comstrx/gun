@@ -1,64 +1,23 @@
 #!/usr/bin/env bash
 
-lint_git_files () {
-
-    has git || return 1
-    git rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 1
-
-    git ls-files "$@"
-
-}
 lint_check_c () {
 
-    ensure_pkg clang-tidy
-
-    [[ -f compile_commands.json ]] || die "lint-check: c requires compile_commands.json"
-
-    local -a files=()
-    local f=""
-
-    if [[ $# -gt 0 ]]; then
-        files=( "$@" )
-    else
-        while IFS= read -r f; do
-            [[ -n "${f}" ]] && files+=( "${f}" )
-        done < <(lint_git_files '*.c' 2>/dev/null || true)
-
-        [[ ${#files[@]} -gt 0 ]] || die "lint-check: c requires file args"
-    fi
-
-    run clang-tidy -p . --warnings-as-errors='*' "${files[@]}"
+    ensure_pkg clang-tidy find
+    find . -type f \( -name '*.c' -o -name '*.h' \) -exec \
+        clang-tidy -p . --warnings-as-errors='*' "$@" {} +
 
 }
 lint_check_cpp () {
 
-    ensure_pkg clang-tidy
-
-    [[ -f compile_commands.json ]] || die "lint-check: cpp requires compile_commands.json"
-
-    local -a files=()
-    local f=""
-
-    if [[ $# -gt 0 ]]; then
-        files=( "$@" )
-    else
-        while IFS= read -r f; do
-            [[ -n "${f}" ]] && files+=( "${f}" )
-        done < <(lint_git_files \
-            '*.cpp' '*.cc' '*.cxx' '*.C' \
-            '*.ixx' '*.cppm' '*.cxxm' \
-        2>/dev/null || true)
-
-        [[ ${#files[@]} -gt 0 ]] || die "lint-check: cpp requires file args"
-    fi
-
-    run clang-tidy -p . --warnings-as-errors='*' "${files[@]}"
+    ensure_pkg clang-tidy find
+    find . -type f \( -name '*.cpp' -o -name '*.hpp' -o -name '*.cc' -o -name '*.hh' \) -exec \
+        clang-tidy -p . --warnings-as-errors='*' "$@" {} +
 
 }
 lint_check_rust () {
 
-    ensure_pkg rustup
-    run cargo +"${RUST_NIGHTLY:-nightly}" clippy --all-targets --all-features "$@" -- -D warnings
+    ensure_pkg cargo
+    run cargo clippy --workspace --all-targets --all-features "$@"
 
 }
 lint_check_zig () {
@@ -100,22 +59,15 @@ lint_check_mojo () {
 
     ensure_pkg mojo
 
-    local out="${TMPDIR:-/tmp}/gun-mojo-lint.$RANDOM$RANDOM"
-    local src="" i="" has_file=0
+    local src="" out="${TMPDIR:-/tmp}/gun-mojo-lint.$RANDOM$RANDOM"
+    local -a cmd=()
 
-    for i in "$@"; do
-        [[ "${i}" == *.mojo ]] && { has_file=1; break; }
-    done
+    [[ -f ./src/main.mojo ]] && src="./src/main.mojo"
+    [[ -z "${src}" && -f ./main.mojo ]] && src="./main.mojo"
+    [[ -z "${src}" && -f ./app.mojo ]] && src="./app.mojo"
+    [[ -n "${src}" ]] && cmd+=( "${src}")
 
-    if [[ ${has_file} -eq 0 ]]; then
-        [[ -f ./src/main.mojo ]] && src="./src/main.mojo"
-        [[ -z "${src}" && -f ./main.mojo ]] && src="./main.mojo"
-        [[ -n "${src}" ]] || die "lint-check: mojo requires a .mojo file"
-        run mojo build --no-optimization --Werror -o "${out}" "$@" "${src}"
-    else
-        run mojo build --no-optimization --Werror -o "${out}" "$@"
-    fi
-
+    run mojo build -o "${out}" "$@" "${cmd[@]}"
     rm -f "${out}" || true
 
 }
@@ -191,81 +143,39 @@ lint_check_dart () {
 lint_check_lua () {
 
     ensure_pkg luacheck
-    run luacheck "$@" .
+
+    local -a cmd=()
+    local config="$(config_file luacheckrc lua)"
+    [[ -f "${config}" ]] && cmd+=( --config "${config}" )
+
+    run luacheck "${cmd[@]}" "$@" .
 
 }
 lint_check_bash () {
 
-    ensure_pkg shellcheck
-
-    local -a files=()
-    local f=""
-
-    if [[ $# -gt 0 ]]; then
-        files=( "$@" )
-    else
-        while IFS= read -r f; do
-            [[ -n "${f}" ]] && files+=( "${f}" )
-        done < <(lint_git_files '*.sh' 2>/dev/null || true)
-
-        [[ ${#files[@]} -gt 0 ]] || die "lint-check: bash requires file args"
-    fi
-
-    run shellcheck "${files[@]}"
+    ensure_pkg shellcheck find
+    find . -type f -name '*.sh' -exec shellcheck "$@" {} +
 
 }
 
 lint_fix_c () {
 
-    ensure_pkg clang-tidy
-
-    [[ -f compile_commands.json ]] || die "lint-fix: c requires compile_commands.json"
-
-    local -a files=()
-    local f=""
-
-    if [[ $# -gt 0 ]]; then
-        files=( "$@" )
-    else
-        while IFS= read -r f; do
-            [[ -n "${f}" ]] && files+=( "${f}" )
-        done < <(lint_git_files '*.c' 2>/dev/null || true)
-
-        [[ ${#files[@]} -gt 0 ]] || die "lint-fix: c requires file args"
-    fi
-
-    run clang-tidy -p . -fix --warnings-as-errors='*' "${files[@]}"
+    ensure_pkg clang-tidy find
+    find . -type f \( -name '*.c' -o -name '*.h' \) -exec \
+        clang-tidy -p . -fix "$@" {} +
 
 }
 lint_fix_cpp () {
 
-    ensure_pkg clang-tidy
-
-    [[ -f compile_commands.json ]] || die "lint-fix: cpp requires compile_commands.json"
-
-    local -a files=()
-    local f=""
-
-    if [[ $# -gt 0 ]]; then
-        files=( "$@" )
-    else
-        while IFS= read -r f; do
-            [[ -n "${f}" ]] && files+=( "${f}" )
-        done < <(lint_git_files \
-            '*.cpp' '*.cc' '*.cxx' '*.C' \
-            '*.ixx' '*.cppm' '*.cxxm' \
-        2>/dev/null || true)
-
-        [[ ${#files[@]} -gt 0 ]] || die "lint-fix: cpp requires file args"
-    fi
-
-    run clang-tidy -p . -fix --warnings-as-errors='*' "${files[@]}"
+    ensure_pkg clang-tidy find
+    find . -type f \( -name '*.cpp' -o -name '*.hpp' -o -name '*.cc' -o -name '*.hh' \) -exec \
+        clang-tidy -p . -fix "$@" {} +
 
 }
 lint_fix_rust () {
 
-    ensure_pkg rustup
-    run cargo +"${RUST_NIGHTLY:-nightly}" clippy --fix --allow-dirty --allow-staged --all-targets --all-features "$@" -- -D warnings
+    ensure_pkg cargo
+    run cargo clippy --fix --allow-dirty --allow-staged --workspace --all-targets --all-features "$@"
 
 }
 lint_fix_zig () {

@@ -2,14 +2,16 @@
 
 fmt_check_c () {
 
-    ensure_pkg xmake clang-format
-    run xmake format -c "$@"
+    ensure_pkg clang-format find
+    find . -type f \( -name '*.c' -o -name '*.h' \) -exec \
+        clang-format -style=file -fallback-style=none --dry-run --Werror "$@" {} +
 
 }
 fmt_check_cpp () {
 
-    ensure_pkg xmake clang-format
-    run xmake format -c "$@"
+    ensure_pkg clang-format find
+    find . -type f \( -name '*.cpp' -o -name '*.hpp' -o -name '*.cc' -o -name '*.hh' \) -exec \
+        clang-format -style=file -fallback-style=none --dry-run --Werror "$@" {} +
 
 }
 fmt_check_rust () {
@@ -30,7 +32,6 @@ fmt_check_go () {
 
     local out="$(goimports -l "$@" . 2>&1)" || { printf '%s\n' "${out}"; return 1; }
     [[ -n "${out}" ]] && { printf '%s\n' "${out}"; return 1; }
-
     return 0
 
 }
@@ -122,17 +123,31 @@ fmt_check_dart () {
     run dart format -o none --set-exit-if-changed --line-length 120 "$@" .
 
 }
+fmt_check_lua () {
+
+    ensure_pkg stylua
+    run stylua --check "$@" .
+
+}
+fmt_check_bash () {
+
+    ensure_pkg shfmt
+    run shfmt --apply-ignore -d "$@" .
+
+}
 
 fmt_fix_c () {
 
-    ensure_pkg xmake clang-format
-    run xmake format "$@"
+    ensure_pkg clang-format find
+    find . -type f \( -name '*.c' -o -name '*.h' \) -exec \
+        clang-format -style=file -fallback-style=none -i "$@" {} +
 
 }
 fmt_fix_cpp () {
 
-    ensure_pkg xmake clang-format
-    run xmake format "$@"
+    ensure_pkg clang-format find
+    find . -type f \( -name '*.cpp' -o -name '*.hpp' -o -name '*.cc' -o -name '*.hh' \) -exec \
+        clang-format -style=file -fallback-style=none -i "$@" {} +
 
 }
 fmt_fix_rust () {
@@ -158,7 +173,6 @@ fmt_fix_python () {
     ensure_pkg ruff
 
     local -a cmd=()
-
     local config="$(config_file ruff-fmt toml)"
     [[ -f "${config}" ]] || config="$(config_file ruff toml)"
     [[ -f "${config}" ]] && cmd+=( --config "${config}" )
@@ -241,6 +255,18 @@ fmt_fix_dart () {
     run dart format --line-length 120 "$@" .
 
 }
+fmt_fix_lua () {
+
+    ensure_pkg stylua
+    run stylua "$@" .
+
+}
+fmt_fix_bash () {
+
+    ensure_pkg shfmt
+    run shfmt --apply-ignore -w "$@" .
+
+}
 
 cmd_fmt_check () {
 
@@ -258,7 +284,9 @@ cmd_fmt_check () {
         csharp) fmt_check_csharp "$@" ;;
         java)   fmt_check_java "$@" ;;
         dart)   fmt_check_dart "$@" ;;
-        *)    die "fmt-check: unknown root manager" ;;
+        lua)    fmt_check_lua "$@" ;;
+        bash)   fmt_check_bash "$@" ;;
+        *)      die "fmt-check: unknown root manager" ;;
     esac
 
 }
@@ -278,7 +306,9 @@ cmd_fmt_fix () {
         csharp) fmt_fix_csharp "$@" ;;
         java)   fmt_fix_java "$@" ;;
         dart)   fmt_fix_dart "$@" ;;
-        *)    die "fmt-fix: unknown root manager" ;;
+        lua)    fmt_fix_lua "$@" ;;
+        bash)   fmt_fix_bash "$@" ;;
+        *)      die "fmt-fix: unknown root manager" ;;
     esac
 
 }
