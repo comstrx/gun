@@ -16,16 +16,29 @@ cov_default_out () {
         rust:codecov )  printf '%s' "codecov.json" ;;
         rust:json )     printf '%s' "llvm-cov.json" ;;
         rust:* )        printf '%s' "lcov.info" ;;
-        go:lcov )       printf '%s' "coverage.out" ;;
+
         go:* )          printf '%s' "coverage.out" ;;
-        py:lcov )       printf '%s' "python.lcov" ;;
-        py:json )       printf '%s' "python.json" ;;
-        py:xml )        printf '%s' "cobertura.xml" ;;
-        py:* )          printf '%s' "python.lcov" ;;
+
+        python:json )   printf '%s' "python.json" ;;
+        python:xml )    printf '%s' "cobertura.xml" ;;
+        python:* )      printf '%s' "python.lcov" ;;
+
         node:* )        printf '%s' "lcov.info" ;;
+        bun:* )         printf '%s' "lcov.info" ;;
+
         php:* )         printf '%s' "clover.xml" ;;
-        c:lcov )        printf '%s' "lcov.info" ;;
-        c:* )           printf '%s' "cobertura.xml" ;;
+
+        c:xml )         printf '%s' "cobertura.xml" ;;
+        c:* )           printf '%s' "lcov.info" ;;
+        cpp:xml )       printf '%s' "cobertura.xml" ;;
+        cpp:* )         printf '%s' "lcov.info" ;;
+
+        csharp:* )      printf '%s' "cobertura.xml" ;;
+        java:* )        printf '%s' "jacoco.xml" ;;
+
+        dart:* )        printf '%s' "lcov.info" ;;
+        lua:* )         printf '%s' "lcov.info" ;;
+
         * )             printf '%s' "lcov.info" ;;
     esac
 
@@ -142,12 +155,48 @@ cov_upload_out () {
 
 }
 
+coverage_c () {
+
+    ensure_pkg gcovr
+    source <(parse "$@" -- mode out)
+
+    cov_prepare_out "${out}"
+
+    if [[ "${mode}" == "xml" ]]; then
+        run gcovr -r . --cobertura-pretty -o "${out}" "${kwargs[@]}"
+        return 0
+    fi
+
+    run gcovr -r . --lcov -o "${out}" "${kwargs[@]}"
+
+}
+coverage_cpp () {
+
+    ensure_pkg gcovr
+    source <(parse "$@" -- mode out)
+
+    cov_prepare_out "${out}"
+
+    if [[ "${mode}" == "xml" ]]; then
+        run gcovr -r . --cobertura-pretty -o "${out}" "${kwargs[@]}"
+        return 0
+    fi
+
+    run gcovr -r . --lcov -o "${out}" "${kwargs[@]}"
+
+}
+coverage_zig () {
+
+    warn "No coverage for zig"
+
+}
 coverage_rust () {
 
     ensure_pkg cargo cargo-llvm-cov
     source <(parse "$@" -- mode out)
 
     local -a args=( --exclude bloats --exclude fuzz --"${mode}" )
+
     cov_prepare_out "${out}"
 
     run_cargo llvm-cov clean --workspace
@@ -163,35 +212,68 @@ coverage_go () {
     run go test -covermode=atomic -coverprofile="${out}" "${kwargs[@]}" ./...
 
 }
-coverage_py () {
+coverage_python () {
 
-    ensure_pkg python
+    ensure_pkg python3
     source <(parse "$@" -- mode out)
 
     cov_prepare_out "${out}"
-    run python -m coverage erase
+    run python3 -m coverage erase
 
-    if (( ${#kwargs[@]} )); then run python -m coverage run --branch --source . "${kwargs[@]}"
-    elif python -m pytest --version >/dev/null 2>&1; then run python -m coverage run --branch --source . -m pytest
-    else run python -m coverage run --branch --source . -m unittest discover
+    if (( ${#kwargs[@]} )); then run python3 -m coverage run --branch --source . "${kwargs[@]}"
+    elif python3 -m pytest --version >/dev/null 2>&1; then run python3 -m coverage run --branch --source . -m pytest
+    else run python3 -m coverage run --branch --source . -m unittest discover
     fi
 
-    if [[ "${mode}" == "json" ]]; then run python -m coverage json -o "${out}"
-    elif [[ "${mode}" == "xml" ]]; then run python -m coverage xml -o "${out}"
-    else run python -m coverage lcov -o "${out}"
+    if [[ "${mode}" == "json" ]]; then
+        run python3 -m coverage json -o "${out}"
+        return 0
     fi
+    if [[ "${mode}" == "xml" ]]; then
+        run python3 -m coverage xml -o "${out}"
+        return 0
+    fi
+
+    run python3 -m coverage lcov -o "${out}"
+
+}
+coverage_mojo () {
+
+    warn "No coverage for mojo"
 
 }
 coverage_node () {
 
-    ensure_pkg node npm
+    ensure_pkg node pnpm
     source <(parse "$@" -- mode out)
 
-    local -a cmd=( npx -y c8 )
-    [[ -x node_modules/.bin/c8 ]] && cmd=( node_modules/.bin/c8 )
+    local out_dir="$(dirname "${out}")"
+    local tmp="${out_dir}/lcov.info"
+    local -a c8=( pnpm dlx c8 )
+
+    [[ -x node_modules/.bin/c8 ]] && c8=( node_modules/.bin/c8 )
 
     cov_prepare_out "${out}"
-    run "${cmd[@]}" --reporter=lcovonly --report-dir "$(dirname "${out}")" --all --exclude-after-remap npm test --silent "${kwargs[@]}"
+
+    run "${c8[@]}" --reporter=lcovonly --report-dir "${out_dir}" --all --exclude-after-remap pnpm test --silent "${kwargs[@]}"
+    [[ "${tmp}" == "${out}" ]] || { [[ -f "${tmp}" ]] && run mv -f "${tmp}" "${out}"; }
+
+}
+coverage_bun () {
+
+    ensure_pkg bun
+    source <(parse "$@" -- mode out)
+
+    cov_prepare_out "${out}"
+
+    run bun test --coverage --coverage-reporter=lcov "${kwargs[@]}"
+
+    if [[ -f coverage/lcov.info ]]; then
+        run cp coverage/lcov.info "${out}"
+        return 0
+    fi
+
+    warn "bun coverage file not found (expected coverage/lcov.info)"
 
 }
 coverage_php () {
@@ -206,6 +288,131 @@ coverage_php () {
     XDEBUG_MODE=coverage run php "${phpunit}" --coverage-clover "${out}" "${kwargs[@]}"
 
 }
+coverage_csharp () {
+
+    ensure_pkg dotnet
+    source <(parse "$@" -- mode out)
+
+    cov_prepare_out "${out}"
+    run dotnet test --collect:"XPlat Code Coverage" "${kwargs[@]}"
+
+    local got="$(find . -type f -name 'coverage.cobertura.xml' -path '*TestResults*' 2>/dev/null | head -n 1 || true)"
+    [[ -n "${got}" ]] || { warn "No cobertura file found for csharp"; return 0; }
+
+    run cp "${got}" "${out}"
+
+}
+coverage_java () {
+
+    ensure_pkg java
+    source <(parse "$@" -- mode out)
+
+    cov_prepare_out "${out}"
+
+    if [[ -x ./gradlew ]]; then
+        run ./gradlew -q test jacocoTestReport "${kwargs[@]}"
+
+        local got="build/reports/jacoco/test/jacocoTestReport.xml"
+        [[ -f "${got}" ]] || got="$(find . -type f -name 'jacocoTestReport.xml' -path '*build/reports/jacoco*' 2>/dev/null | head -n 1 || true)"
+        [[ -f "${got}" ]] || { warn "No jacoco xml found"; return 0; }
+
+        run cp "${got}" "${out}"
+        return 0
+    fi
+    if [[ -x ./mvnw ]]; then
+        run ./mvnw -q test jacoco:report "${kwargs[@]}"
+
+        local got="target/site/jacoco/jacoco.xml"
+        [[ -f "${got}" ]] || got="$(find . -type f -name 'jacoco.xml' -path '*target/site/jacoco*' 2>/dev/null | head -n 1 || true)"
+        [[ -f "${got}" ]] || { warn "No jacoco xml found"; return 0; }
+
+        run cp "${got}" "${out}"
+        return 0
+    fi
+
+    warn "No coverage for java (need gradlew/mvnw)"
+
+}
+coverage_dart () {
+
+    ensure_pkg dart
+    source <(parse "$@" -- mode out)
+
+    cov_prepare_out "${out}"
+
+    if has flutter && [[ -f pubspec.yaml ]] && grep -qE '^[[:space:]]*flutter:' pubspec.yaml 2>/dev/null; then
+
+        run flutter test --coverage "${kwargs[@]}"
+
+        [[ -f coverage/lcov.info ]] || { warn "No lcov file found for flutter"; return 0; }
+        run cp coverage/lcov.info "${out}"
+
+        return 0
+
+    fi
+
+    run dart test --coverage=coverage "${kwargs[@]}"
+
+    local pkg=""
+    [[ -f .dart_tool/package_config.json ]] && pkg=".dart_tool/package_config.json"
+    [[ -z "${pkg}" && -f .packages ]] && pkg=".packages"
+
+    if has format_coverage; then
+
+        [[ -n "${pkg}" ]] && run format_coverage --lcov --in=coverage --out="${out}" --report-on=lib --packages="${pkg}" || \
+            run format_coverage --lcov --in=coverage --out="${out}" --report-on=lib
+
+        return 0
+
+    fi
+
+    run dart pub global activate coverage >/dev/null 2>&1 || true
+
+    if dart pub global run coverage:format_coverage --help >/dev/null 2>&1; then
+
+        [[ -n "${pkg}" ]] && run dart pub global run coverage:format_coverage --lcov --in=coverage --out="${out}" --report-on=lib --packages="${pkg}" || \
+            run dart pub global run coverage:format_coverage --lcov --in=coverage --out="${out}" --report-on=lib
+
+        return 0
+
+    fi
+
+    warn "No coverage formatter for dart (need coverage:format_coverage)"
+
+}
+coverage_lua () {
+
+    if ! has lua || ! has luacov; then
+        warn "No coverage for lua"
+        return 0
+    fi
+    if ! luacov -r lcov --help >/dev/null 2>&1; then
+        warn "lua coverage requires luacov-reporter-lcov"
+        return 0
+    fi
+
+    source <(parse "$@" -- mode out)
+
+    cov_prepare_out "${out}"
+
+    if has busted; then
+        run busted -c "${kwargs[@]}"
+    else
+        warn "No lua test runner (need busted)"
+        return 0
+    fi
+
+    run luacov -r lcov
+
+    [[ -f luacov.report.out ]] || { warn "No luacov report found"; return 0; }
+    run cp luacov.report.out "${out}"
+
+}
+coverage_bash () {
+
+    warn "No coverage for bash"
+
+}
 
 cmd_coverage () {
 
@@ -215,15 +422,25 @@ cmd_coverage () {
     out="${out:-"${OUT_DIR:-out}/$(cov_default_out "${lang}" "${mode}")"}"
 
     case "${lang}" in
-        rust) coverage_rust "${mode}" "${out}" "${kwargs[@]}" ;;
-        go)   coverage_go   "${mode}" "${out}" "${kwargs[@]}" ;;
-        py)   coverage_py   "${mode}" "${out}" "${kwargs[@]}" ;;
-        node) coverage_node "${mode}" "${out}" "${kwargs[@]}" ;;
-        php)  coverage_php  "${mode}" "${out}" "${kwargs[@]}" ;;
-        *)    die "coverage: unknown root manager" ;;
+        c)      coverage_c       "${mode}" "${out}" "${kwargs[@]}" ;;
+        cpp)    coverage_cpp     "${mode}" "${out}" "${kwargs[@]}" ;;
+        zig)    coverage_zig     "${mode}" "${out}" "${kwargs[@]}" ;;
+        rust)   coverage_rust    "${mode}" "${out}" "${kwargs[@]}" ;;
+        go)     coverage_go      "${mode}" "${out}" "${kwargs[@]}" ;;
+        python) coverage_python  "${mode}" "${out}" "${kwargs[@]}" ;;
+        node)   coverage_node    "${mode}" "${out}" "${kwargs[@]}" ;;
+        bun)    coverage_bun     "${mode}" "${out}" "${kwargs[@]}" ;;
+        php)    coverage_php     "${mode}" "${out}" "${kwargs[@]}" ;;
+        csharp) coverage_csharp  "${mode}" "${out}" "${kwargs[@]}" ;;
+        java)   coverage_java    "${mode}" "${out}" "${kwargs[@]}" ;;
+        mojo)   coverage_mojo    "${mode}" "${out}" "${kwargs[@]}" ;;
+        dart)   coverage_dart    "${mode}" "${out}" "${kwargs[@]}" ;;
+        lua)    coverage_lua     "${mode}" "${out}" "${kwargs[@]}" ;;
+        bash)   coverage_bash    "${mode}" "${out}" "${kwargs[@]}" ;;
+        *)      die "coverage: unknown root manager" ;;
     esac
 
     success "Ok: coverage processed -> ${out}"
-    (( upload )) && cov_upload_out "${lang}" "${mode}" "${name}" "${version}"  "${token}" "${flags}" "${out}"
+    (( upload )) && cov_upload_out "${lang}" "${mode}" "${name}" "${version}" "${token}" "${flags}" "${out}"
 
 }
