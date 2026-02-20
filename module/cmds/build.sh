@@ -3,9 +3,16 @@
 build_rust () {
 
     ensure_pkg cargo
+    source <(parse "$@" -- release:bool)
 
-    if [[ -f Cargo.lock ]]; then run cargo build --locked "$@"
-    else run cargo build "$@"
+    if (( release )); then
+        if [[ -f Cargo.lock ]]; then run cargo build --locked --release "${kwargs[@]}"
+        else run cargo build --release "${kwargs[@]}"
+        fi
+    else
+        if [[ -f Cargo.lock ]]; then run cargo build --locked "${kwargs[@]}"
+        else run cargo build "${kwargs[@]}"
+        fi
     fi
 
 }
@@ -21,22 +28,23 @@ build_go () {
 }
 build_python () {
 
-    [[ -f pyproject.toml ]] || die "build: python needs pyproject.toml"
+    source <(parse "$@" -- release:bool)
 
-    if has uv; then
-        run uv build "$@"
+    if [[ -f pyproject.toml ]]; then
+        ensure_pkg uv
+        run uv build "${kwargs[@]}"
         return 0
     fi
 
     ensure_pkg python3 pip
-
     run python3 -m pip install -q --upgrade build
-    run python3 -m build "$@"
+    run python3 -m build "${kwargs[@]}"
 
 }
 build_node () {
 
     ensure_pkg pnpm
+    source <(parse "$@" -- release:bool)
 
     [[ -f package.json ]] || die "build: node needs package.json"
 
@@ -44,12 +52,13 @@ build_node () {
     else run pnpm install
     fi
 
-    run pnpm run build "$@"
+    run pnpm run build "${kwargs[@]}"
 
 }
 build_bun () {
 
     ensure_pkg bun
+    source <(parse "$@" -- release:bool)
 
     [[ -f package.json ]] || die "build: bun needs package.json"
 
@@ -57,7 +66,7 @@ build_bun () {
     else run bun install
     fi
 
-    run bun run build "$@"
+    run bun run build "${kwargs[@]}"
 
 }
 build_php () {
@@ -77,7 +86,7 @@ build_php () {
 build_csharp () {
 
     ensure_pkg dotnet
-    source <(parse "$@" -- release:bool=false)
+    source <(parse "$@" -- release:bool)
 
     if (( release )); then run dotnet build -c Release --nologo "${kwargs[@]}"
     else run dotnet build -c Debug --nologo "${kwargs[@]}"
@@ -86,21 +95,18 @@ build_csharp () {
 }
 build_cpp () {
 
-    source <(parse "$@" -- release:bool=false)
+    source <(parse "$@" -- release:bool)
 
     local mode="debug" bt="Debug" out="build/debug"
+    (( release )) && { mode="release"; bt="Release"; out="build/release"; }
 
-    if (( release )); then
-        mode="release"
-        bt="Release"
-        out="build/release"
-    fi
     if [[ -f xmake.lua ]]; then
 
         ensure_pkg xmake
 
         run xmake f -m "${mode}" "${kwargs[@]}"
         run xmake
+
         return 0
 
     fi
@@ -136,7 +142,6 @@ build_cpp () {
     die "build: cpp needs xmake.lua or conanfile.py or conanfile.txt"
 
 }
-
 cmd_build () {
 
     case "$(which_lang)" in

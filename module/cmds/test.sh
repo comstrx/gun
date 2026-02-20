@@ -3,46 +3,63 @@
 test_rust () {
 
     ensure_pkg cargo
+    source <(parse "$@" -- release:bool)
 
     if has cargo-nextest; then
-   
-        if [[ -f Cargo.lock ]]; then run cargo nextest run --locked "$@"
-        else run cargo nextest run "$@"
+
+        if (( release )); then
+            if [[ -f Cargo.lock ]]; then run cargo nextest run --locked --release "${kwargs[@]}"
+            else run cargo nextest run --release "${kwargs[@]}"
+            fi
+        else
+            if [[ -f Cargo.lock ]]; then run cargo nextest run --locked "${kwargs[@]}"
+            else run cargo nextest run "${kwargs[@]}"
+            fi
         fi
 
         return 0
 
     fi
 
-    if [[ -f Cargo.lock ]]; then run cargo test --locked "$@"
-    else run cargo test "$@"
+    if (( release )); then
+        if [[ -f Cargo.lock ]]; then run cargo test --locked --release "${kwargs[@]}"
+        else run cargo test --release "${kwargs[@]}"
+        fi
+    else
+        if [[ -f Cargo.lock ]]; then run cargo test --locked "${kwargs[@]}"
+        else run cargo test "${kwargs[@]}"
+        fi
     fi
 
 }
 test_go () {
 
     ensure_pkg go
-    run go test -count=1 "$@" ./...
+    source <(parse "$@" -- release:bool)
+
+    run go test -count=1 -buildvcs=false "${kwargs[@]}" ./...
 
 }
 test_python () {
 
-    [[ -f pyproject.toml ]] || die "test: python needs pyproject.toml"
+    source <(parse "$@" -- release:bool)
 
-    if has uv; then
-        run uv run pytest -q "$@"
+    if [[ -f pyproject.toml ]]; then
+        ensure_pkg uv
+        run uv run pytest -q "${kwargs[@]}"
         return 0
     fi
 
     ensure_pkg python3 pip
 
     run python3 -m pip install -q --upgrade pytest
-    run python3 -m pytest -q "$@"
+    run python3 -m pytest -q "${kwargs[@]}"
 
 }
 test_node () {
 
     ensure_pkg pnpm
+    source <(parse "$@" -- release:bool)
 
     [[ -f package.json ]] || die "test: node needs package.json"
 
@@ -50,12 +67,13 @@ test_node () {
     else run pnpm install
     fi
 
-    run pnpm test "$@"
+    run pnpm run test "${kwargs[@]}"
 
 }
 test_bun () {
 
     ensure_pkg bun
+    source <(parse "$@" -- release:bool)
 
     [[ -f package.json ]] || die "test: bun needs package.json"
 
@@ -63,26 +81,21 @@ test_bun () {
     else run bun install
     fi
 
-    run bun test "$@"
+    run bun test "${kwargs[@]}"
 
 }
 test_php () {
 
     ensure_pkg php composer
+    source <(parse "$@" -- release:bool)
 
     [[ -f composer.json ]] || die "test: php needs composer.json"
     run composer install --no-interaction --no-progress --prefer-dist
 
-    if [[ -x vendor/bin/pest ]]; then
-        run vendor/bin/pest "$@"
-        return 0
-    fi
-    if [[ -x vendor/bin/phpunit ]]; then
-        run vendor/bin/phpunit "$@"
-        return 0
-    fi
+    if [[ -x vendor/bin/pest ]]; then run vendor/bin/pest "${kwargs[@]}"; return 0; fi
+    if [[ -x vendor/bin/phpunit ]]; then run vendor/bin/phpunit "${kwargs[@]}"; return 0; fi
 
-    run composer run test -- "$@"
+    run composer run test -- "${kwargs[@]}"
 
 }
 test_csharp () {
@@ -90,7 +103,7 @@ test_csharp () {
     ensure_pkg dotnet
     source <(parse "$@" -- release:bool)
 
-    if [[ "${release}" == "true" ]]; then run dotnet test -c Release --nologo "${kwargs[@]}"
+    if (( release )); then run dotnet test -c Release --nologo "${kwargs[@]}"
     else run dotnet test -c Debug --nologo "${kwargs[@]}"
     fi
 
@@ -100,12 +113,8 @@ test_cpp () {
     source <(parse "$@" -- release:bool)
 
     local mode="debug" bt="Debug" out="build/debug"
+    (( release )) && { mode="release"; bt="Release"; out="build/release"; }
 
-    if (( release )); then
-        mode="release"
-        bt="Release"
-        out="build/release"
-    fi
     if [[ -f xmake.lua ]]; then
 
         ensure_pkg xmake
@@ -136,7 +145,6 @@ test_cpp () {
 
         [[ -f "${out}/CTestTestfile.cmake" ]] || return 0
         run ctest --test-dir "${out}" --output-on-failure "${kwargs[@]}"
-
         return 0
 
     fi
@@ -144,13 +152,9 @@ test_cpp () {
     die "test: cpp needs xmake.lua or conanfile.py or conanfile.txt"
 
 }
-
 cmd_test () {
 
     case "$(which_lang)" in
-        c)      test_c      "$@" ;;
-        cpp)    test_cpp    "$@" ;;
-        zig)    test_zig    "$@" ;;
         rust)   test_rust   "$@" ;;
         go)     test_go     "$@" ;;
         python) test_python "$@" ;;
@@ -158,11 +162,7 @@ cmd_test () {
         bun)    test_bun    "$@" ;;
         php)    test_php    "$@" ;;
         csharp) test_csharp "$@" ;;
-        java)   test_java   "$@" ;;
-        mojo)   test_mojo   "$@" ;;
-        dart)   test_dart   "$@" ;;
-        lua)    test_lua    "$@" ;;
-        bash)   test_bash   "$@" ;;
+        cpp)    test_cpp    "$@" ;;
         *)      die "test: unknown root manager" ;;
     esac
 
