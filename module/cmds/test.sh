@@ -5,30 +5,13 @@ test_rust () {
     ensure_pkg cargo
     source <(parse "$@" -- release:bool)
 
-    if has cargo-nextest; then
+    local args=()
 
-        if (( release )); then
-            if [[ -f Cargo.lock ]]; then run cargo nextest run --locked --release "${kwargs[@]}"
-            else run cargo nextest run --release "${kwargs[@]}"
-            fi
-        else
-            if [[ -f Cargo.lock ]]; then run cargo nextest run --locked "${kwargs[@]}"
-            else run cargo nextest run "${kwargs[@]}"
-            fi
-        fi
+    (( release )) && args+=( --release )
+    [[ -f Cargo.lock ]] && args+=( --locked )
 
-        return 0
-
-    fi
-
-    if (( release )); then
-        if [[ -f Cargo.lock ]]; then run cargo test --locked --release "${kwargs[@]}"
-        else run cargo test --release "${kwargs[@]}"
-        fi
-    else
-        if [[ -f Cargo.lock ]]; then run cargo test --locked "${kwargs[@]}"
-        else run cargo test "${kwargs[@]}"
-        fi
+    if has cargo-nextest; then run cargo nextest run "${args[@]}" "${kwargs[@]}"
+    else run cargo test "${args[@]}" "${kwargs[@]}"
     fi
 
 }
@@ -37,7 +20,7 @@ test_go () {
     ensure_pkg go
     source <(parse "$@" -- release:bool)
 
-    run go test -count=1 -buildvcs=false "${kwargs[@]}" ./...
+    run go test -count=1 -buildvcs=false ./... "${kwargs[@]}"
 
 }
 test_python () {
@@ -52,7 +35,7 @@ test_python () {
 
     ensure_pkg python3 pip
 
-    run python3 -m pip install -q --upgrade pytest
+    run python3 -m pip install -q pytest
     run python3 -m pytest -q "${kwargs[@]}"
 
 }
@@ -67,7 +50,7 @@ test_node () {
     else run pnpm install
     fi
 
-    run pnpm run test "${kwargs[@]}"
+    run pnpm test "${kwargs[@]}"
 
 }
 test_bun () {
@@ -90,12 +73,15 @@ test_php () {
     source <(parse "$@" -- release:bool)
 
     [[ -f composer.json ]] || die "test: php needs composer.json"
-    run composer install --no-interaction --no-progress --prefer-dist
 
-    if [[ -x vendor/bin/pest ]]; then run vendor/bin/pest "${kwargs[@]}"; return 0; fi
-    if [[ -x vendor/bin/phpunit ]]; then run vendor/bin/phpunit "${kwargs[@]}"; return 0; fi
+    if (( release )); then run composer install --no-interaction --no-progress --prefer-dist --no-dev --optimize-autoloader
+    else run composer install --no-interaction --no-progress --prefer-dist
+    fi
 
-    run composer run test -- "${kwargs[@]}"
+    if [[ -x vendor/bin/pest ]]; then run vendor/bin/pest "${kwargs[@]}"
+    elif [[ -x vendor/bin/phpunit ]]; then run vendor/bin/phpunit "${kwargs[@]}"
+    else run composer test "${kwargs[@]}"
+    fi
 
 }
 test_csharp () {
@@ -119,7 +105,7 @@ test_cpp () {
 
         ensure_pkg xmake
 
-        run xmake f -m "${mode}" "${kwargs[@]}"
+        run xmake f -m "${mode}"
         run xmake
         run xmake test "${kwargs[@]}"
 
@@ -129,41 +115,55 @@ test_cpp () {
     if [[ -f conanfile.py || -f conanfile.txt ]]; then
 
         ensure_pkg conan cmake ninja
-        mkdir -p "${out}"
 
+        run mkdir -p "${out}"
         run conan profile detect --force >/dev/null 2>&1 || true
-        run conan install . --output-folder "${out}" -s "build_type=${bt}" -b missing "${kwargs[@]}"
+        run conan install . --output-folder "${out}" -s "build_type=${bt}" -b missing
 
         if [[ -f conanfile.txt ]]; then
-            [[ -f "${out}/conan_toolchain.cmake" ]] || die "test: conan missing conan_toolchain.cmake"
-
+            [[ -f "${out}/conan_toolchain.cmake" ]] || die "test: cpp conan missing conan_toolchain.cmake"
             run cmake -S . -B "${out}" -G Ninja -DCMAKE_TOOLCHAIN_FILE="${out}/conan_toolchain.cmake" -DCMAKE_BUILD_TYPE="${bt}"
-            run cmake --build "${out}"
+            run cmake --build "${out}" --parallel
         else
-            run conan build . --output-folder "${out}" "${kwargs[@]}"
+            run conan build . --output-folder "${out}"
         fi
 
-        [[ -f "${out}/CTestTestfile.cmake" ]] || return 0
+        [[ -f "${out}/CTestTestfile.cmake" ]] || { warn "test: cpp no tests found"; return 0; }
         run ctest --test-dir "${out}" --output-on-failure "${kwargs[@]}"
+
         return 0
 
     fi
 
-    die "test: cpp needs xmake.lua or conanfile.py or conanfile.txt"
+    die "test: cpp needs xmake.lua or conanfile"
+
+}
+test_bash () {
+
+    source <(parse "$@" -- release:bool)
+    warn "bash: no test step required"
+
+}
+test_lua () {
+
+    source <(parse "$@" -- release:bool)
+    warn "lua: no test step required"
 
 }
 cmd_test () {
 
     case "$(which_lang)" in
-        rust)   test_rust   "$@" ;;
-        go)     test_go     "$@" ;;
-        python) test_python "$@" ;;
-        node)   test_node   "$@" ;;
-        bun)    test_bun    "$@" ;;
-        php)    test_php    "$@" ;;
-        csharp) test_csharp "$@" ;;
-        cpp)    test_cpp    "$@" ;;
-        *)      die "test: unknown root manager" ;;
+        rust)    test_rust   "$@" ;;
+        go)      test_go     "$@" ;;
+        python)  test_python "$@" ;;
+        node)    test_node   "$@" ;;
+        bun)     test_bun    "$@" ;;
+        php)     test_php    "$@" ;;
+        csharp)  test_csharp "$@" ;;
+        cpp)     test_cpp    "$@" ;;
+        bash)    test_bash   "$@" ;;
+        lua)     test_lua    "$@" ;;
+        *)       die "test: unsupported language" ;;
     esac
 
 }

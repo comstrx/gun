@@ -5,15 +5,11 @@ build_rust () {
     ensure_pkg cargo
     source <(parse "$@" -- release:bool)
 
-    if (( release )); then
-        if [[ -f Cargo.lock ]]; then run cargo build --locked --release "${kwargs[@]}"
-        else run cargo build --release "${kwargs[@]}"
-        fi
-    else
-        if [[ -f Cargo.lock ]]; then run cargo build --locked "${kwargs[@]}"
-        else run cargo build "${kwargs[@]}"
-        fi
-    fi
+    local args=()
+    (( release )) && args+=( --release )
+    [[ -f Cargo.lock ]] && args+=( --locked )
+
+    run cargo build "${args[@]}" "${kwargs[@]}"
 
 }
 build_go () {
@@ -21,8 +17,8 @@ build_go () {
     ensure_pkg go
     source <(parse "$@" -- release:bool)
 
-    if (( release )); then run go build -buildvcs=false -trimpath -ldflags="-s -w" "${kwargs[@]}" ./...
-    else run go build -buildvcs=false "${kwargs[@]}" ./...
+    if (( release )); then run go build -buildvcs=false -trimpath -ldflags="-s -w" "${kwargs[@]}"
+    else run go build -buildvcs=false "${kwargs[@]}"
     fi
 
 }
@@ -32,11 +28,12 @@ build_python () {
 
     if [[ -f pyproject.toml ]]; then
         ensure_pkg uv
-        run uv build "${kwargs[@]}"
+        run uv build --sdist --wheel "${kwargs[@]}"
         return 0
     fi
 
     ensure_pkg python3 pip
+
     run python3 -m pip install -q --upgrade build
     run python3 -m build "${kwargs[@]}"
 
@@ -52,7 +49,7 @@ build_node () {
     else run pnpm install
     fi
 
-    run pnpm run build "${kwargs[@]}"
+    run pnpm build "${kwargs[@]}"
 
 }
 build_bun () {
@@ -65,8 +62,9 @@ build_bun () {
     if [[ -f bun.lockb || -f bun.lock ]]; then run bun install --frozen-lockfile
     else run bun install
     fi
-
-    run bun run build "${kwargs[@]}"
+    if (( release )); then run bun build --compile "${kwargs[@]}"
+    else run bun build "${kwargs[@]}"
+    fi
 
 }
 build_php () {
@@ -76,10 +74,8 @@ build_php () {
 
     [[ -f composer.json ]] || die "build: php needs composer.json"
 
-    if (( release )); then
-        run composer install --no-interaction --no-progress --prefer-dist --no-dev --optimize-autoloader --classmap-authoritative "${kwargs[@]}"
-    else
-        run composer install --no-interaction --no-progress --prefer-dist "${kwargs[@]}"
+    if (( release )); then run composer install --no-interaction --no-progress --prefer-dist --no-dev --optimize-autoloader "${kwargs[@]}"
+    else run composer install --no-interaction --no-progress --prefer-dist "${kwargs[@]}"
     fi
 
 }
@@ -103,57 +99,61 @@ build_cpp () {
     if [[ -f xmake.lua ]]; then
 
         ensure_pkg xmake
-
-        run xmake f -m "${mode}" "${kwargs[@]}"
-        run xmake
+        run xmake f -m "${mode}"
+        run xmake "${kwargs[@]}"
 
         return 0
 
     fi
-    if [[ -f conanfile.py ]]; then
+    if [[ -f conanfile.py || -f conanfile.txt ]]; then
 
         ensure_pkg conan cmake ninja
-        mkdir -p "${out}"
 
-        run conan profile detect --force >/dev/null 2>&1 || true
-
-        run conan install . --output-folder "${out}" -s "build_type=${bt}" -b missing "${kwargs[@]}"
-        run conan build . --output-folder "${out}" "${kwargs[@]}"
-
-        return 0
-
-    fi
-    if [[ -f conanfile.txt ]]; then
-
-        ensure_pkg conan cmake ninja
-        mkdir -p "${out}"
-
+        run mkdir -p "${out}"
         run conan profile detect --force >/dev/null 2>&1 || true
         run conan install . --output-folder "${out}" -s "build_type=${bt}" -b missing "${kwargs[@]}"
-        [[ -f "${out}/conan_toolchain.cmake" ]] || die "build: cpp conan missing conan_toolchain.cmake"
 
-        run cmake -S . -B "${out}" -G Ninja -DCMAKE_TOOLCHAIN_FILE="${out}/conan_toolchain.cmake" -DCMAKE_BUILD_TYPE="${bt}"
-        run cmake --build "${out}"
+        if [[ -f conanfile.txt ]]; then
+            [[ -f "${out}/conan_toolchain.cmake" ]] || die "build: cpp conan missing conan_toolchain.cmake"
+            run cmake -S . -B "${out}" -G Ninja -DCMAKE_TOOLCHAIN_FILE="${out}/conan_toolchain.cmake" -DCMAKE_BUILD_TYPE="${bt}"
+            run cmake --build "${out}" --parallel
+        else
+            run conan build . --output-folder "${out}" "${kwargs[@]}"
+        fi
 
         return 0
 
     fi
 
-    die "build: cpp needs xmake.lua or conanfile.py or conanfile.txt"
+    die "build: cpp needs xmake.lua or conanfile"
+
+}
+build_bash () {
+
+    source <(parse "$@" -- release:bool)
+    warn "bash: no build step required"
+
+}
+build_lua () {
+
+    source <(parse "$@" -- release:bool)
+    warn "lua: no build step required"
 
 }
 cmd_build () {
 
     case "$(which_lang)" in
-        rust)   build_rust   "$@" ;;
-        go)     build_go     "$@" ;;
-        python) build_python "$@" ;;
-        node)   build_node   "$@" ;;
-        bun)    build_bun    "$@" ;;
-        php)    build_php    "$@" ;;
-        csharp) build_csharp "$@" ;;
-        cpp)    build_cpp    "$@" ;;
-        *)      die "build: unknown root manager" ;;
+        rust)    build_rust   "$@" ;;
+        go)      build_go     "$@" ;;
+        python)  build_python "$@" ;;
+        node)    build_node   "$@" ;;
+        bun)     build_bun    "$@" ;;
+        php)     build_php    "$@" ;;
+        csharp)  build_csharp "$@" ;;
+        cpp)     build_cpp    "$@" ;;
+        bash)    build_bash   "$@" ;;
+        lua)     build_lua    "$@" ;;
+        *)       die "build: unsupported language" ;;
     esac
 
 }
