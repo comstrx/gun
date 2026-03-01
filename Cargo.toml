@@ -1,0 +1,19 @@
+[package]
+name = "gun"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rustix = { version = "1.1.4", features = ["process"] }
+os_info = "3.14.0"
+which = "8.0.0"
+thiserror = "2.0.18"
+
+[profile.release]
+codegen-units = 1
+opt-level = 3
+lto = "fat"
+panic = "abort"
+strip = "symbols"
+incremental = false
+overflow-checks = false
