@@ -13,11 +13,10 @@ fn main () -> std::process::ExitCode {
 
 fn run () -> AppResult<()> {
 
-    let start = std::time::Instant::now();
+    Manager::run("git", &["add", "."])?;
+    Manager::run("git", &["commit", "-m", "Done from Gun"])?;
+    Manager::run("git", &["push"])?;
 
-    // business logic
-
-    println!("\nElapsed => {:?}\n", start.elapsed());
     Ok(())
 
 }

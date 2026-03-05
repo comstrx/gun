@@ -1,5 +1,6 @@
 use std::process::Command;
 use std::sync::OnceLock;
+use std::time::{Instant, Duration};
 use semver::Version;
 use regex::Regex;
 use os_info::Type;
@@ -154,6 +155,16 @@ impl Manager {
 
     }
 
+    pub fn mesure <T> ( callback: impl FnOnce() -> AppResult<T> ) -> AppResult<Duration> {
+
+        let start = Instant::now();
+
+        callback()?;
+
+        Ok(start.elapsed())
+
+    }
+
     pub fn version ( binary: &str ) -> AppResult<String> {
 
         Self::need(binary)?;
@@ -161,12 +172,12 @@ impl Manager {
         static RE: OnceLock<Regex> = OnceLock::new();
         let mut first_error = None;
 
-        let re = RE.get_or_init(||
-            Regex::new(r"(?i)\b(\d+)\.(\d+)(?:\.(\d+))?([a-z0-9.+-]*)\b")
+        let re = RE.get_or_init(|| {
+            Regex::new(r"(?i)(?:^|[^0-9])(?:[a-z]+)?(\d+)\.(\d+)(?:\.(\d+))?([0-9a-z.+-]*)")
                 .expect("invalid version regex")
-        );
+        });
 
-        for args in [&["--version"][..], &["-V"][..], &["version"][..]] {
+        for args in [&["--version"][..], &["-v"][..], &["-V"][..], &["version"][..]] {
 
             let output = match Command::new(binary).args(args).output() {
                 Ok(output) => output,
