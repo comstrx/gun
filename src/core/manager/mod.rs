@@ -1,6 +1,5 @@
-pub mod arch;
-pub mod error;
+pub mod base;
+pub mod path;
 pub mod install;
 
-pub use crate::core::manager::arch::Manager;
-pub use crate::core::manager::error::{ManagerError, ManagerResult};
+pub use base::Manager;

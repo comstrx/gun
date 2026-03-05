@@ -1,12 +1,23 @@
 #![allow(unused)]
-
 pub mod core;
+use crate::core::{Manager, AppResult, AppError};
 
-use crate::core::manager::{Manager, ManagerResult, ManagerError};
+fn main () -> std::process::ExitCode {
 
-fn main () -> ManagerResult<()> {
+    match run() {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(error) => error.report(),
+    }
 
-    println!("Done sir");
+}
+
+fn run () -> AppResult<()> {
+
+    let start = std::time::Instant::now();
+
+    // business logic
+
+    println!("\nElapsed => {:?}\n", start.elapsed());
     Ok(())
 
 }

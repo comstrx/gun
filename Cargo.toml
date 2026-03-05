@@ -8,6 +8,12 @@ rustix = { version = "1.1.4", features = ["process"] }
 os_info = "3.14.0"
 which = "8.0.0"
 thiserror = "2.0.18"
+rand = "0.10.0"
+semver = "1.0.27"
+fs-more = "0.8.1"
+owo-colors = "4.3.0"
+anstream = "1.0.0"
+regex = "1.12.3"
 
 [profile.release]
 codegen-units = 1
