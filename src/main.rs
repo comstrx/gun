@@ -15,7 +15,7 @@ fn run () -> AppResult<()> {
 
     Manager::run_output("git", &["add", "."])?;
     Manager::run_output("git", &["commit", "-m", "Done from Gun"])?;
-    Manager::run_output("git", &["push"])?;
+    Manager::run_live("git", &["push"])?;
 
     Ok(())
 
