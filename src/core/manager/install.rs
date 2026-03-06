@@ -383,6 +383,7 @@ impl Manager {
             "prometheus"     => Self::install_package(&["prometheus/prometheus"], "aqua"),
             "otelcol"        => Self::install_package(&["open-telemetry/opentelemetry-collector-releases"], "repo"),
 
+            "bun"            => Self::install_shell("bun", "https://bun.sh/install", &[], true, false),
             "docker"         => Self::install_shell("docker", "https://get.docker.com", &[], false, true),
             "mise"           => Self::install_shell("mise", "https://mise.run/bash", &[], false, false),
             "nix"            => Self::install_shell("nix", "https://artifacts.nixos.org/nix-installer", &["install", "--no-confirm"], false, false),
