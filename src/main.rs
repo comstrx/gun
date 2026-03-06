@@ -13,12 +13,9 @@ fn main () -> std::process::ExitCode {
 
 fn run () -> AppResult<()> {
 
-    Manager::run_output("git", &["add", "."])?;
-    Manager::run_output("git", &["commit", "-m", "Done from Gun"])?;
-
-    // Manager::run_live("git", &["push"])?;
-    let output = Manager::run_output("git", &["push"])?;
-    print!("{}", String::from_utf8_lossy(&output.stderr));
+    Manager::run_live("git", &["add", "."])?;
+    Manager::run_live("git", &["commit", "-m", "Done from Gun"])?;
+    Manager::run_live("git", &["push"])?;
 
     Ok(())
 
