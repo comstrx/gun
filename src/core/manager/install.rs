@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, process::Command};
 use rand::distr::{Alphabetic, SampleString};
 use os_info::Type;
 use which::which;
@@ -69,37 +69,39 @@ impl Manager {
         let bin = Self::resolve_binary(package);
         if let Ok(path) = which::which(bin) { return Some(path); }
 
-        #[cfg(target_os = "macos")]
-        {
-            match bin {
-                "llvm-config" => {
-                    paths.push(PathBuf::from("/opt/homebrew/opt/llvm/bin/llvm-config"));
-                    paths.push(PathBuf::from("/usr/local/opt/llvm/bin/llvm-config"));
-                }
-                "clang" => {
-                    paths.push(PathBuf::from("/opt/homebrew/opt/llvm/bin").join(bin));
-                    paths.push(PathBuf::from("/usr/local/opt/llvm/bin").join(bin));
-                }
-                "python" => {
-                    paths.push(PathBuf::from("/opt/homebrew/bin/python3"));
-                    paths.push(PathBuf::from("/usr/local/bin/python3"));
-                }
-                _ => {}
-            }
-        }
-
         #[cfg(unix)]
         {
             if let Some(home) = Self::env_path("HOME") {
-
                 paths.push(home.join(".local").join("bin").join(bin));
                 paths.push(home.join(".cargo").join("bin").join(bin));
                 paths.push(home.join(".nix-profile").join("bin").join(bin));
-
                 paths.push(home.join(".local").join("share").join("mise").join("shims").join(bin));
                 paths.push(home.join(".config").join("mise").join("shims").join(bin));
-
                 paths.push(home.join(".local").join("share").join("aquaproj-aqua").join("bin").join(bin));
+            }
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            let formula = match bin {
+                "llvm-config" | "clang" => Some("llvm"),
+                _                       => None,
+            };
+
+            if let Some(formula) = formula {
+                let output = Command::new("brew").args(["--prefix", formula]).output().ok()?;
+
+                if output.status.success() {
+                    let prefix = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+                    if !prefix.is_empty() {
+                        let path = PathBuf::from(prefix).join("bin").join(bin);
+
+                        if path.is_file() {
+                            return Some(path);
+                        }
+                    }
+                }
             }
         }
 
@@ -120,7 +122,11 @@ impl Manager {
             }
         }
 
-        for path in paths { if path.is_file() { return Some(path); } }
+        for path in paths {
+            if path.is_file() {
+                return Some(path);
+            }
+        }
 
         None
 
