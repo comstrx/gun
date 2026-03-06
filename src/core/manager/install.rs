@@ -182,8 +182,6 @@ impl Manager {
 
     fn install_shell ( package: &str, url: &str, args: &[&str], bash: bool, sudo: bool ) -> AppResult<()> {
 
-        Self::ensure("curl")?;
-
         match Self::detect()? {
             Self::Apt | Self::Dnf | Self::Yum | Self::Pacman | Self::Zypper | Self::Apk => {
                 let name = Alphabetic.sample_string(&mut rand::rng(), 6).to_lowercase();
@@ -217,15 +215,12 @@ impl Manager {
 
             match source {
                 "aqua" => {
-                    Self::ensure("mise")?;
                     Self::run("mise", &["use", "--global", &format!("aqua:{package}")])?;
                 },
                 "repo" => {
-                    Self::ensure("mise")?;
                     Self::run("mise", &["use", "--global", &format!("github:{package}")])?;
                 },
                 "nix" => {
-                    Self::ensure("nix")?;
                     Self::run("nix", &["profile", "install", package])?;
                 },
                 _ => match manager {

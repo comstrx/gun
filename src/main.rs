@@ -1,22 +1,13 @@
 #![allow(unused)]
+
 pub mod core;
-use crate::core::{Manager, AppResult, AppError};
+pub mod test;
 
-fn main () -> std::process::ExitCode {
+fn main () -> core::AppExitCode {
 
-    match run() {
-        Ok(()) => std::process::ExitCode::SUCCESS,
+    match test::main() {
+        Ok(()) => core::AppExitCode::SUCCESS,
         Err(error) => error.report(),
     }
-
-}
-
-fn run () -> AppResult<()> {
-
-    Manager::run("git", &["add", "."])?;
-    Manager::run("git", &["commit", "-m", "Done from Gun"])?;
-    Manager::run("git", &["push"])?;
-
-    Ok(())
 
 }

@@ -5,6 +5,7 @@ use thiserror::Error;
 use owo_colors::OwoColorize;
 
 pub type AppResult<T> = Result<T, AppError>;
+pub type AppExitCode = std::process::ExitCode;
 
 #[derive(Debug, Error)]
 pub enum AppError {
