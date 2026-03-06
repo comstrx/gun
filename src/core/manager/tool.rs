@@ -10,19 +10,6 @@ use super::base::Manager;
 
 impl Manager {
 
-    pub fn has ( binary: &str ) -> bool {
-
-        which(binary).is_ok()
-
-    }
-
-    pub fn need ( binary: &str ) -> AppResult<()> {
-
-        if which(binary).is_err() { return Err(AppError::missing_binary(binary)); }
-        Ok(())
-
-    }
-
     pub fn measure <T> ( callback: impl FnOnce() -> AppResult<T> ) -> AppResult<Duration> {
 
         let start = Instant::now();

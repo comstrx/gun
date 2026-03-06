@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use rand::distr::{Alphabetic, SampleString};
 use os_info::Type;
 use which::which;
@@ -60,6 +61,71 @@ impl Manager {
         }
 
     }
+
+    fn find_binary ( package: &str ) -> Option<PathBuf> {
+
+        let mut paths = Vec::new();
+
+        let bin = Self::resolve_binary(package);
+        if let Ok(path) = which::which(bin) { return Some(path); }
+
+        #[cfg(target_os = "macos")]
+        {
+            match bin {
+                "llvm-config" => {
+                    paths.push(PathBuf::from("/opt/homebrew/opt/llvm/bin/llvm-config"));
+                    paths.push(PathBuf::from("/usr/local/opt/llvm/bin/llvm-config"));
+                }
+                "clang" => {
+                    paths.push(PathBuf::from("/opt/homebrew/opt/llvm/bin").join(bin));
+                    paths.push(PathBuf::from("/usr/local/opt/llvm/bin").join(bin));
+                }
+                "python" => {
+                    paths.push(PathBuf::from("/opt/homebrew/bin/python3"));
+                    paths.push(PathBuf::from("/usr/local/bin/python3"));
+                }
+                _ => {}
+            }
+        }
+
+        #[cfg(unix)]
+        {
+            if let Some(home) = Self::env_path("HOME") {
+
+                paths.push(home.join(".local").join("bin").join(bin));
+                paths.push(home.join(".cargo").join("bin").join(bin));
+                paths.push(home.join(".nix-profile").join("bin").join(bin));
+
+                paths.push(home.join(".local").join("share").join("mise").join("shims").join(bin));
+                paths.push(home.join(".config").join("mise").join("shims").join(bin));
+
+                paths.push(home.join(".local").join("share").join("aquaproj-aqua").join("bin").join(bin));
+            }
+        }
+
+        #[cfg(windows)]
+        {
+            if let Some(local) = Self::env_path("LOCALAPPDATA") {
+                paths.push(local.join("Microsoft").join("WinGet").join("Links").join(format!("{bin}.exe")));
+                paths.push(local.join("mise").join("shims").join(format!("{bin}.exe")));
+            }
+
+            if let Some(user) = Self::env_path("USERPROFILE") {
+                paths.push(user.join(".cargo").join("bin").join(format!("{bin}.exe")));
+                paths.push(user.join("scoop").join("shims").join(format!("{bin}.exe")));
+            }
+
+            if let Some(program_data) = Self::env_path("ProgramData") {
+                paths.push(program_data.join("chocolatey").join("bin").join(format!("{bin}.exe")));
+            }
+        }
+
+        for path in paths { if path.is_file() { return Some(path); } }
+
+        None
+
+    }
+
 
     fn resolve_package ( manager: Manager, package: &str ) -> &str {
 
@@ -283,6 +349,19 @@ impl Manager {
     }
 
 
+    pub fn has ( binary: &str ) -> bool {
+
+        Self::find_binary(binary).is_some()
+
+    }
+
+    pub fn need ( binary: &str ) -> AppResult<()> {
+
+        if Self::has(binary) { Ok(()) }
+        else { Err(AppError::missing_binary(binary)) }
+
+    }
+
     pub fn install ( package: &str ) -> AppResult<()> {
 
         let bin = Self::resolve_binary(package);
@@ -341,13 +420,11 @@ impl Manager {
 
     pub fn ensure ( package: &str ) -> AppResult<()> {
 
-        let bin = Self::resolve_binary(package);
-
-        if which(bin).is_ok() { return Ok(()); }
+        if Self::has(package) { return Ok(()); }
 
         Self::install(package)?;
 
-        if which(bin).is_err() { return Err(AppError::missing_binary(bin)); }
+        if Self::has(package) { return Err(AppError::missing_binary(package)); }
 
         Ok(())
 
