@@ -22,11 +22,12 @@ fn install ( tool: &str ) -> AppResult<()> {
 
 }
 
+
 pub fn main () -> AppResult<()> {
 
-    let tools = ["llvm-config", "dotnet", "tofu", "argocd"];
+    let tools = ["llvm-config"];
 
-    for tool in tools { version(tool, true)?; }
+    for tool in tools { install(tool)?; }
 
     Ok(())
 
