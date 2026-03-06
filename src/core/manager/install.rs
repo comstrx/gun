@@ -74,31 +74,11 @@ impl Manager {
             if let Some(home) = Self::env_path("HOME") {
                 paths.push(home.join(".local").join("bin").join(bin));
                 paths.push(home.join(".cargo").join("bin").join(bin));
+                paths.push(home.join(".bun").join("bin").join(bin));
                 paths.push(home.join(".nix-profile").join("bin").join(bin));
                 paths.push(home.join(".local").join("share").join("mise").join("shims").join(bin));
                 paths.push(home.join(".config").join("mise").join("shims").join(bin));
                 paths.push(home.join(".local").join("share").join("aquaproj-aqua").join("bin").join(bin));
-            }
-        }
-
-        #[cfg(target_os = "macos")]
-        {
-            let formula = match bin {
-                "llvm-config" | "clang" => Some("llvm"),
-                _                       => None,
-            };
-
-            if let Some(formula) = formula {
-                let output = Command::new("brew").args(["--prefix", formula]).output().ok()?;
-
-                if output.status.success() {
-                    let prefix = String::from_utf8_lossy(&output.stdout).trim().to_string();
-
-                    if !prefix.is_empty() {
-                        let path = PathBuf::from(prefix).join("bin").join(bin);
-                        if path.is_file() { return Some(path); }
-                    }
-                }
             }
         }
 
@@ -353,8 +333,7 @@ impl Manager {
 
     pub fn has ( binary: &str ) -> bool {
 
-        which(binary).is_ok()
-        // Self::find_binary(binary).is_some()
+        Self::find_binary(binary).is_some()
 
     }
 
