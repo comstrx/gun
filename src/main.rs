@@ -18,7 +18,7 @@ fn run () -> AppResult<()> {
 
     // Manager::run_live("git", &["push"])?;
     let output = Manager::run_output("git", &["push"])?;
-    print!("{}", String::from_utf8_lossy(&output.stdout));
+    print!("{}", String::from_utf8_lossy(&output.stderr));
 
     Ok(())
 
