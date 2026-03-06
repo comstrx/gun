@@ -15,9 +15,10 @@ fn run () -> AppResult<()> {
 
     Manager::run_output("git", &["add", "."])?;
     Manager::run_output("git", &["commit", "-m", "Done from Gun"])?;
-    let output  = Manager::run_output("git", &["push"])?;
+    let output = Manager::run_output("git", &["push"])?;
 
-    println!("{:?}", output.stdout);
+    print!("{}", String::from_utf8_lossy(&output.stdout));
+    eprint!("{}", String::from_utf8_lossy(&output.stderr));
 
     Ok(())
 
