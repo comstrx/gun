@@ -17,7 +17,7 @@ fn run () -> AppResult<()> {
     Manager::run_output("git", &["commit", "-m", "Done from Gun"])?;
     let output  = Manager::run_output("git", &["push"])?;
 
-    println!("{:?}", output);
+    println!("{:?}", output.stdout);
 
     Ok(())
 
