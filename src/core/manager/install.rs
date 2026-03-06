@@ -3,8 +3,8 @@ use rand::distr::{Alphabetic, SampleString};
 use os_info::Type;
 use which::which;
 
-use crate::core::error::{AppResult, AppError};
-use super::base::Manager;
+use crate::core::app::{AppResult, AppError};
+use super::arch::Manager;
 
 impl Manager {
 

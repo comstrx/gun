@@ -1,10 +1,9 @@
-use std::path::{Path, PathBuf};
-use std::fs::File;
+use std::{fs::File, path::{Path, PathBuf}};
 
-use crate::core::error::{AppResult, AppError};
-use super::base::Manager;
+use crate::core::app::{AppResult, AppError};
+use super::arch::Path as APath;
 
-impl Manager {
+impl APath {
 
     pub fn new_dir ( path: impl AsRef<Path> ) -> AppResult<PathBuf> {
 
