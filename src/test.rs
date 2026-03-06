@@ -24,9 +24,9 @@ fn install ( tool: &str ) -> AppResult<()> {
 
 pub fn main () -> AppResult<()> {
 
-    let tools = ["dotnet"];
+    let tools = ["llvm-config", "dotnet", "tofu", "argocd"];
 
-    for tool in tools { install(tool)?; }
+    for tool in tools { version(tool, true)?; }
 
     Ok(())
 

@@ -61,7 +61,7 @@ impl Manager {
         #[cfg(not(unix))]
         {
 
-            Self::run_live(command, args)
+            Self::run(command, args)
 
         }
 
