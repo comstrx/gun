@@ -123,13 +123,25 @@ impl Manager {
 
     }
 
-    pub fn run_output ( command: &str, args: &[&str] ) -> AppResult<()> {
+    pub fn run_live ( command: &str, args: &[&str] ) -> AppResult<()> {
 
         let status = Command::new(command).args(args).status()?;
 
         if !status.success() { return Err(AppError::command_failed(command, status)); }
 
         Ok(())
+
+    }
+
+    pub fn run_output ( command: &str, args: &[&str] ) -> AppResult<std::process::Output> {
+
+        let output = Command::new(command).args(args).output()?;
+
+        if !output.status.success() {
+            return Err(AppError::command_failed(command, output.status));
+        }
+
+        Ok(output)
 
     }
 
