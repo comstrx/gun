@@ -31,7 +31,7 @@ pub fn main () -> AppResult<()> {
         "composer", "php", "lua", "uv", "luarocks", "unzip", "wrk", "7z", "cmake", "xmake", "python"
     ];
 
-    for tool in tools { version(tool, true)?; }
+    for tool in tools { install(tool)?; }
 
     Ok(())
 
