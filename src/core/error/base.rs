@@ -173,7 +173,7 @@ impl AppError {
 
     pub fn report ( &self ) -> ExitCode {
 
-        eprintln!("{} {}", "error:".bold().bright_red(), self.to_string().bold());
+        eprintln!("{}: {}", "error".bold().bright_red(), self.to_string().bold());
 
         if let Self::CommandFailed { stdout, stderr, .. } = self {
 

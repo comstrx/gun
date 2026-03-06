@@ -353,7 +353,8 @@ impl Manager {
 
     pub fn has ( binary: &str ) -> bool {
 
-        Self::find_binary(binary).is_some()
+        Some(which::which(binary)).is_some()
+        // Self::find_binary(binary).is_some()
 
     }
 
