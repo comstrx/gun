@@ -155,7 +155,7 @@ impl Manager {
 
     }
 
-    pub fn mesure <T> ( callback: impl FnOnce() -> AppResult<T> ) -> AppResult<Duration> {
+    pub fn measure <T> ( callback: impl FnOnce() -> AppResult<T> ) -> AppResult<Duration> {
 
         let start = Instant::now();
 
