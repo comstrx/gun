@@ -1,4 +1,5 @@
 use crate::core::{Manager, AppResult};
+use which::which;
 
 fn run ( cmd: &str, args: &[&str] ) -> AppResult<()> {
 
@@ -25,9 +26,12 @@ fn install ( tool: &str ) -> AppResult<()> {
 
 pub fn main () -> AppResult<()> {
 
-    let tools = ["llvm-config"];
+    let tools = [
+        "git", "gh", "curl", "rustc", "rustup", "node", "bun", "go", "mojo", "pixi", "clang", "zig", "dotnet",
+        "composer", "php", "lua", "uv", "luarocks", "unzip", "wrk", "7z", "cmake", "xmake", "python"
+    ];
 
-    for tool in tools { install(tool)?; }
+    for tool in tools { version(tool, true)?; }
 
     Ok(())
 

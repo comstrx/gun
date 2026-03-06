@@ -49,7 +49,7 @@ impl Manager {
             "gh" | "github"                        => "gh",
             "llvm" | "llvm-config"                 => "llvm-config",
             "curl"                                 => "curl",
-            "unzip" | "uzip"                       => "unzip",
+            "unzip"                                => "unzip",
             "wrk"                                  => "wrk",
             "cmake"                                => "cmake",
             "xmake"                                => "xmake",
@@ -353,7 +353,7 @@ impl Manager {
 
     pub fn has ( binary: &str ) -> bool {
 
-        Some(which::which(binary)).is_some()
+        which(binary).is_ok()
         // Self::find_binary(binary).is_some()
 
     }
