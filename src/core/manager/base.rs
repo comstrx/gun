@@ -111,15 +111,34 @@ impl Manager {
 
     }
 
+    pub fn run_output ( command: &str, args: &[&str] ) -> AppResult<std::process::Output> {
+
+        let output = Command::new(command).args(args).output()?;
+
+        if !output.status.success() {
+            return Err(AppError::command_failed(command, output.status));
+        }
+
+        Ok(output)
+
+    }
+
     pub fn run ( command: &str, args: &[&str] ) -> AppResult<()> {
 
-        let status = Command::new(command).args(args).status()?;
-
-        if !status.success() { return Err(AppError::command_failed(command, status)); }
-
+        Self::run_output(command, args)?;
         Ok(())
 
     }
+
+    // pub fn run ( command: &str, args: &[&str] ) -> AppResult<()> {
+
+    //     let status = Command::new(command).args(args).status()?;
+
+    //     if !status.success() { return Err(AppError::command_failed(command, status)); }
+
+    //     Ok(())
+
+    // }
 
     pub fn sudo_run ( command: &str, args: &[&str] ) -> AppResult<()> {
 
