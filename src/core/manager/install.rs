@@ -96,10 +96,7 @@ impl Manager {
 
                     if !prefix.is_empty() {
                         let path = PathBuf::from(prefix).join("bin").join(bin);
-
-                        if path.is_file() {
-                            return Some(path);
-                        }
+                        if path.is_file() { return Some(path); }
                     }
                 }
             }
@@ -131,7 +128,6 @@ impl Manager {
         None
 
     }
-
 
     fn resolve_package ( manager: Manager, package: &str ) -> &str {
 
@@ -427,24 +423,33 @@ impl Manager {
     pub fn ensure ( package: &str ) -> AppResult<()> {
 
         if Self::has(package) { return Ok(()); }
-
-        Self::install(package)?;
-
-        if Self::has(package) { return Err(AppError::missing_binary(package)); }
-
-        Ok(())
+        Self::install(package)
+        // if !Self::has(package) { return Err(AppError::missing_binary(package)); }
+        // Ok(())
 
     }
 
     pub fn upgrade ( package: &str ) -> AppResult<()> {
 
         Self::remove(package)?;
-        Self::install(package)?;
+        Self::install(package)
+
+    }
+
+
+    pub fn has_all ( packages: &[&str] ) -> bool {
+
+        packages.iter().all(|package| Self::has(package))
+
+    }
+
+    pub fn need_all ( packages: &[&str] ) -> AppResult<()> {
+
+        for &package in packages { Self::need(package)?; }
 
         Ok(())
 
     }
-
 
     pub fn install_all ( packages: &[&str] ) -> AppResult<()> {
 

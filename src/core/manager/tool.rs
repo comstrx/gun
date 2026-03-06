@@ -74,7 +74,7 @@ impl Manager {
         }
 
         if let Some(err) = first_error { return Err(err.into()); }
-        Err(AppError::message(format!("failed to detect semver for {binary}")))
+        Err(AppError::message(format!("failed to detect version for {binary}")))
 
     }
 
