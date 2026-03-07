@@ -1,84 +1,35 @@
-use std::{path::PathBuf, process::Command};
-use rand::distr::{Alphabetic, SampleString};
-use os_info::Type;
-use which::which;
+use std::{process::Command, path::PathBuf, sync::OnceLock};
+use semver::Version;
+use regex::Regex;
 
 use crate::core::app::{AppResult, AppError};
+use crate::core::graph::{Tool, Strategy, Method};
+
 use super::arch::Manager;
 
 impl Manager {
 
-    fn resolve_binary ( package: &str ) -> &str {
+    fn env_path ( key: &str ) -> Option<PathBuf> {
 
-        match package.trim().to_ascii_lowercase().as_str() {
-            "rust" | "rustc"                       => "rustc",
-            "rustup"                               => "rustup",
-            "cargo"                                => "cargo",
-            "c" | "cc" | "cpp" | "c++" | "hpp"     => "clang",
-            "zig"                                  => "zig",
-            "mojo"                                 => "mojo",
-            "pixi"                                 => "pixi",
-            "go" | "golang"                        => "go",
-            "dotnet" | "c#" | "csharp" | "cs"      => "dotnet",
-            "dart"                                 => "dart",
-            "node" | "npm" | "npx"                 => "node",
-            "pnpm"                                 => "pnpm",
-            "yarn"                                 => "yarn",
-            "bun"                                  => "bun",
-            "php"                                  => "php",
-            "composer"                             => "composer",
-            "python" | "python3" | "py" | "pip"    => "python",
-            "uv"                                   => "uv",
-            "lua"                                  => "lua",
-            "luarocks"                             => "luarocks",
-            "perl"                                 => "perl",
-            "docker" | "docker-ce"                 => "docker",
-            "kubectl" | "kubernetes" | "k8s"       => "kubectl",
-            "minikube"                             => "minikube",
-            "helm"                                 => "helm",
-            "kind"                                 => "kind",
-            "kustomize"                            => "kustomize",
-            "argocd" | "argo" | "argo-cd"          => "argocd",
-            "terraform" | "tf"                     => "terraform",
-            "tofu" | "opentofu"                    => "tofu",
-            "grafana"                              => "grafana",
-            "loki"                                 => "loki",
-            "prometheus" | "prom"                  => "prometheus",
-            "otel" | "otelcol" | "opentelemetry"   => "otelcol",
-            "git"                                  => "git",
-            "gh" | "github"                        => "gh",
-            "llvm" | "llvm-config"                 => "llvm-config",
-            "curl"                                 => "curl",
-            "unzip"                                => "unzip",
-            "wrk"                                  => "wrk",
-            "cmake"                                => "cmake",
-            "xmake"                                => "xmake",
-            "7z"                                   => "7z",
-            "mise"                                 => "mise",
-            "aqua"                                 => "aqua",
-            "nix"                                  => "nix",
-            _                                      => package,
-        }
+        std::env::var_os(key).filter(|value| !value.is_empty()).map(PathBuf::from)
 
     }
 
-    fn find_binary ( package: &str ) -> Option<PathBuf> {
+    fn find_paths ( bin: &str ) -> Vec<PathBuf> {
 
         let mut paths = Vec::new();
 
-        let bin = Self::resolve_binary(package);
-        if let Ok(path) = which::which(bin) { return Some(path); }
+        if let Ok(path) = which::which(bin) { return vec![path]; }
 
         #[cfg(unix)]
         {
             if let Some(home) = Self::env_path("HOME") {
                 paths.push(home.join(".local").join("bin").join(bin));
                 paths.push(home.join(".cargo").join("bin").join(bin));
-                paths.push(home.join(".bun").join("bin").join(bin));
-                paths.push(home.join(".nix-profile").join("bin").join(bin));
                 paths.push(home.join(".local").join("share").join("mise").join("shims").join(bin));
                 paths.push(home.join(".config").join("mise").join("shims").join(bin));
                 paths.push(home.join(".local").join("share").join("aquaproj-aqua").join("bin").join(bin));
+                paths.push(home.join(".nix-profile").join("bin").join(bin));
             }
         }
 
@@ -99,7 +50,13 @@ impl Manager {
             }
         }
 
-        for path in paths {
+        paths
+
+    }
+    
+    fn find_path ( bin: &str ) -> Option<PathBuf> {
+
+        for path in Self::find_paths(bin) {
             if path.is_file() {
                 return Some(path);
             }
@@ -109,356 +66,280 @@ impl Manager {
 
     }
 
-    fn resolve_package ( manager: Manager, package: &str ) -> &str {
-
-        match manager {
-            Self::Brew => match package {
-                "rustc"       => "rust",
-                "cargo"       => "rust",
-                "python"      => "python",
-                "clang"       => "llvm",
-                "7z"          => "sevenzip",
-                "llvm-config" => "llvm",
-                _             => package,
-            },
-            Self::Apt => match package {
-                "node"        => "nodejs",
-                "yarn"        => "yarnpkg",
-                "python"      => "python3",
-                "go"          => "golang-go",
-                "7z"          => "7zip",
-                "llvm-config" => "llvm",
-                "lua"         => "lua5.4",
-                _             => package,
-            },
-            Self::Dnf => match package {
-                "rustc"       => "rust",
-                "node"        => "nodejs",
-                "yarn"        => "yarnpkg",
-                "python"      => "python3",
-                "go"          => "golang",
-                "7z"          => "7zip",
-                "llvm-config" => "llvm",
-                _             => package,
-            },
-            Self::Yum => match package {
-                "rustc"       => "rust",
-                "node"        => "nodejs",
-                "yarn"        => "yarnpkg",
-                "python"      => "python3",
-                "go"          => "golang",
-                "7z"          => "7zip",
-                "llvm-config" => "llvm",
-                _             => package,
-            },
-            Self::Pacman => match package {
-                "rustc"       => "rust",
-                "cargo"       => "rust",
-                "node"        => "nodejs",
-                "gh"          => "github-cli",
-                "7z"          => "7zip",
-                "llvm-config" => "llvm",
-                _             => package,
-            },
-            Self::Zypper => match package {
-                "rustc"       => "rust",
-                "node"        => "nodejs",
-                "python"      => "python3",
-                "7z"          => "7zip",
-                "llvm-config" => "llvm",
-                "lua"         => "lua54",
-                "luarocks"    => "lua54-luarocks",
-                _             => package,
-            },
-            Self::Apk => match package {
-                "rustc"       => "rust",
-                "node"        => "nodejs",
-                "python"      => "python3",
-                "7z"          => "7zip",
-                "llvm-config" => "llvm",
-                "lua"         => "lua5",
-                "luarocks"    => "luarocks5",
-                _             => package,
-            },
-            Self::Winget => match package {
-                "rustup"      => "Rustlang.Rustup",
-                "rustc"       => "Rustlang.Rustup",
-                "cargo"       => "Rustlang.Rustup",
-                "node"        => "OpenJS.NodeJS",
-                "npm"         => "OpenJS.NodeJS",
-                "pnpm"        => "pnpm.pnpm",
-                "xmake"       => "Xmake-io.Xmake",
-                "bun"         => "Oven-sh.Bun",
-                "uv"          => "astral-sh.uv",
-                "python"      => "Python.Python",
-                "git"         => "Git.Git",
-                "gh"          => "GitHub.cli",
-                "go"          => "GoLang.Go",
-                "clang"       => "LLVM.LLVM",
-                "7z"          => "7zip.7zip",
-                "cmake"       => "Kitware.CMake",
-                "dart"        => "Google.DartSDK",
-                "llvm-config" => "LLVM.LLVM",
-                "lua"         => "DEVCOM.Lua",
-                "luarocks"    => "DEVCOM.Lua",
-                "unzip"       => "GnuWin32.UnZip",
-                _             => package,
-            },
-            Self::Scoop => match package {
-                "rustc"       => "rustup",
-                "cargo"       => "rustup",
-                "node"        => "nodejs",
-                "npm"         => "nodejs",
-                "clang"       => "llvm",
-                "llvm-config" => "llvm",
-                _             => package,
-            },
-            Self::Choco => match package {
-                "rustup"      => "rustup.install",
-                "rustc"       => "rustup.install",
-                "cargo"       => "rustup.install",
-                "node"        => "nodejs",
-                "npm"         => "nodejs",
-                "go"          => "golang",
-                "clang"       => "llvm",
-                "llvm-config" => "llvm",
-                _             => package,
-            },
-        }
-
-    }
-
-    fn install_shell ( package: &str, url: &str, args: &[&str], bash: bool, sudo: bool ) -> AppResult<()> {
+    fn native_install ( info: Strategy ) -> AppResult<()> {
 
         match Self::detect()? {
-            Self::Apt | Self::Dnf | Self::Yum | Self::Pacman | Self::Zypper | Self::Apk => {
-                let name = Alphabetic.sample_string(&mut rand::rng(), 6).to_lowercase();
-                let path = std::env::temp_dir().join(format!("installer-{name}"));
-
-                let path = path.to_str().ok_or_else(|| AppError::message("failed to resolve installer path"))?;
-                let cmd = if bash { "bash" } else { "sh" };
-                let runner = if sudo { Self::sudo_run } else { Self::run };
-
-                let result = (|| -> AppResult<()> {
-                    Self::run("curl", &["-sSfL", url, "-o", path])?;
-                    runner(cmd, &[&[path], args].concat())?;
-                    Ok(())
-                })();
-
-                let _ = std::fs::remove_file(path);
-                result
-            }
-            _ => Self::install_package(&[package], "_"),
+            Self::Apt    => Self::sudo_run("apt-get", &["install", "-y", info.name]),
+            Self::Dnf    => Self::sudo_run("dnf", &["install", "-y", info.name]),
+            Self::Yum    => Self::sudo_run("yum", &["install", "-y", info.name]),
+            Self::Apk    => Self::sudo_run("apk", &["add", info.name]),
+            Self::Zypper => Self::sudo_run("zypper", &["install", "-y", info.name]),
+            Self::Pacman => Self::sudo_run("pacman", &["-S", "--needed", "--noconfirm", "--noprogressbar", info.name]),
+            Self::Brew   => Self::run("brew", &["install", info.name]),
+            Self::Scoop  => Self::run("scoop", &["install", info.name]),
+            Self::Choco  => Self::run("choco", &["install", "-y", info.name]),
+            Self::Winget => Self::run("winget", &[
+                "install", "-e", "--id", info.name,
+                "--source", "winget", "--accept-package-agreements", "--accept-source-agreements", "--disable-interactivity",
+            ]),
         }
 
     }
 
-    fn install_package ( packages: &[&str], source: &str ) -> AppResult<()> {
+    fn shell_install ( info: Strategy, bash: bool ) -> AppResult<()> {
 
-        let manager = Self::detect()?;
-
-        for &package in packages {
-
-            let package = if source == "_" { Self::resolve_package(manager, package) } else { package };
-
-            match source {
-                "aqua" => {
-                    Self::run("mise", &["use", "--global", &format!("aqua:{package}")])?;
-                },
-                "repo" => {
-                    Self::run("mise", &["use", "--global", &format!("github:{package}")])?;
-                },
-                "nix" => {
-                    Self::run("nix", &["profile", "install", package])?;
-                },
-                _ => match manager {
-                    Self::Apt    => Self::sudo_run("apt-get", &["install", "-y", package])?,
-                    Self::Dnf    => Self::sudo_run("dnf", &["install", "-y", package])?,
-                    Self::Yum    => Self::sudo_run("yum", &["install", "-y", package])?,
-                    Self::Pacman => Self::sudo_run("pacman", &["-S", "--needed", "--noconfirm", "--noprogressbar", package])?,
-                    Self::Zypper => Self::sudo_run("zypper", &["install", "-y", package])?,
-                    Self::Apk    => Self::sudo_run("apk", &["add", package])?,
-                    Self::Brew   => Self::run("brew", &["install", package])?,
-                    Self::Scoop  => Self::run("scoop", &["install", package])?,
-                    Self::Choco  => Self::run("choco", &["install", "-y", package])?,
-                    Self::Winget => Self::run("winget", &["install", "-e", "--id", package, "--source", "winget", "--accept-package-agreements", "--accept-source-agreements", "--disable-interactivity"])?,
-                },
-            }
-
+        if info.source.is_empty() {
+            return Err(AppError::invalid_argument("source", "required installer source"));
         }
+
+        let path = std::env::temp_dir().join(format!("{}-installer", info.name));
+        let path_str = path.to_string_lossy().into_owned();
+
+        let cmd = if bash { "bash" } else { "sh" };
+
+        let result = (|| -> AppResult<()> {
+
+            Self::run("curl", &["-fsSL", info.source, "-o", &path_str])?;
+
+            let mut args = Vec::with_capacity(info.args.len() + 1);
+            args.push(path_str.as_str());
+            args.extend_from_slice(info.args);
+
+            Self::run(cmd, &args)
+
+        })();
+
+        let _ = std::fs::remove_file(path);
+        result
+
+    }
+
+    fn mise_install ( info: Strategy ) -> AppResult<()> {
+
+        Self::run("mise", &["use", "--global", info.source])
+
+    }
+
+    fn nix_install ( info: Strategy ) -> AppResult<()> {
+
+        Self::run("nix", &["profile", "install", info.name])
+
+    }
+
+    fn full_remove ( bin: &str ) -> AppResult<()> {
+
+        let mut name = bin;
+
+        match Tool::get(bin) {
+            Ok(info) => {
+                name = if info.name.is_empty() { info.bin } else { info.name };
+                if name.is_empty() { name = bin; }
+
+                if !info.source.is_empty() {
+                    if Self::has("mise") { let _ = Self::run("mise", &["unuse", "--global", info.source]); }
+                    if Self::has("nix") { let _ = Self::run("nix", &["profile", "remove", info.source]); }
+                }
+
+                if Self::has("mise") { let _ = Self::run("mise", &["unuse", "--global", info.bin]); }
+                if Self::has("nix") { let _ = Self::run("nix", &["profile", "remove", info.bin]); }
+            },
+            Err(_) => name = bin
+        };
+        match Self::detect()? {
+            Self::Apt    => Self::sudo_run("apt-get", &["remove", "-y", name]),
+            Self::Dnf    => Self::sudo_run("dnf", &["remove", "-y", name]),
+            Self::Yum    => Self::sudo_run("yum", &["remove", "-y", name]),
+            Self::Pacman => Self::sudo_run("pacman", &["-R", "--noconfirm", name]),
+            Self::Zypper => Self::sudo_run("zypper", &["remove", "-y", name]),
+            Self::Apk    => Self::sudo_run("apk", &["del", name]),
+            Self::Brew   => Self::run("brew", &["uninstall", name]),
+            Self::Scoop  => Self::run("scoop", &["uninstall", name]),
+            Self::Choco  => Self::run("choco", &["uninstall", "-y", name]),
+            Self::Winget => Self::run("winget", &["uninstall", "-e", "--id", name, "--source", "winget", "--disable-interactivity"]),
+        };
+        Self::find_paths(bin).into_iter().for_each(|path| {
+            let _ = std::fs::remove_file(path);
+        });
 
         Ok(())
 
     }
 
-    fn remove_package ( packages: &[&str], source: &str ) -> AppResult<()> {
 
-        let manager = Self::detect()?;
+    pub fn install ( bin: &str ) -> AppResult<()> {
 
-        for &package in packages {
+        let info = Tool::get(bin)?;
 
-            let package = if source == "_" { Self::resolve_package(manager, package) } else { package };
+        match info.method {
+            Method::Native => Self::native_install(info),
+            Method::Shell  => Self::shell_install(info, false),
+            Method::Bash   => Self::shell_install(info, true),
+            Method::Mise   => Self::mise_install(info),
+            Method::Nix    => Self::nix_install(info),
+        }
 
-            if source == "aqua" && which("mise").is_ok() {
-                Self::run("mise", &["unuse", "--global", &format!("aqua:{package}")])?;
+    }
+
+    pub fn ensure ( bin: &str ) -> AppResult<()> {
+
+        if !Self::has(bin) { Self::install(bin)?; }
+
+        match Self::version(bin) {
+            Ok(_) => Ok(()),
+            Err(_) => {
+                let info = Tool::get(bin)?;
+
+                if info.path.is_empty() {
+                    let _ = Self::version(info.bin)?;
+                    return Ok(());
+                }
+
+                match Self::version(info.path) {
+                    Ok(_) => Ok(()),
+                    Err(_) => {
+                        let _ = Self::version(info.bin)?;
+                        Ok(())
+                    }
+                }
             }
+        }
 
-            if source == "repo" && which("mise").is_ok() {
-                Self::run("mise", &["unuse", "--global", &format!("github:{package}")])?;
+    }
+
+    pub fn remove ( bin: &str ) -> AppResult<()> {
+
+        Self::full_remove(bin)
+
+    }
+
+    pub fn upgrade ( bin: &str ) -> AppResult<()> {
+
+        Self::full_remove(bin)?;
+        Self::install(bin)
+
+    }
+
+    pub fn has ( bin: &str ) -> bool {
+
+        if Self::find_path(bin).is_some() { return true; }
+
+        match Tool::get(bin) {
+            Ok(info) => {
+                if !info.path.is_empty() && PathBuf::from(info.path).is_file() { return true; }
+                Self::find_path(info.bin).is_some()
             }
+            Err(_) => false,
+        }
 
-            if source == "nix" && which("nix").is_ok() {
-                Self::run("nix", &["profile", "remove", package])?;
-            }
+    }
 
-            let _ = match manager {
-                Self::Apt    => Self::sudo_run("apt-get", &["remove", "-y", package]),
-                Self::Dnf    => Self::sudo_run("dnf", &["remove", "-y", package]),
-                Self::Yum    => Self::sudo_run("yum", &["remove", "-y", package]),
-                Self::Pacman => Self::sudo_run("pacman", &["-R", "--noconfirm", package]),
-                Self::Zypper => Self::sudo_run("zypper", &["remove", "-y", package]),
-                Self::Apk    => Self::sudo_run("apk", &["del", package]),
-                Self::Brew   => Self::run("brew", &["uninstall", package]),
-                Self::Scoop  => Self::run("scoop", &["uninstall", package]),
-                Self::Choco  => Self::run("choco", &["uninstall", "-y", package]),
-                Self::Winget => Self::run("winget", &["uninstall", "-e", "--id", package, "--source", "winget", "--disable-interactivity"]),
+    pub fn need ( bin: &str ) -> AppResult<()> {
+
+        if Self::has(bin) { return Ok(()); }
+        Err(AppError::missing_binary(bin))
+
+    }
+
+    pub fn version ( bin: &str ) -> AppResult<String> {
+
+        Self::need(bin)?;
+
+        static RE: OnceLock<Regex> = OnceLock::new();
+        let mut first_error = None;
+
+        let re = RE.get_or_init(|| {
+            Regex::new(r"(?i)(?:^|[^0-9])(?:[a-z]+)?(\d+)\.(\d+)(?:\.(\d+))?([0-9a-z.+-]*)")
+                .expect("invalid version regex")
+        });
+
+        for args in [&["--version"][..], &["-v"][..], &["-V"][..], &["version"][..]] {
+
+            let output = match Command::new(bin).args(args).output() {
+                Ok(output) => output,
+                Err(err) => {
+                    if first_error.is_none() { first_error = Some(err); }
+                    continue;
+                }
             };
 
+            for text in [&output.stdout[..], &output.stderr[..]] {
+
+                let text = String::from_utf8_lossy(text);
+
+                if let Some(caps) = re.captures(&text) {
+
+                    let major = &caps[1];
+                    let minor = &caps[2];
+                    let patch = caps.get(3).map_or("0", |m| m.as_str());
+                    let tail  = caps.get(4).map_or("", |m| m.as_str()).trim_start_matches(['.', '-', '+']);
+
+                    let pre = if tail.is_empty() { String::new() } else {
+                        let tail = tail
+                            .split(['.', '-', '+'])
+                            .filter(|part| !part.is_empty())
+                            .collect::<Vec<_>>()
+                            .join(".");
+
+                        if tail.is_empty() { String::new() }
+                        else { format!("-{tail}") }
+                    };
+
+                    let version = format!("{major}.{minor}.{patch}{pre}");
+                    if Version::parse(&version).is_ok() { return Ok(version); }
+
+                }
+
+            }
+
         }
 
-        Ok(())
+        if let Some(err) = first_error { return Err(err.into()); }
+        Err(AppError::message(format!("failed to detect version for {bin}")))
 
     }
 
 
-    pub fn has ( binary: &str ) -> bool {
+    pub fn install_all ( bins: &[&str] ) -> AppResult<()> {
 
-        Self::find_binary(binary).is_some()
-
-    }
-
-    pub fn need ( binary: &str ) -> AppResult<()> {
-
-        if Self::has(binary) { Ok(()) }
-        else { Err(AppError::missing_binary(binary)) }
-
-    }
-
-    pub fn install ( package: &str ) -> AppResult<()> {
-
-        let bin = Self::resolve_binary(package);
-
-        match bin {
-            "kubectl"        => Self::install_package(&["nixpkgs#kubectl"], "nix"),
-            "minikube"       => Self::install_package(&["minikube/minikube"], "aqua"),
-            "helm"           => Self::install_package(&["helm/helm"], "aqua"),
-            "kind"           => Self::install_package(&["kubernetes-sigs/kind"], "aqua"),
-            "kustomize"      => Self::install_package(&["kubernetes-sigs/kustomize"], "aqua"),
-            "argocd"         => Self::install_package(&["argoproj/argo-cd"], "aqua"),
-            "terraform"      => Self::install_package(&["hashicorp/terraform"], "aqua"),
-            "tofu"           => Self::install_package(&["opentofu/opentofu"], "aqua"),
-            "grafana"        => Self::install_package(&["nixpkgs#grafana"], "nix"),
-            "loki"           => Self::install_package(&["grafana/loki"], "repo"),
-            "prometheus"     => Self::install_package(&["prometheus/prometheus"], "aqua"),
-            "otelcol"        => Self::install_package(&["open-telemetry/opentelemetry-collector-releases"], "repo"),
-
-            "bun"            => Self::install_shell("bun", "https://bun.sh/install", &[], true, false),
-            "docker"         => Self::install_shell("docker", "https://get.docker.com", &[], false, true),
-            "mise"           => Self::install_shell("mise", "https://mise.run/bash", &[], false, false),
-            "nix"            => Self::install_shell("nix", "https://artifacts.nixos.org/nix-installer", &["install", "--no-confirm"], false, false),
-            "aqua"           => Self::install_shell("aqua", "https://raw.githubusercontent.com/aquaproj/aqua-installer/v4.0.2/aqua-installer", &[], true, false),
-
-            _                => Self::install_package(&[bin], "_"),
-        }
-
-    }
-
-    pub fn remove ( package: &str ) -> AppResult<()> {
-
-        let bin = Self::resolve_binary(package);
-
-        match bin {
-            "kubectl"        => Self::remove_package(&["nixpkgs#kubectl"], "nix"),
-            "minikube"       => Self::remove_package(&["minikube/minikube"], "aqua"),
-            "helm"           => Self::remove_package(&["helm/helm"], "aqua"),
-            "kind"           => Self::remove_package(&["kubernetes-sigs/kind"], "aqua"),
-            "kustomize"      => Self::remove_package(&["kubernetes-sigs/kustomize"], "aqua"),
-            "argocd"         => Self::remove_package(&["argoproj/argo-cd"], "aqua"),
-            "terraform"      => Self::remove_package(&["hashicorp/terraform"], "aqua"),
-            "tofu"           => Self::remove_package(&["opentofu/opentofu"], "aqua"),
-            "grafana"        => Self::remove_package(&["nixpkgs#grafana"], "nix"),
-            "loki"           => Self::remove_package(&["grafana/loki"], "repo"),
-            "prometheus"     => Self::remove_package(&["prometheus/prometheus"], "aqua"),
-            "otelcol"        => Self::remove_package(&["open-telemetry/opentelemetry-collector-releases"], "repo"),
-
-            "docker"         => Self::remove_package(&[
-                "docker", "docker-ce", "docker-ce-cli", "containerd.io", "docker-buildx-plugin",
-                "docker-compose-plugin", "docker-ce-rootless-extras"
-            ], "_"),
-
-            _                => Self::remove_package(&[bin], "_"),
-        }
-
-    }
-
-    pub fn ensure ( package: &str ) -> AppResult<()> {
-
-        if Self::has(package) { return Ok(()); }
-        Self::install(package)
-        // if !Self::has(package) { return Err(AppError::missing_binary(package)); }
-        // Ok(())
-
-    }
-
-    pub fn upgrade ( package: &str ) -> AppResult<()> {
-
-        Self::remove(package)?;
-        Self::install(package)
-
-    }
-
-
-    pub fn has_all ( packages: &[&str] ) -> bool {
-
-        packages.iter().all(|package| Self::has(package))
-
-    }
-
-    pub fn need_all ( packages: &[&str] ) -> AppResult<()> {
-
-        for &package in packages { Self::need(package)?; }
+        for &bin in bins { Self::install(bin)?; }
 
         Ok(())
 
     }
 
-    pub fn install_all ( packages: &[&str] ) -> AppResult<()> {
+    pub fn ensure_all ( bins: &[&str] ) -> AppResult<()> {
 
-        for &package in packages { Self::install(package)?; }
-
-        Ok(())
-
-    }
-
-    pub fn remove_all ( packages: &[&str] ) -> AppResult<()> {
-
-        for &package in packages { Self::remove(package)?; }
+        for &bin in bins { Self::ensure(bin)?; }
 
         Ok(())
 
     }
 
-    pub fn ensure_all ( packages: &[&str] ) -> AppResult<()> {
+    pub fn remove_all ( bins: &[&str] ) -> AppResult<()> {
 
-        for &package in packages { Self::ensure(package)?; }
+        for &bin in bins { Self::remove(bin)?; }
 
         Ok(())
 
     }
 
-    pub fn upgrade_all ( packages: &[&str] ) -> AppResult<()> {
+    pub fn upgrade_all ( bins: &[&str] ) -> AppResult<()> {
 
-        for &package in packages { Self::upgrade(package)?; }
+        for &bin in bins { Self::upgrade(bin)?; }
+
+        Ok(())
+
+    }
+
+    pub fn has_all ( bins: &[&str] ) -> bool {
+
+        bins.iter().all(|bin| Self::has(bin))
+
+    }
+
+    pub fn need_all ( bins: &[&str] ) -> AppResult<()> {
+
+        for &bin in bins { Self::need(bin)?; }
 
         Ok(())
 

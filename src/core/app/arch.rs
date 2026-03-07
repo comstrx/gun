@@ -42,6 +42,9 @@ pub enum AppError {
     #[error("unsupported platform: {0}")]
     UnsupportedPlatform(String),
 
+    #[error("unsupported manager: {0}")]
+    UnsupportedManager(String),
+
     #[error("unsupported operation: {0}")]
     UnsupportedOperation(String),
 

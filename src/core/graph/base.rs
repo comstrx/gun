@@ -4,7 +4,7 @@ use super::{arch::{Tool, Strategy}, tree::TOOLS};
 
 impl Tool {
 
-    pub fn get ( key: &str ) -> AppResult<Self> {
+    pub fn find ( key: &str ) -> AppResult<Self> {
 
         let key = key.trim().to_ascii_lowercase();
 
@@ -20,13 +20,13 @@ impl Tool {
 
     pub fn has ( key: &str ) -> bool {
 
-        Self::get(key).is_ok()
+        Self::find(key).is_ok()
 
     }
 
-    pub fn find ( key: &str ) -> AppResult<Strategy> {
+    pub fn get ( key: &str ) -> AppResult<Strategy> {
 
-        let tool = Self::get(key)?;
+        let tool = Self::find(key)?;
 
         if cfg!(windows) { return Ok(tool.win); }
         if cfg!(target_os = "macos") { return Ok(tool.mac); }

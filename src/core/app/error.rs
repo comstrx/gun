@@ -60,6 +60,12 @@ impl AppError {
 
     }
 
+    pub fn unsupported_manager ( manager: impl Into<String> ) -> Self {
+
+        Self::UnsupportedManager(manager.into())
+
+    }
+
     pub fn unsupported_operation ( operation: impl Into<String> ) -> Self {
 
         Self::UnsupportedOperation(operation.into())
@@ -147,14 +153,15 @@ impl AppError {
             Self::MissingEnvVar(_)         => 3,
             Self::InvalidArgument { .. }   => 4,
             Self::UnsupportedPlatform(_)   => 5,
-            Self::UnsupportedOperation(_)  => 6,
-            Self::PathNotFound(_)          => 7,
-            Self::PathExists(_)            => 8,
-            Self::PathTypeMismatch { .. }  => 9,
-            Self::PermissionDenied { .. }  => 10,
-            Self::CommandNotFound { .. }   => 11,
-            Self::CommandFailed { .. }     => 12,
-            Self::OperationFailed { .. }   => 13,
+            Self::UnsupportedManager(_)    => 6,
+            Self::UnsupportedOperation(_)  => 7,
+            Self::PathNotFound(_)          => 8,
+            Self::PathExists(_)            => 9,
+            Self::PathTypeMismatch { .. }  => 10,
+            Self::PermissionDenied { .. }  => 11,
+            Self::CommandNotFound { .. }   => 12,
+            Self::CommandFailed { .. }     => 13,
+            Self::OperationFailed { .. }   => 14,
             _                              => 1,
         })
 

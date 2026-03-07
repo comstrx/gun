@@ -1,7 +1,5 @@
-use std::{process::Command, io::IsTerminal, path::PathBuf, sync::OnceLock, time::{Instant, Duration}};
-use semver::Version;
+use std::{process::Command, io::IsTerminal, sync::OnceLock, time::{Instant, Duration}};
 use os_info::Type;
-use regex::Regex;
 use which::which;
 
 use crate::core::app::{AppResult, AppError};
@@ -90,7 +88,6 @@ impl Manager {
 
     }
 
-
     pub fn os_name () -> &'static str {
 
         match os_info::get().os_type() {
@@ -125,6 +122,15 @@ impl Manager {
 
     }
 
+    pub fn measure <T> ( callback: impl FnOnce() -> AppResult<T> ) -> AppResult<Duration> {
+
+        let start = Instant::now();
+
+        callback()?;
+
+        Ok(start.elapsed())
+
+    }
 
     pub fn run ( command: &str, args: &[&str] ) -> AppResult<()> {
 
@@ -223,87 +229,6 @@ impl Manager {
             Self::run_output(command, args)
 
         }
-
-    }
-
-
-    pub fn env_path ( key: &str ) -> Option<PathBuf> {
-
-        std::env::var_os(key).filter(|value| !value.is_empty()).map(PathBuf::from)
-
-    }
-
-    pub fn path_var () -> Vec<PathBuf> {
-
-        std::env::var_os("PATH").map(|value| std::env::split_paths(&value).collect()).unwrap_or_default()
-
-    }
-
-    pub fn measure <T> ( callback: impl FnOnce() -> AppResult<T> ) -> AppResult<Duration> {
-
-        let start = Instant::now();
-
-        callback()?;
-
-        Ok(start.elapsed())
-
-    }
-
-    pub fn version ( binary: &str ) -> AppResult<String> {
-
-        Self::need(binary)?;
-
-        static RE: OnceLock<Regex> = OnceLock::new();
-        let mut first_error = None;
-
-        let re = RE.get_or_init(|| {
-            Regex::new(r"(?i)(?:^|[^0-9])(?:[a-z]+)?(\d+)\.(\d+)(?:\.(\d+))?([0-9a-z.+-]*)")
-                .expect("invalid version regex")
-        });
-
-        for args in [&["--version"][..], &["-v"][..], &["-V"][..], &["version"][..]] {
-
-            let output = match Command::new(binary).args(args).output() {
-                Ok(output) => output,
-                Err(err) => {
-                    if first_error.is_none() { first_error = Some(err); }
-                    continue;
-                }
-            };
-
-            for text in [&output.stdout[..], &output.stderr[..]] {
-
-                let text = String::from_utf8_lossy(text);
-
-                if let Some(caps) = re.captures(&text) {
-
-                    let major = &caps[1];
-                    let minor = &caps[2];
-                    let patch = caps.get(3).map_or("0", |m| m.as_str());
-                    let tail  = caps.get(4).map_or("", |m| m.as_str()).trim_start_matches(['.', '-', '+']);
-
-                    let pre = if tail.is_empty() { String::new() } else {
-                        let tail = tail
-                            .split(['.', '-', '+'])
-                            .filter(|part| !part.is_empty())
-                            .collect::<Vec<_>>()
-                            .join(".");
-
-                        if tail.is_empty() { String::new() }
-                        else { format!("-{tail}") }
-                    };
-
-                    let version = format!("{major}.{minor}.{patch}{pre}");
-                    if Version::parse(&version).is_ok() { return Ok(version); }
-
-                }
-
-            }
-
-        }
-
-        if let Some(err) = first_error { return Err(err.into()); }
-        Err(AppError::message(format!("failed to detect version for {binary}")))
 
     }
 

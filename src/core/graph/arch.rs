@@ -3,18 +3,26 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Method {
     Native,
-    Binary,
-    Aqua,
-    Mise,
+    Shell,
+    Bash,
     Nix,
-    Cargo,
-    Go,
-    Xmake,
-    Pixi,
-    Pnpm,
-    Bun,
-    Uv,
-    Composer,
+    Mise,
+}
+
+impl Method {
+
+    pub fn as_str ( &self ) -> &'static str {
+
+        match self {
+            Self::Native   => "native",
+            Self::Shell    => "shell",
+            Self::Bash     => "bash",
+            Self::Nix      => "nix",
+            Self::Mise     => "mise",
+        }
+
+    }
+
 }
 
 
@@ -24,7 +32,7 @@ pub struct Strategy {
     pub name   : &'static str,
     pub bin    : &'static str,
     pub path   : &'static str,
-    pub url    : &'static str,
+    pub source : &'static str,
     pub args   : &'static [&'static str],
 }
 
@@ -35,11 +43,11 @@ impl Strategy {
         name: &'static str,
         bin: &'static str,
         path: &'static str,
-        url: &'static str,
+        source: &'static str,
         args: &'static [&'static str],
     ) -> Self {
 
-        Self { method, name, bin, path, url, args }
+        Self { method, name, bin, path, source, args }
 
     }
 
@@ -56,7 +64,12 @@ pub struct Tool {
 
 impl Tool {
 
-    pub const fn new ( aliases : &'static [&'static str], linux: Strategy, mac: Strategy, win: Strategy ) -> Self {
+    pub const fn new (
+        aliases : &'static [&'static str],
+        linux: Strategy,
+        mac: Strategy,
+        win: Strategy
+    ) -> Self {
 
         Self { aliases, linux, mac, win }
 
