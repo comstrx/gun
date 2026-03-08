@@ -1,10 +1,12 @@
 pub mod app;
 pub mod file;
-pub mod graph;
+pub mod tool;
 pub mod manager;
 
 pub use app::{AppResult, AppError, AppExitCode};
 
-pub use file::{Path, File, Dir};
+pub use file::{File, Dir, Path};
 
-pub use manager::{Manager};
+pub use tool::{Tool, Spec, Source};
+
+pub use manager::{Manager, Info};

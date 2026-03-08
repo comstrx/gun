@@ -1,4 +1,4 @@
-use std::{path::PathBuf, process::{ExitCode, ExitStatus}};
+use std::{path::PathBuf, process::ExitStatus};
 use thiserror::Error;
 
 pub type AppResult<T> = Result<T, AppError>;

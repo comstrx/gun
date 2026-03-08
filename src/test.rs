@@ -1,5 +1,6 @@
+#![allow(unused)]
+
 use crate::core::{Manager, AppResult};
-use which::which;
 
 fn run ( cmd: &str, args: &[&str] ) -> AppResult<()> {
 
@@ -31,7 +32,7 @@ pub fn main () -> AppResult<()> {
         "composer", "php", "lua", "uv", "luarocks", "unzip", "wrk", "7z", "cmake", "xmake", "python"
     ];
 
-    for tool in tools { install(tool)?; }
+    for tool in tools { Manager::show(tool)? }
 
     Ok(())
 

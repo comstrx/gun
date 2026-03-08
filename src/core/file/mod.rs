@@ -1,6 +1,6 @@
 pub mod arch;
-pub mod path;
 pub mod file;
 pub mod dir;
+pub mod path;
 
-pub use arch::{Path, File, Dir};
+pub use arch::{File, Dir, Path};

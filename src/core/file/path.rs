@@ -1,9 +1,9 @@
 use std::{fs::File, path::{Path, PathBuf}};
 
 use crate::core::app::{AppResult, AppError};
-use super::arch::Path as APath;
+use super::arch::Path as Paths;
 
-impl APath {
+impl Paths {
 
     pub fn new_dir ( path: impl AsRef<Path> ) -> AppResult<PathBuf> {
 
@@ -111,8 +111,6 @@ impl APath {
 
             return Ok(());
         }
-
-        Err(AppError::unsupported_operation("symlink"))
 
     }
 

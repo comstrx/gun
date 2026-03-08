@@ -88,6 +88,17 @@ impl Manager {
 
     }
 
+    pub fn measure <T> ( callback: impl FnOnce() -> AppResult<T> ) -> AppResult<Duration> {
+
+        let start = Instant::now();
+
+        callback()?;
+
+        Ok(start.elapsed())
+
+    }
+
+
     pub fn os_name () -> &'static str {
 
         match os_info::get().os_type() {
@@ -122,15 +133,6 @@ impl Manager {
 
     }
 
-    pub fn measure <T> ( callback: impl FnOnce() -> AppResult<T> ) -> AppResult<Duration> {
-
-        let start = Instant::now();
-
-        callback()?;
-
-        Ok(start.elapsed())
-
-    }
 
     pub fn run ( command: &str, args: &[&str] ) -> AppResult<()> {
 
@@ -146,7 +148,12 @@ impl Manager {
 
         let output = Command::new(command).args(args).output()?;
 
-        if !output.status.success() { return Err(AppError::command_failed(command, output.status)); }
+        if !output.status.success() {
+            let stdout = (!output.stdout.is_empty()).then(|| String::from_utf8_lossy(&output.stdout).into_owned());
+            let stderr = (!output.stderr.is_empty()).then(|| String::from_utf8_lossy(&output.stderr).into_owned());
+
+            return Err(AppError::command_failed_output(command, output.status, stdout, stderr));
+        }
 
         Ok(output)
 

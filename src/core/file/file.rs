@@ -1,8 +1,3 @@
-use std::{fs::File, path::{Path, PathBuf}};
+use super::arch::File as Files;
 
-use crate::core::app::{AppResult, AppError};
-use super::arch::File as AFile;
-
-impl AFile {
-
-}
+impl Files {}
