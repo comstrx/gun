@@ -32,7 +32,28 @@ pub fn main () -> AppResult<()> {
         "composer", "php", "lua", "uv", "luarocks", "unzip", "wrk", "7z", "cmake", "xmake", "python"
     ];
 
-    for tool in tools { Manager::show(tool)? }
+    let tools = ["wrk", "curl"];
+
+    println!("\n- Manager    => {}", Manager::name());
+    println!("\n- OS Name    => {}", Manager::os_name());
+    println!("\n- Is Linux   => {}", Manager::is_linux());
+    println!("\n- Is Macos   => {}", Manager::is_macos());
+    println!("\n- Is Windows => {}", Manager::is_windows());
+    println!("\n- Is Unix    => {}", Manager::is_unix());
+    println!("\n- Is WSL     => {}", Manager::is_wsl());
+    println!("\n- Refresh    =>\n"); Manager::refresh()?;
+
+    for tool in tools {
+
+        println!("\n\n* Tool ( {} ) *\n-------------\n", tool);
+
+        println!("\n- ensure"); Manager::ensure(tool)?;
+
+        println!("\n- Installed  ==> {}", Manager::has(tool));
+        println!("\n- path       ==> {}", Manager::path(tool)?.to_string_lossy());
+        println!("\n- version    ==> {}", Manager::version(tool)?);
+
+    }
 
     Ok(())
 

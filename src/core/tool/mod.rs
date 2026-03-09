@@ -2,4 +2,4 @@ pub mod arch;
 pub mod base;
 pub mod map;
 
-pub use arch::{Tool, Spec, Source};
+pub use arch::{Tool, Method, Spec, Info};

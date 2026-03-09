@@ -1,6 +1,13 @@
 pub mod arch;
-pub mod base;
-pub mod info;
-pub mod install;
+pub mod map;
 
-pub use arch::{Manager, Info};
+pub mod spec;
+pub mod info;
+pub mod tool;
+
+pub mod base;
+pub mod path;
+pub mod install;
+pub mod public;
+
+pub use arch::{Manager, Tool, Method, Spec, Info};

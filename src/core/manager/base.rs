@@ -1,8 +1,8 @@
-use std::{process::Command, io::IsTerminal, sync::OnceLock, time::{Instant, Duration}};
+use std::{process::Command, io::IsTerminal, sync::OnceLock};
 use os_info::Type;
 use which::which;
 
-use crate::core::app::{AppResult, AppError};
+use crate::core::app::{AppError, AppResult};
 use super::arch::Manager;
 
 impl Manager {
@@ -88,52 +88,6 @@ impl Manager {
 
     }
 
-    pub fn measure <T> ( callback: impl FnOnce() -> AppResult<T> ) -> AppResult<Duration> {
-
-        let start = Instant::now();
-
-        callback()?;
-
-        Ok(start.elapsed())
-
-    }
-
-
-    pub fn os_name () -> &'static str {
-
-        match os_info::get().os_type() {
-            Type::Windows => "windows",
-            Type::Macos   => "macos",
-            _             => "linux",
-        }
-
-    }
-
-    pub fn is_windows () -> bool {
-
-        matches!(os_info::get().os_type(), Type::Windows)
-
-    }
-
-    pub fn is_mac () -> bool {
-
-        matches!(os_info::get().os_type(), Type::Macos)
-
-    }
-
-    pub fn is_linux () -> bool {
-
-        !matches!(os_info::get().os_type(), Type::Windows | Type::Macos)
-
-    }
-
-    pub fn is_unix () -> bool {
-
-        !Self::is_windows()
-
-    }
-
-
     pub fn run ( command: &str, args: &[&str] ) -> AppResult<()> {
 
         let status = Command::new(command).args(args).status()?;
@@ -141,21 +95,6 @@ impl Manager {
         if !status.success() { return Err(AppError::command_failed(command, status)); }
 
         Ok(())
-
-    }
-
-    pub fn run_output ( command: &str, args: &[&str] ) -> AppResult<std::process::Output> {
-
-        let output = Command::new(command).args(args).output()?;
-
-        if !output.status.success() {
-            let stdout = (!output.stdout.is_empty()).then(|| String::from_utf8_lossy(&output.stdout).into_owned());
-            let stderr = (!output.stderr.is_empty()).then(|| String::from_utf8_lossy(&output.stderr).into_owned());
-
-            return Err(AppError::command_failed_output(command, output.status, stdout, stderr));
-        }
-
-        Ok(output)
 
     }
 
@@ -196,6 +135,21 @@ impl Manager {
             Self::run(command, args)
 
         }
+
+    }
+
+    pub fn run_output ( command: &str, args: &[&str] ) -> AppResult<std::process::Output> {
+
+        let output = Command::new(command).args(args).output()?;
+
+        if !output.status.success() {
+            let stdout = (!output.stdout.is_empty()).then(|| String::from_utf8_lossy(&output.stdout).into_owned());
+            let stderr = (!output.stderr.is_empty()).then(|| String::from_utf8_lossy(&output.stderr).into_owned());
+
+            return Err(AppError::command_failed_output(command, output.status, stdout, stderr));
+        }
+
+        Ok(output)
 
     }
 
