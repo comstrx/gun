@@ -15,28 +15,39 @@ impl Manager {
         match os_info::get().os_type() {
             os_info::Type::Windows => "windows",
             os_info::Type::Macos   => "macos",
-            os_info::Type::Linux   => "linux",
-            _             => "unknown",
+            os_info::Type::Linux
+                | os_info::Type::Ubuntu
+                | os_info::Type::Debian
+                | os_info::Type::Arch
+                | os_info::Type::Fedora
+                | os_info::Type::Redhat
+                | os_info::Type::CentOS
+                | os_info::Type::Alpine
+                | os_info::Type::OracleLinux
+                | os_info::Type::SUSE
+                | os_info::Type::openSUSE
+                | os_info::Type::Amazon
+                | os_info::Type::Android => "linux",
+            _  => "unknown",
         }
 
     }
 
-
     pub fn is_windows () -> bool {
 
-        matches!(os_info::get().os_type(), os_info::Type::Windows)
+        Self::os_name() == "windows"
 
     }
 
     pub fn is_macos () -> bool {
 
-        matches!(os_info::get().os_type(), os_info::Type::Macos)
+        Self::os_name() == "macos"
 
     }
 
     pub fn is_linux () -> bool {
 
-        matches!(os_info::get().os_type(), os_info::Type::Linux)
+        Self::os_name() == "linux"
 
     }
 
@@ -53,6 +64,10 @@ impl Manager {
         if std::env::var_os("WSL_DISTRO_NAME").is_some() { return true; }
         if std::env::var_os("WSL_INTEROP").is_some() { return true; }
 
+        if std::fs::read_to_string("/proc/sys/kernel/osrelease")
+            .map(|text| text.to_ascii_lowercase().contains("microsoft"))
+            .unwrap_or(false) { return true; }
+
         std::fs::read_to_string("/proc/version")
             .map(|text| text.to_ascii_lowercase().contains("microsoft"))
             .unwrap_or(false)
@@ -60,7 +75,7 @@ impl Manager {
     }
 
 
-    pub fn tool ( bin: &str ) -> AppResult<Tool> {
+    pub fn get ( bin: &str ) -> AppResult<Tool> {
 
         Tool::get(bin)
 
@@ -68,19 +83,71 @@ impl Manager {
 
     pub fn spec ( bin: &str ) -> AppResult<Spec> {
 
-        Spec::get(bin)
+        Tool::spec(bin)
 
     }
 
-    pub fn info ( key: &str ) -> AppResult<Info> {
+    pub fn info ( bin: &str ) -> AppResult<Info> {
 
-        Info::get(key)
+        Tool::info(bin)
 
     }
 
-    pub fn show ( key: &str ) -> AppResult<()> {
+    pub fn show ( bin: &str ) -> AppResult<()> {
 
-        Info::show(key)
+        Tool::show(bin)
+
+    }
+
+    pub fn version ( bin: &str ) -> AppResult<String> {
+
+        Tool::version(bin)
+
+    }
+
+
+    pub fn has_all ( bins: &[&str] ) -> bool {
+
+        bins.iter().all(|bin| Self::has(bin))
+
+    }
+
+    pub fn need_all ( bins: &[&str] ) -> AppResult<()> {
+
+        for &bin in bins { Self::need(bin)?; }
+        Ok(())
+
+    }
+
+    pub fn install_all ( bins: &[&str] ) -> AppResult<()> {
+
+        for &bin in bins { Self::install(bin)?; }
+
+        Ok(())
+
+    }
+
+    pub fn remove_all ( bins: &[&str] ) -> AppResult<()> {
+
+        for &bin in bins { Self::remove(bin)?; }
+
+        Ok(())
+
+    }
+
+    pub fn ensure_all ( bins: &[&str] ) -> AppResult<()> {
+
+        for &bin in bins { Self::ensure(bin)?; }
+
+        Ok(())
+
+    }
+
+    pub fn show_all ( bins: &[&str] ) -> AppResult<()> {
+
+        for &bin in bins { Self::show(bin)?; }
+
+        Ok(())
 
     }
 

@@ -1,5 +1,5 @@
 use crate::core::app::{AppResult, AppError};
-use super::arch::{Manager, Tool, Spec, Method};
+use super::arch::{Manager, Tool, Method};
 
 impl Manager {
 
@@ -62,7 +62,7 @@ impl Manager {
 
     pub fn full_remove ( bin: &str ) -> AppResult<()> {
 
-        let id = match Spec::get(bin) {
+        let id = match Tool::spec(bin) {
             Ok(info) => {
                 if !info.source.is_empty() {
                     if Self::has("mise") { let _ = Self::run("mise", &["unuse", "--global", info.source]); }
@@ -101,7 +101,7 @@ impl Manager {
 
         if Tool::get(bin).is_err() { return Self::native_install(bin); }
 
-        let spec = Spec::get(bin)?;
+        let spec = Tool::spec(bin)?;
 
         match spec.method {
             Method::Native => Self::native_install(spec.id),
@@ -123,50 +123,25 @@ impl Manager {
 
         if !Self::has(bin) { Self::install(bin)?; }
 
-        match Self::version(bin) {
+        match Tool::version(bin) {
             Ok(_) => Ok(()),
             Err(_) => {
-                let spec = Spec::get(bin)?;
+                let spec = Tool::spec(bin)?;
 
                 if spec.path.is_empty() {
-                    let _ = Self::version(spec.bin)?;
+                    let _ = Tool::version(spec.bin)?;
                     return Ok(());
                 }
 
-                match Self::version(spec.path) {
+                match Tool::version(spec.path) {
                     Ok(_) => Ok(()),
                     Err(_) => {
-                        let _ = Self::version(spec.bin)?;
+                        let _ = Tool::version(spec.bin)?;
                         Ok(())
                     }
                 }
             }
         }
-
-    }
-
-
-    pub fn install_all ( bins: &[&str] ) -> AppResult<()> {
-
-        for &bin in bins { Self::install(bin)?; }
-
-        Ok(())
-
-    }
-
-    pub fn remove_all ( bins: &[&str] ) -> AppResult<()> {
-
-        for &bin in bins { Self::remove(bin)?; }
-
-        Ok(())
-
-    }
-
-    pub fn ensure_all ( bins: &[&str] ) -> AppResult<()> {
-
-        for &bin in bins { Self::ensure(bin)?; }
-
-        Ok(())
 
     }
 

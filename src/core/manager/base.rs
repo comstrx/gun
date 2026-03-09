@@ -88,6 +88,7 @@ impl Manager {
 
     }
 
+
     pub fn run ( command: &str, args: &[&str] ) -> AppResult<()> {
 
         let status = Command::new(command).args(args).status()?;
@@ -138,6 +139,7 @@ impl Manager {
 
     }
 
+
     pub fn run_output ( command: &str, args: &[&str] ) -> AppResult<std::process::Output> {
 
         let output = Command::new(command).args(args).output()?;
@@ -150,6 +152,12 @@ impl Manager {
         }
 
         Ok(output)
+
+    }
+
+    pub fn run_capture ( command: &str, args: &[&str] ) -> AppResult<std::process::Output> {
+
+        Ok(std::process::Command::new(command).args(args).output()?)
 
     }
 

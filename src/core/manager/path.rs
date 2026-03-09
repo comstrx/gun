@@ -1,9 +1,7 @@
-use std::{path::PathBuf, sync::OnceLock};
-use semver::Version;
-use regex::Regex;
+use std::{path::PathBuf};
 
 use crate::core::app::{AppError, AppResult};
-use super::arch::{Manager, Spec};
+use super::arch::{Manager, Tool};
 
 impl Manager {
 
@@ -95,17 +93,22 @@ impl Manager {
 
     }
 
-
     pub fn path ( bin: &str ) -> AppResult<PathBuf> {
 
         if let Some(path) = Self::find_path(bin) { return Ok(path); }
 
-        if let Ok(spec) = Spec::get(bin) {
+        if let Ok(spec) = Tool::spec(bin) {
             if !spec.path.is_empty() && PathBuf::from(spec.path).is_file() { return Ok(spec.path.into()); }
             if let Some(path) = Self::find_path(spec.bin) { return Ok(path); }
         }
 
         Err(AppError::missing_binary(bin))
+
+    }
+
+    pub fn path_str ( bin: &str ) -> AppResult<String> {
+
+        Ok(Self::path(bin)?.to_string_lossy().into_owned())
 
     }
 
@@ -119,82 +122,6 @@ impl Manager {
 
         if Self::has(bin) { return Ok(()); }
         Err(AppError::missing_binary(bin))
-
-    }
-
-
-    pub fn has_all ( bins: &[&str] ) -> bool {
-
-        bins.iter().all(|bin| Self::has(bin))
-
-    }
-
-    pub fn need_all ( bins: &[&str] ) -> AppResult<()> {
-
-        for &bin in bins { Self::need(bin)?; }
-        Ok(())
-
-    }
-
-
-    pub fn version ( bin: &str ) -> AppResult<String> {
-
-        Self::need(bin)?;
-
-        let binding = Self::path(bin)?.to_string_lossy().into_owned();
-        let bin = &binding.as_str();
-
-        static RE: OnceLock<Regex> = OnceLock::new();
-        let mut first_error = None;
-
-        let re = RE.get_or_init(|| {
-            Regex::new(r"(?i)(?:^|[^0-9])(?:[a-z]+)?(\d+)\.(\d+)(?:\.(\d+))?([0-9a-z.+-]*)")
-                .expect("invalid version regex")
-        });
-
-        for args in [&["--version"][..], &["-v"][..], &["-V"][..], &["version"][..]] {
-
-            let output = match Self::run_output(bin, args) {
-                Ok(output) => output,
-                Err(err) => {
-                    if first_error.is_none() { first_error = Some(err); }
-                    continue;
-                }
-            };
-
-            for text in [&output.stdout[..], &output.stderr[..]] {
-
-                let text = String::from_utf8_lossy(text);
-
-                if let Some(caps) = re.captures(&text) {
-
-                    let major = &caps[1];
-                    let minor = &caps[2];
-                    let patch = caps.get(3).map_or("0", |m| m.as_str());
-                    let tail  = caps.get(4).map_or("", |m| m.as_str()).trim_start_matches(['.', '-', '+']);
-
-                    let pre = if tail.is_empty() { String::new() } else {
-                        let tail = tail
-                            .split(['.', '-', '+'])
-                            .filter(|part| !part.is_empty())
-                            .collect::<Vec<_>>()
-                            .join(".");
-
-                        if tail.is_empty() { String::new() }
-                        else { format!("-{tail}") }
-                    };
-
-                    let version = format!("{major}.{minor}.{patch}{pre}");
-                    if Version::parse(&version).is_ok() { return Ok(version); }
-
-                }
-
-            }
-
-        }
-
-        if let Some(err) = first_error { return Err(err.into()); }
-        Err(AppError::message(format!("failed to detect version for {bin}")))
 
     }
 
