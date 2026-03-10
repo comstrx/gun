@@ -60,7 +60,7 @@ impl Manager {
 
     }
 
-    pub fn full_remove ( bin: &str ) -> AppResult<()> {
+    pub fn force_remove ( bin: &str ) -> AppResult<()> {
 
         let id = match Tool::spec(bin) {
             Ok(info) => {
@@ -115,7 +115,7 @@ impl Manager {
 
     pub fn remove ( bin: &str ) -> AppResult<()> {
 
-        Self::full_remove(bin)
+        Self::force_remove(bin)
 
     }
 

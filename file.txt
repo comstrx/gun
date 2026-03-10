@@ -1,0 +1,473 @@
+
+- Refresh    =>
+
+Hit:1 https://download.docker.com/linux/ubuntu noble InRelease
+Hit:2 http://archive.ubuntu.com/ubuntu noble InRelease
+Hit:3 http://archive.ubuntu.com/ubuntu noble-updates InRelease
+Hit:4 http://archive.ubuntu.com/ubuntu noble-backports InRelease
+Hit:5 https://cli.github.com/packages stable InRelease
+Hit:6 http://security.ubuntu.com/ubuntu noble-security InRelease
+Hit:7 https://ppa.launchpadcontent.net/deadsnakes/ppa/ubuntu noble InRelease
+Get:8 https://packages.adoptium.net/artifactory/deb noble InRelease [7501 B]
+Ign:9 https://storage.googleapis.com/download.dartlang.org/linux/debian stable InRelease
+Hit:10 https://storage.googleapis.com/download.dartlang.org/linux/debian stable Release
+Fetched 7501 B in 1s (8782 B/s)
+Reading package lists...
+
+- Manager    => apt
+
+- OS Name    => linux
+
+- Is Unix    => true
+
+- Is WSL     => true
+
+- Is Linux   => true
+
+- Is Macos   => false
+
+- Is Windows => false
+
+
+* Tool: ( git )
+----------------
+
+- ensure     ==> Ok
+
+- Installed  ==> true
+
+- path       ==> /usr/bin/git
+
+- version    ==> 2.43.0
+
+- Doctor : 
+
+id       : git
+bin      : git
+path     : /usr/bin/git
+version  : 2.43.0
+source   : unknown
+exists   : true
+
+
+* Tool: ( gh )
+----------------
+
+- ensure     ==> Ok
+
+- Installed  ==> true
+
+- path       ==> /usr/bin/gh
+
+- version    ==> 2.87.3
+
+- Doctor : 
+
+id       : gh
+bin      : gh
+path     : /usr/bin/gh
+version  : 2.87.3
+source   : unknown
+exists   : true
+
+
+* Tool: ( rustc )
+----------------
+
+- ensure     ==> Ok
+
+- Installed  ==> true
+
+- path       ==> /home/codingmaster/.cargo/bin/rustc
+
+- version    ==> 1.92.0
+
+- Doctor : 
+
+id       : rustc
+bin      : rustc
+path     : /home/codingmaster/.cargo/bin/rustc
+version  : 1.92.0
+source   : unknown
+exists   : true
+
+
+* Tool: ( rustup )
+----------------
+
+- ensure     ==> Ok
+
+- Installed  ==> true
+
+- path       ==> /home/codingmaster/.cargo/bin/rustup
+
+- version    ==> 1.28.2
+
+- Doctor : 
+
+id       : rustup
+bin      : rustup
+path     : /home/codingmaster/.cargo/bin/rustup
+version  : 1.28.2
+source   : unknown
+exists   : true
+
+
+* Tool: ( node )
+----------------
+
+- ensure     ==> Ok
+
+- Installed  ==> true
+
+- path       ==> /home/codingmaster/.nvm/versions/node/v25.2.1/bin/node
+
+- version    ==> 25.2.1
+
+- Doctor : 
+
+id       : node
+bin      : node
+path     : /home/codingmaster/.nvm/versions/node/v25.2.1/bin/node
+version  : 25.2.1
+source   : unknown
+exists   : true
+
+
+* Tool: ( bun )
+----------------
+
+- ensure     ==> Ok
+
+- Installed  ==> true
+
+- path       ==> /home/codingmaster/.bun/bin/bun
+
+- version    ==> 1.3.9
+
+- Doctor : 
+
+id       : bun
+bin      : bun
+path     : /home/codingmaster/.bun/bin/bun
+version  : 1.3.9
+source   : unknown
+exists   : true
+
+
+* Tool: ( go )
+----------------
+
+- ensure     ==> Ok
+
+- Installed  ==> true
+
+- path       ==> /usr/local/go/bin/go
+
+- version    ==> 1.25.1
+
+- Doctor : 
+
+id       : go
+bin      : go
+path     : /usr/local/go/bin/go
+version  : 1.25.1
+source   : unknown
+exists   : true
+
+
+* Tool: ( pixi )
+----------------
+
+- ensure     ==> Ok
+
+- Installed  ==> true
+
+- path       ==> /home/codingmaster/.pixi/bin/pixi
+
+- version    ==> 0.63.2
+
+- Doctor : 
+
+id       : pixi
+bin      : pixi
+path     : /home/codingmaster/.pixi/bin/pixi
+version  : 0.63.2
+source   : unknown
+exists   : true
+
+
+* Tool: ( clang )
+----------------
+
+- ensure     ==> Ok
+
+- Installed  ==> true
+
+- path       ==> /usr/bin/clang
+
+- version    ==> 18.1.3
+
+- Doctor : 
+
+id       : clang
+bin      : clang
+path     : /usr/bin/clang
+version  : 18.1.3
+source   : unknown
+exists   : true
+
+
+* Tool: ( zig )
+----------------
+
+- ensure     ==> Ok
+
+- Installed  ==> true
+
+- path       ==> /home/codingmaster/.local/bin/zig
+
+- version    ==> 0.15.2
+
+- Doctor : 
+
+id       : zig
+bin      : zig
+path     : /home/codingmaster/.local/bin/zig
+version  : 0.15.2
+source   : unknown
+exists   : true
+
+
+* Tool: ( dotnet )
+----------------
+
+- ensure     ==> Ok
+
+- Installed  ==> true
+
+- path       ==> /usr/bin/dotnet
+
+- version    ==> 10.0.103
+
+- Doctor : 
+
+id       : dotnet
+bin      : dotnet
+path     : /usr/bin/dotnet
+version  : 10.0.103
+source   : unknown
+exists   : true
+
+
+* Tool: ( composer )
+----------------
+
+- ensure     ==> Ok
+
+- Installed  ==> true
+
+- path       ==> /usr/local/bin/composer
+
+- version    ==> 2.8.8
+
+- Doctor : 
+
+id       : composer
+bin      : composer
+path     : /usr/local/bin/composer
+version  : 2.8.8
+source   : unknown
+exists   : true
+
+
+* Tool: ( php )
+----------------
+
+- ensure     ==> Ok
+
+- Installed  ==> true
+
+- path       ==> /usr/bin/php
+
+- version    ==> 8.3.6
+
+- Doctor : 
+
+id       : php
+bin      : php
+path     : /usr/bin/php
+version  : 8.3.6
+source   : unknown
+exists   : true
+
+
+* Tool: ( lua )
+----------------
+
+- ensure     ==> Ok
+
+- Installed  ==> true
+
+- path       ==> /usr/local/bin/lua
+
+- version    ==> 5.5.0
+
+- Doctor : 
+
+id       : lua
+bin      : lua
+path     : /usr/local/bin/lua
+version  : 5.5.0
+source   : unknown
+exists   : true
+
+
+* Tool: ( uv )
+----------------
+
+- ensure     ==> Ok
+
+- Installed  ==> true
+
+- path       ==> /home/codingmaster/.local/bin/uv
+
+- version    ==> 0.10.1
+
+- Doctor : 
+
+id       : uv
+bin      : uv
+path     : /home/codingmaster/.local/bin/uv
+version  : 0.10.1
+source   : unknown
+exists   : true
+
+
+* Tool: ( luarocks )
+----------------
+
+- ensure     ==> Ok
+
+- Installed  ==> true
+
+- path       ==> /usr/local/bin/luarocks
+
+- version    ==> 3.13.0
+
+- Doctor : 
+
+id       : luarocks
+bin      : luarocks
+path     : /usr/local/bin/luarocks
+version  : 3.13.0
+source   : unknown
+exists   : true
+
+
+* Tool: ( wrk )
+----------------
+
+- ensure     ==> Ok
+
+- Installed  ==> true
+
+- path       ==> /usr/bin/wrk
+
+- version    ==> 4.1.0-4build2
+
+- Doctor : 
+
+id       : wrk
+bin      : wrk
+path     : /usr/bin/wrk
+version  : 4.1.0-4build2
+source   : unknown
+exists   : true
+
+
+* Tool: ( curl )
+----------------
+
+- ensure     ==> Ok
+
+- Installed  ==> true
+
+- path       ==> /usr/bin/curl
+
+- version    ==> 8.5.0
+
+- Doctor : 
+
+id       : curl
+bin      : curl
+path     : /usr/bin/curl
+version  : 8.5.0
+source   : unknown
+exists   : true
+
+
+* Tool: ( cmake )
+----------------
+
+- ensure     ==> Ok
+
+- Installed  ==> true
+
+- path       ==> /usr/bin/cmake
+
+- version    ==> 3.28.3
+
+- Doctor : 
+
+id       : cmake
+bin      : cmake
+path     : /usr/bin/cmake
+version  : 3.28.3
+source   : unknown
+exists   : true
+
+
+* Tool: ( xmake )
+----------------
+
+- ensure     ==> Ok
+
+- Installed  ==> true
+
+- path       ==> /home/codingmaster/.local/bin/xmake
+
+- version    ==> 3.0.7-20260213
+
+- Doctor : 
+
+id       : xmake
+bin      : xmake
+path     : /home/codingmaster/.local/bin/xmake
+version  : 3.0.7-20260213
+source   : unknown
+exists   : true
+
+
+* Tool: ( python )
+----------------
+
+- ensure     ==> Ok
+
+- Installed  ==> true
+
+- path       ==> /usr/bin/python
+
+- version    ==> 3.12.3
+
+- Doctor : 
+
+id       : python
+bin      : python
+path     : /usr/bin/python
+version  : 3.12.3
+source   : unknown
+exists   : true
+
+
+ * Elapsed: 2 sec.

@@ -48,6 +48,31 @@ pub struct Tool {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Service {
+    pub name        : &'static str,
+    pub kind        : &'static str,
+    pub description : &'static str,
+    pub command     : &'static str,
+    pub args        : &'static [&'static str],
+    pub cwd         : &'static str,
+    pub user        : &'static str,
+    pub group       : &'static str,
+    pub env         : &'static [(&'static str, &'static str)],
+    pub restart     : &'static str,
+    pub wanted_by   : &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Launcher {
+    Systemd,
+    Launchd,
+    OpenRc,
+    SysV,
+    Windows,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Manager {
     Brew,
     Apt,

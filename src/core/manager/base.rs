@@ -80,10 +80,9 @@ impl Manager {
             Self::Apt    => Self::sudo_run("apt-get", &["update"]),
             Self::Dnf    => Self::sudo_run("dnf", &["makecache"]),
             Self::Yum    => Self::sudo_run("yum", &["makecache"]),
-            Self::Pacman => Self::sudo_run("pacman", &["-Sy"]),
             Self::Zypper => Self::sudo_run("zypper", &["refresh"]),
             Self::Apk    => Self::sudo_run("apk", &["update"]),
-            _            => Ok(()),
+            _ => Ok(()),
         }
 
     }

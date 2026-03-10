@@ -5,6 +5,7 @@ pub mod path;
 pub mod public;
 pub mod install;
 
+pub mod service;
 pub mod spec;
 pub mod tool;
 pub mod tree;
