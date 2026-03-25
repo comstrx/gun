@@ -3,7 +3,7 @@ use super::arch::{Tool, Spec, Method, Manager};
 
 pub const TOOLS: &[(&'static str, Tool)] = &[
     ("curl",
-        Tool::new().set_bin("curl").set_version("8.5.0")
+        Tool::new().set_bin("curl").set_version("8.5.0").set_aliases(&["curl"])
             .register(Manager::Winget, Spec::new().set_name("cURL.cURL"))
     ),
     ("bun",

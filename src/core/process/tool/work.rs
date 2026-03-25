@@ -2,7 +2,7 @@ use std::{path::PathBuf, sync::OnceLock};
 use {semver::Version, regex::Regex};
 
 use super::arch::{Tool, Spec, Info, Method, Manager, AppError, AppResult};
-use super::map::TOOLS;
+use super::index::TOOLS;
 
 impl Tool {
 
@@ -118,24 +118,19 @@ impl Tool {
                 || spec.url.eq_ignore_ascii_case(key)
                 || spec.aliases.iter().any(|alias| alias.eq_ignore_ascii_case(key))
         };
-
-        TOOLS
-            .iter()
-            .find(|(name, tool)| {
-                name.eq_ignore_ascii_case(key)
-                    || has(&tool.apt)
-                    || has(&tool.apk)
-                    || has(&tool.dnf)
-                    || has(&tool.yum)
-                    || has(&tool.pacman)
-                    || has(&tool.zypper)
-                    || has(&tool.brew)
-                    || has(&tool.winget)
-                    || has(&tool.scoop)
-                    || has(&tool.choco)
-            })
-            .map(|(_, tool)| *tool)
-            .ok_or_else(|| AppError::missing_binary(key))
+        TOOLS.iter().find(|(name, tool)| {
+            name.eq_ignore_ascii_case(key)
+                || has(&tool.apt)
+                || has(&tool.apk)
+                || has(&tool.dnf)
+                || has(&tool.yum)
+                || has(&tool.pacman)
+                || has(&tool.zypper)
+                || has(&tool.brew)
+                || has(&tool.winget)
+                || has(&tool.scoop)
+                || has(&tool.choco)
+        }).map(|(_, tool)| *tool).ok_or_else(|| AppError::missing_binary(key))
 
     }
 

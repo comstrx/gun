@@ -39,6 +39,9 @@ pub enum AppError {
     #[error("missing environment variable: {0}")]
     MissingEnvVar(String),
 
+    #[error("can not detect {0}")]
+    CannotDetect(String),
+
     #[error("unsupported platform: {0}")]
     UnsupportedPlatform(String),
 

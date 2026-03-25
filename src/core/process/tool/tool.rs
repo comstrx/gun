@@ -20,69 +20,52 @@ impl Tool {
 
     }
 
-    pub const fn set_bin ( mut self, bin: &'static str ) -> Self {
+    pub const fn set_bin ( mut self, value: &'static str ) -> Self {
 
-        self.apt    = self.apt.set_bin(bin);
-        self.apk    = self.apk.set_bin(bin);
-        self.dnf    = self.dnf.set_bin(bin);
-        self.yum    = self.yum.set_bin(bin);
-        self.pacman = self.pacman.set_bin(bin);
-        self.zypper = self.zypper.set_bin(bin);
-        self.brew   = self.brew.set_bin(bin);
-        self.winget = self.winget.set_bin(bin);
-        self.scoop  = self.scoop.set_bin(bin);
-        self.choco  = self.choco.set_bin(bin);
-
-        self
-
-    }
-
-    pub const fn set_name ( mut self, name : &'static str ) -> Self {
-
-        self.apt    = self.apt.set_name(name);
-        self.apk    = self.apk.set_name(name);
-        self.dnf    = self.dnf.set_name(name);
-        self.yum    = self.yum.set_name(name);
-        self.pacman = self.pacman.set_name(name);
-        self.zypper = self.zypper.set_name(name);
-        self.brew   = self.brew.set_name(name);
-        self.winget = self.winget.set_name(name);
-        self.scoop  = self.scoop.set_name(name);
-        self.choco  = self.choco.set_name(name);
+        self.apt    = self.apt.set_bin(value);
+        self.apk    = self.apk.set_bin(value);
+        self.dnf    = self.dnf.set_bin(value);
+        self.yum    = self.yum.set_bin(value);
+        self.pacman = self.pacman.set_bin(value);
+        self.zypper = self.zypper.set_bin(value);
+        self.brew   = self.brew.set_bin(value);
+        self.winget = self.winget.set_bin(value);
+        self.scoop  = self.scoop.set_bin(value);
+        self.choco  = self.choco.set_bin(value);
 
         self
 
     }
 
-    pub const fn set_version ( mut self, version : &'static str ) -> Self {
+    pub const fn set_version ( mut self, value : &'static str ) -> Self {
 
-        self.apt    = self.apt.set_version(version);
-        self.apk    = self.apk.set_version(version);
-        self.dnf    = self.dnf.set_version(version);
-        self.yum    = self.yum.set_version(version);
-        self.pacman = self.pacman.set_version(version);
-        self.zypper = self.zypper.set_version(version);
-        self.brew   = self.brew.set_version(version);
-        self.winget = self.winget.set_version(version);
-        self.scoop  = self.scoop.set_version(version);
-        self.choco  = self.choco.set_version(version);
+        self.apt    = self.apt.set_version(value);
+        self.apk    = self.apk.set_version(value);
+        self.dnf    = self.dnf.set_version(value);
+        self.yum    = self.yum.set_version(value);
+        self.pacman = self.pacman.set_version(value);
+        self.zypper = self.zypper.set_version(value);
+        self.brew   = self.brew.set_version(value);
+        self.winget = self.winget.set_version(value);
+        self.scoop  = self.scoop.set_version(value);
+        self.choco  = self.choco.set_version(value);
 
         self
 
     }
 
-    pub const fn set_aliases ( mut self, aliases : &'static [&'static str] ) -> Self {
+    pub const fn set_aliases ( mut self, value : &'static [&'static str] ) -> Self {
 
-        self.apt    = self.apt.set_aliases(aliases);
-        self.apk    = self.apk.set_aliases(aliases);
-        self.dnf    = self.dnf.set_aliases(aliases);
-        self.yum    = self.yum.set_aliases(aliases);
-        self.pacman = self.pacman.set_aliases(aliases);
-        self.zypper = self.zypper.set_aliases(aliases);
-        self.brew   = self.brew.set_aliases(aliases);
-        self.winget = self.winget.set_aliases(aliases);
-        self.scoop  = self.scoop.set_aliases(aliases);
-        self.choco  = self.choco.set_aliases(aliases);
+        self.apt    = self.apt.set_aliases(value);
+        self.apk    = self.apk.set_aliases(value);
+        self.dnf    = self.dnf.set_aliases(value);
+        self.yum    = self.yum.set_aliases(value);
+        self.pacman = self.pacman.set_aliases(value);
+        self.zypper = self.zypper.set_aliases(value);
+        self.brew   = self.brew.set_aliases(value);
+        self.winget = self.winget.set_aliases(value);
+        self.scoop  = self.scoop.set_aliases(value);
+        self.choco  = self.choco.set_aliases(value);
 
         self
 

@@ -1,99 +1,91 @@
-use super::arch::{Service, Launcher, Manager, AppResult, AppError};
+
+use super::arch::{Service, Launcher, Spec, Kind, Restart};
 
 impl Service {
 
-    pub const fn new ( name: &'static str ) -> Self {
+    pub const fn new () -> Self {
 
         Self {
-            name        : name,
-            kind        : "simple",
-            description : "",
-            command     : "",
-            args        : &[],
-            cwd         : "",
-            user        : "",
-            group       : "",
-            env         : &[],
-            restart     : "always",
-            wanted_by   : "multi-user.target",
+            windows : Spec::new(),
+            launchd : Spec::new(),
+            systemd : Spec::new(),
         }
+
+    }
+
+    pub const fn set_kind ( mut self, value: Kind ) -> Self {
+
+        self.windows = self.windows.set_kind(value);
+        self.launchd = self.launchd.set_kind(value);
+        self.systemd = self.systemd.set_kind(value);
+
+        self
+
+    }
+
+    pub const fn set_restart ( mut self, value: Restart ) -> Self {
+
+        self.windows = self.windows.set_restart(value);
+        self.launchd = self.launchd.set_restart(value);
+        self.systemd = self.systemd.set_restart(value);
+
+        self
 
     }
 
     pub const fn set_name ( mut self, value: &'static str ) -> Self {
 
-        self.name = value;
-        self
+        self.windows = self.windows.set_name(value);
+        self.launchd = self.launchd.set_name(value);
+        self.systemd = self.systemd.set_name(value);
 
-    }
-
-    pub const fn set_kind ( mut self, value: &'static str ) -> Self {
-
-        self.kind = value;
         self
 
     }
 
     pub const fn set_description ( mut self, value: &'static str ) -> Self {
 
-        self.description = value;
+        self.windows = self.windows.set_description(value);
+        self.launchd = self.launchd.set_description(value);
+        self.systemd = self.systemd.set_description(value);
+
         self
 
     }
 
-    pub const fn set_command ( mut self, value: &'static str ) -> Self {
+    pub const fn register ( mut self, launcher: Launcher, spec: Spec ) -> Self {
 
-        self.command = value;
+        match launcher {
+            Launcher::Windows => self.windows = self.windows.merge(spec),
+            Launcher::Launchd => self.launchd = self.launchd.merge(spec),
+            Launcher::Systemd => self.systemd = self.systemd.merge(spec),
+        };
+
         self
 
     }
 
-    pub const fn set_args ( mut self, value: &'static [&'static str] ) -> Self {
+    pub const fn register_windows ( self, spec: Spec ) -> Self {
 
-        self.args = value;
-        self
-
-    }
-
-    pub const fn set_cwd ( mut self, value: &'static str ) -> Self {
-
-        self.cwd = value;
-        self
+        self.register(Launcher::Windows, spec)
 
     }
 
-    pub const fn set_user ( mut self, value: &'static str ) -> Self {
+    pub const fn register_macos ( self, spec: Spec ) -> Self {
 
-        self.user = value;
-        self
-
-    }
-
-    pub const fn set_group ( mut self, value: &'static str ) -> Self {
-
-        self.group = value;
-        self
+        self.register(Launcher::Launchd, spec)
 
     }
 
-    pub const fn set_env ( mut self, value: &'static [(&'static str, &'static str)] ) -> Self {
+    pub const fn register_linux ( self, spec: Spec ) -> Self {
 
-        self.env = value;
-        self
-
-    }
-
-    pub const fn set_restart ( mut self, value: &'static str ) -> Self {
-
-        self.restart = value;
-        self
+        self.register(Launcher::Systemd, spec)
 
     }
 
-    pub const fn set_wanted_by ( mut self, value: &'static str ) -> Self {
+    pub const fn register_unix ( self, spec: Spec ) -> Self {
 
-        self.wanted_by = value;
-        self
+        self.register_linux(spec).register_macos(spec)
 
     }
 

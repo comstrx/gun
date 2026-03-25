@@ -1,126 +1,214 @@
+use {os_info::Type, which::which};
 
-use super::arch::{Service, Launcher, Manager, AppResult, AppError};
+use super::arch::{Service, Launcher, Spec, Manager, AppResult, AppError};
+use super::index::SERVICES;
 
 impl Service {
 
-    pub fn install ( &self ) -> AppResult<()> {
+    pub fn get ( name: &str ) -> AppResult<Self> {
 
-        match Self::detect() {
-            Launcher::Systemd => self.install_systemd(),
-            Launcher::Launchd => self.install_launchd(),
-            Launcher::OpenRc  => Err(AppError::message("openrc service install is not implemented yet")),
-            Launcher::SysV    => Err(AppError::message("sysv service install is not implemented yet")),
-            Launcher::Windows => Err(AppError::message("windows service install is not implemented yet")),
-            Launcher::Unknown => Err(AppError::message("failed to detect service manager")),
-        }
+        let key = name.trim();
+        let has = |spec: &Spec| spec.name.eq_ignore_ascii_case(key);
 
-    }
-
-    pub fn uninstall ( &self ) -> AppResult<()> {
-
-        match Self::detect() {
-            Launcher::Systemd => self.uninstall_systemd(),
-            Launcher::Launchd => self.uninstall_launchd(),
-            Launcher::OpenRc  => Err(AppError::message("openrc service uninstall is not implemented yet")),
-            Launcher::SysV    => Err(AppError::message("sysv service uninstall is not implemented yet")),
-            Launcher::Windows => Err(AppError::message("windows service uninstall is not implemented yet")),
-            Launcher::Unknown => Err(AppError::message("failed to detect service manager")),
-        }
+        SERVICES.iter().find(|(name, service)| {
+            name.eq_ignore_ascii_case(key)
+                || has(&service.windows)
+                || has(&service.launchd)
+                || has(&service.systemd)
+        }).map(|(_, tool)| *tool).ok_or_else(|| AppError::command_not_found(key))
 
     }
 
-    pub fn start ( &self ) -> AppResult<()> {
+    pub fn launcher () -> AppResult<Launcher> {
 
-        match Self::detect() {
-            Launcher::Systemd => Manager::sudo_run("systemctl", &["start", self.name]),
-            Launcher::Launchd => Manager::run("launchctl", &["start", self.name]),
-            Launcher::OpenRc  => Manager::sudo_run("rc-service", &[self.name, "start"]),
-            Launcher::SysV    => Manager::sudo_run("service", &[self.name, "start"]),
-            Launcher::Windows => Err(AppError::message("windows service start is not implemented yet")),
-            Launcher::Unknown => Err(AppError::message("failed to detect service manager")),
-        }
-
-    }
-
-    pub fn stop ( &self ) -> AppResult<()> {
-
-        match Self::detect() {
-            Launcher::Systemd => Manager::sudo_run("systemctl", &["stop", self.name]),
-            Launcher::Launchd => Manager::run("launchctl", &["stop", self.name]),
-            Launcher::OpenRc  => Manager::sudo_run("rc-service", &[self.name, "stop"]),
-            Launcher::SysV    => Manager::sudo_run("service", &[self.name, "stop"]),
-            Launcher::Windows => Err(AppError::message("windows service stop is not implemented yet")),
-            Launcher::Unknown => Err(AppError::message("failed to detect service manager")),
-        }
-
-    }
-
-    pub fn restart ( &self ) -> AppResult<()> {
-
-        match Self::detect() {
-            Launcher::Systemd => Manager::sudo_run("systemctl", &["restart", self.name]),
-            Launcher::Launchd => {
-                let _ = Manager::run("launchctl", &["stop", self.name]);
-                Manager::run("launchctl", &["start", self.name])
+        match os_info::get().os_type() {
+            Type::Windows => Ok(Launcher::Windows),
+            Type::Macos   => {
+                if which("launchctl").is_ok() { return Ok(Launcher::Launchd); }
+                Err(AppError::cannot_detect("launcher"))
+            },
+            _ => {
+                if which("systemctl").is_ok() { return Ok(Launcher::Systemd); }
+                Err(AppError::cannot_detect("launcher"))
             }
-            Launcher::OpenRc  => Manager::sudo_run("rc-service", &[self.name, "restart"]),
-            Launcher::SysV    => Manager::sudo_run("service", &[self.name, "restart"]),
-            Launcher::Windows => Err(AppError::message("windows service restart is not implemented yet")),
-            Launcher::Unknown => Err(AppError::message("failed to detect service manager")),
         }
 
     }
 
-    pub fn enable ( &self ) -> AppResult<()> {
+    pub fn spec ( name: &str ) -> AppResult<Spec> {
 
-        match Self::detect() {
-            Launcher::Systemd => Manager::sudo_run("systemctl", &["enable", self.name]),
-            Launcher::Launchd => Manager::run("launchctl", &["enable", &format!("system/{}", self.name)]),
-            Launcher::OpenRc  => Manager::sudo_run("rc-update", &["add", self.name, "default"]),
-            Launcher::SysV    => Err(AppError::message("sysv service enable is not implemented yet")),
-            Launcher::Windows => Err(AppError::message("windows service enable is not implemented yet")),
-            Launcher::Unknown => Err(AppError::message("failed to detect service manager")),
+        let service = Self::get(name)?;
+
+        Ok(match Self::launcher()? {
+            Launcher::Windows => service.windows,
+            Launcher::Launchd => service.launchd,
+            Launcher::Systemd => service.systemd,
+        })
+
+    }
+
+    pub fn has ( name: &str ) -> bool {
+
+        match Self::launcher() {
+            Ok(Launcher::Windows) => Manager::try_run("sc", &["query", name]).is_ok(),
+            Ok(Launcher::Launchd) => Manager::try_run("launchctl", &["print", &format!("system/{}", name)]).is_ok(),
+            Ok(Launcher::Systemd) => Manager::try_run("systemctl", &["cat", name]).is_ok(),
+            Err(_) => false,
         }
 
     }
 
-    pub fn disable ( &self ) -> AppResult<()> {
+    pub fn need ( name: &str ) -> AppResult<()> {
 
-        match Self::detect() {
-            Launcher::Systemd => Manager::sudo_run("systemctl", &["disable", self.name]),
-            Launcher::Launchd => Manager::run("launchctl", &["disable", &format!("system/{}", self.name)]),
-            Launcher::OpenRc  => Manager::sudo_run("rc-update", &["del", self.name, "default"]),
-            Launcher::SysV    => Err(AppError::message("sysv service disable is not implemented yet")),
-            Launcher::Windows => Err(AppError::message("windows service disable is not implemented yet")),
-            Launcher::Unknown => Err(AppError::message("failed to detect service manager")),
+        if Self::has(name) { return Ok(()); }
+        Err(AppError::command_not_found(name))
+
+    }
+
+    pub fn install ( name: &str ) -> AppResult<()> {
+
+        let service = Self::get(name)?;
+
+        match Self::launcher()? {
+            Launcher::Windows => Launcher::windows_install(service.windows),
+            Launcher::Launchd => Launcher::launchd_install(service.launchd),
+            Launcher::Systemd => Launcher::systemd_install(service.systemd),
         }
 
     }
 
-    pub fn status ( &self ) -> AppResult<()> {
+    pub fn remove ( name: &str ) -> AppResult<()> {
 
-        match Self::detect() {
-            Launcher::Systemd => Manager::sudo_run("systemctl", &["status", self.name, "--no-pager"]),
-            Launcher::Launchd => Manager::run("launchctl", &["print", &format!("system/{}", self.name)]),
-            Launcher::OpenRc  => Manager::sudo_run("rc-service", &[self.name, "status"]),
-            Launcher::SysV    => Manager::sudo_run("service", &[self.name, "status"]),
-            Launcher::Windows => Err(AppError::message("windows service status is not implemented yet")),
-            Launcher::Unknown => Err(AppError::message("failed to detect service manager")),
+        match Self::launcher()? {
+            Launcher::Windows => Launcher::windows_remove(name),
+            Launcher::Launchd => Launcher::launchd_remove(name),
+            Launcher::Systemd => Launcher::systemd_remove(name),
         }
 
     }
 
-    pub fn logs ( &self, lines: usize ) -> AppResult<()> {
+    pub fn ensure ( name: &str ) -> AppResult<()> {
 
+        if !Self::has(name) { Self::install(name)?; }
+        Self::need(name)
+
+    }
+
+    pub fn start ( name: &str ) -> AppResult<()> {
+
+        Self::ensure(name)?;
+
+        match Self::launcher()? {
+            Launcher::Windows => Manager::try_run("sc", &["start", name]),
+            Launcher::Launchd => Manager::try_run("launchctl", &["start", name]),
+            Launcher::Systemd => Manager::try_run("systemctl", &["start", name]),
+        }
+
+    }
+
+    pub fn stop ( name: &str ) -> AppResult<()> {
+
+        Self::need(name)?;
+
+        match Self::launcher()? {
+            Launcher::Windows => Manager::try_run("sc", &["stop", name]),
+            Launcher::Launchd => Manager::try_run("launchctl", &["stop", name]),
+            Launcher::Systemd => Manager::try_run("systemctl", &["stop", name]),
+        }
+
+    }
+
+    pub fn restart ( name: &str ) -> AppResult<()> {
+
+        Self::ensure(name)?;
+
+        match Self::launcher()? {
+            Launcher::Systemd => Manager::try_run("systemctl", &["restart", name]),
+            Launcher::Launchd => {
+                let _ = Manager::try_run("launchctl", &["stop", name]);
+                Manager::try_run("launchctl", &["start", name])
+            }
+            Launcher::Windows => {
+                let _ = Manager::try_run("sc", &["stop", name]);
+                Manager::try_run("sc", &["start", name])
+            }
+        }
+
+    }
+
+    pub fn enable ( name: &str ) -> AppResult<()> {
+
+        Self::ensure(name)?;
+
+        match Self::launcher()? {
+            Launcher::Windows => Manager::try_run("sc", &["config", name, "start= auto"]),
+            Launcher::Launchd => Manager::try_run("launchctl", &["enable", &format!("system/{}", name)]),
+            Launcher::Systemd => Manager::try_run("systemctl", &["enable", name]),
+        }
+
+    }
+
+    pub fn disable ( name: &str ) -> AppResult<()> {
+
+        Self::need(name)?;
+
+        match Self::launcher()? {
+            Launcher::Windows => Manager::try_run("sc", &["config", name, "start= disabled"]),
+            Launcher::Launchd => Manager::try_run("launchctl", &["disable", &format!("system/{}", name)]),
+            Launcher::Systemd => Manager::try_run("systemctl", &["disable", name]),
+        }
+
+    }
+
+    pub fn status ( name: &str ) -> AppResult<()> {
+
+        Self::need(name)?;
+
+        match Self::launcher()? {
+            Launcher::Windows => Manager::try_run("sc", &["query", name]),
+            Launcher::Launchd => Manager::try_run("launchctl", &["print", &format!("system/{}", name)]),
+            Launcher::Systemd => Manager::try_run("systemctl", &["status", name, "--no-pager"]),
+        }
+
+    }
+
+    pub fn logs ( name: &str, lines: usize ) -> AppResult<()> {
+
+        Self::need(name)?;
         let lines = lines.max(1).to_string();
 
-        match Self::detect() {
-            Launcher::Systemd => Manager::sudo_run("journalctl", &["-u", self.name, "-n", &lines, "--no-pager"]),
-            Launcher::Launchd => Err(AppError::message("launchd logs are not implemented yet")),
-            Launcher::OpenRc  => Err(AppError::message("openrc logs are not implemented yet")),
-            Launcher::SysV    => Err(AppError::message("sysv logs are not implemented yet")),
-            Launcher::Windows => Err(AppError::message("windows logs are not implemented yet")),
-            Launcher::Unknown => Err(AppError::message("failed to detect service manager")),
+        match Self::launcher()? {
+            Launcher::Windows => Manager::try_run("wevtutil", &["qe", "System", &format!("/c:{}", lines), "/rd:true", "/f:text"]),
+            Launcher::Systemd => Manager::try_run("journalctl", &["-u", name, "-n", &lines, "--no-pager"]),
+            Launcher::Launchd => {
+                Manager::try_run("log", &[
+                    "show", "--style", "compact", "--last", "1h", "--predicate",
+                    &format!("process == \"{}\" OR eventMessage CONTAINS[c] \"{}\"", name, name),
+                ])
+            }
+        }
+
+    }
+
+    pub fn running ( name: &str ) -> bool {
+
+        if !Self::has(name) { return false; }
+
+        match Self::launcher() {
+            Ok(Launcher::Windows) =>
+                Manager::try_run_output("sc", &["query", name])
+                    .ok()
+                    .and_then(|output| String::from_utf8(output.stdout).ok())
+                    .map(|text| text.lines().any(|line| line.trim().starts_with("STATE") && line.contains("RUNNING")))
+                    .unwrap_or(false),
+            Ok(Launcher::Launchd) =>
+                Manager::try_run_output("launchctl", &["print", &format!("system/{}", name)])
+                    .ok()
+                    .and_then(|output| String::from_utf8(output.stdout).ok())
+                    .map(|text| text.contains("state = running") || text.contains("\"state\" = \"running\""))
+                    .unwrap_or(false),
+            Ok(Launcher::Systemd) => Manager::try_run("systemctl", &["is-active", "--quiet", name]).is_ok(),
+            Err(_) => false,
         }
 
     }

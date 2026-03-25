@@ -25,17 +25,49 @@ impl Manager {
 
     }
 
+    pub fn native_remove ( id: &str ) -> AppResult<()> {
+
+        match Self::detect()? {
+            Self::Apt    => Self::try_run("apt-get", &["remove", "-y", id]),
+            Self::Dnf    => Self::try_run("dnf", &["remove", "-y", id]),
+            Self::Yum    => Self::try_run("yum", &["remove", "-y", id]),
+            Self::Pacman => Self::try_run("pacman", &["-R", "--noconfirm", id]),
+            Self::Zypper => Self::try_run("zypper", &["remove", "-y", id]),
+            Self::Apk    => Self::try_run("apk", &["del", id]),
+            Self::Brew   => Self::run("brew", &["uninstall", id]),
+            Self::Scoop  => Self::run("scoop", &["uninstall", id]),
+            Self::Choco  => Self::run("choco", &["uninstall", "-y", id]),
+            Self::Winget => Self::run("winget", &["uninstall", "-e", "--id", id, "--source", "winget", "--disable-interactivity"]),
+        }
+
+    }
+
+
     pub fn nix_install ( id: &str ) -> AppResult<()> {
 
         Self::run("nix", &["profile", "install", id])
 
     }
 
+    pub fn nix_remove ( id: &str ) -> AppResult<()> {
+
+        Self::run("nix", &["profile", "remove", id])
+
+    }
+
+
     pub fn mise_install ( id: &str ) -> AppResult<()> {
 
         Self::run("mise", &["use", "--global", id])
 
     }
+
+    pub fn mise_remove ( id: &str ) -> AppResult<()> {
+
+        Self::run("mise", &["unuse", "--global", id])
+
+    }
+
 
     pub fn script_install ( id: &str, url: &str, args: &[&str], bash: bool ) -> AppResult<()> {
 
@@ -62,36 +94,6 @@ impl Manager {
 
         let _ = fs::remove_file(path);
         result
-
-    }
-
-
-    pub fn native_remove ( id: &str ) -> AppResult<()> {
-
-        match Self::detect()? {
-            Self::Apt    => Self::try_run("apt-get", &["remove", "-y", id]),
-            Self::Dnf    => Self::try_run("dnf", &["remove", "-y", id]),
-            Self::Yum    => Self::try_run("yum", &["remove", "-y", id]),
-            Self::Pacman => Self::try_run("pacman", &["-R", "--noconfirm", id]),
-            Self::Zypper => Self::try_run("zypper", &["remove", "-y", id]),
-            Self::Apk    => Self::try_run("apk", &["del", id]),
-            Self::Brew   => Self::run("brew", &["uninstall", id]),
-            Self::Scoop  => Self::run("scoop", &["uninstall", id]),
-            Self::Choco  => Self::run("choco", &["uninstall", "-y", id]),
-            Self::Winget => Self::run("winget", &["uninstall", "-e", "--id", id, "--source", "winget", "--disable-interactivity"]),
-        }
-
-    }
-
-    pub fn nix_remove ( id: &str ) -> AppResult<()> {
-
-        Self::run("nix", &["profile", "remove", id])
-
-    }
-
-    pub fn mise_remove ( id: &str ) -> AppResult<()> {
-
-        Self::run("mise", &["unuse", "--global", id])
 
     }
 

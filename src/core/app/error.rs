@@ -54,6 +54,12 @@ impl AppError {
 
     }
 
+    pub fn cannot_detect ( name: impl Into<String> ) -> Self {
+
+        Self::CannotDetect(name.into())
+
+    }
+
     pub fn unsupported_platform ( platform: impl Into<String> ) -> Self {
 
         Self::UnsupportedPlatform(platform.into())
@@ -151,17 +157,18 @@ impl AppError {
         ExitCode::from(match self {
             Self::MissingBinary(_)         => 2,
             Self::MissingEnvVar(_)         => 3,
-            Self::InvalidArgument { .. }   => 4,
-            Self::UnsupportedPlatform(_)   => 5,
-            Self::UnsupportedManager(_)    => 6,
-            Self::UnsupportedOperation(_)  => 7,
-            Self::PathNotFound(_)          => 8,
-            Self::PathExists(_)            => 9,
-            Self::PathTypeMismatch { .. }  => 10,
-            Self::PermissionDenied { .. }  => 11,
-            Self::CommandNotFound { .. }   => 12,
-            Self::CommandFailed { .. }     => 13,
-            Self::OperationFailed { .. }   => 14,
+            Self::CannotDetect(_)          => 4,
+            Self::InvalidArgument { .. }   => 5,
+            Self::UnsupportedPlatform(_)   => 6,
+            Self::UnsupportedManager(_)    => 7,
+            Self::UnsupportedOperation(_)  => 8,
+            Self::PathNotFound(_)          => 9,
+            Self::PathExists(_)            => 10,
+            Self::PathTypeMismatch { .. }  => 11,
+            Self::PermissionDenied { .. }  => 12,
+            Self::CommandNotFound { .. }   => 13,
+            Self::CommandFailed { .. }     => 14,
+            Self::OperationFailed { .. }   => 15,
             _                              => 1,
         })
 
