@@ -33,20 +33,29 @@ pub enum AppError {
     #[error("permission denied: {action}: {}", path.display())]
     PermissionDenied { path: PathBuf, action: String },
 
-    #[error("missing required binary: {0}")]
-    MissingBinary(String),
+    #[error("can not detect {0}")]
+    CannotDetect(String),
 
     #[error("missing environment variable: {0}")]
     MissingEnvVar(String),
 
-    #[error("can not detect {0}")]
-    CannotDetect(String),
+    #[error("missing service: {0} not found")]
+    MissingService(String),
+
+    #[error("missing tool: {0} not found")]
+    MissingTool(String),
 
     #[error("unsupported platform: {0}")]
     UnsupportedPlatform(String),
 
     #[error("unsupported manager: {0}")]
     UnsupportedManager(String),
+
+    #[error("unsupported service: {0}")]
+    UnsupportedService(String),
+
+    #[error("unsupported tool: {0}")]
+    UnsupportedTool(String),
 
     #[error("unsupported operation: {0}")]
     UnsupportedOperation(String),

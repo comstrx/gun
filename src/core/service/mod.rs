@@ -1,6 +1,6 @@
 pub mod arch;
 pub mod index;
-pub mod launcher;
+pub mod install;
 pub mod spec;
 pub mod service;
 pub mod work;

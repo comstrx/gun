@@ -1,7 +1,11 @@
 pub mod app;
-pub mod file;
-pub mod process;
-
 pub use app::{AppResult, AppError, AppExitCode};
+
+pub mod file;
 pub use file::{File, Dir, Path};
-pub use process::{Process, Manager, Tool, Method, Spec, Info};
+
+pub mod manager;
+pub use manager::{Manager, Tool, Spec, Info, Method};
+
+pub mod service;
+pub use service::{Service, Launcher, Kind, Restart};

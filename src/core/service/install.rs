@@ -1,7 +1,7 @@
 
-use super::arch::{Launcher, Spec, Kind, Restart, Manager, AppResult};
+use super::arch::{Service, Spec, Kind, Restart, Manager, AppResult};
 
-impl Launcher {
+impl Service {
 
     fn kind ( kind: Kind ) -> &'static str {
 
@@ -135,9 +135,7 @@ impl Launcher {
     fn launchd_line ( text: &mut String, value: &str, tabs: usize ) {
 
         for _ in 0..tabs { text.push_str("    "); }
-
-        text.push_str(value);
-        text.push('\n');
+        text.push_str(format!("{}\n", value).as_str());
 
     }
 
@@ -152,7 +150,9 @@ impl Launcher {
         let mut text = String::with_capacity(512);
         let path = format!("/Library/LaunchDaemons/{}.plist", spec.name);
 
-        let command  = Self::clean(spec.command);
+        let name    = Self::clean(spec.name);
+        let cwd     = Self::clean(spec.cwd);
+        let command = Self::clean(spec.command);
 
         text.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
         text.push_str("<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n");
@@ -164,10 +164,14 @@ impl Launcher {
         Self::launchd_line(&mut text, "<true/>", 1);
 
         Self::launchd_line(&mut text, "<key>Label</key>", 1);
-        Self::launchd_tag(&mut text, &Self::clean(spec.name), 1);
+        Self::launchd_tag(&mut text, &name, 1);
 
-        Self::launchd_line(&mut text, "<key>WorkingDirectory</key>", 1);
-        Self::launchd_tag(&mut text, &Self::clean(spec.cwd), 1);
+        if !cwd.is_empty() {
+
+            Self::launchd_line(&mut text, "<key>WorkingDirectory</key>", 1);
+            Self::launchd_tag(&mut text, &cwd, 1);
+
+        }
 
         if !command.is_empty() {
 
@@ -220,7 +224,6 @@ impl Launcher {
     fn systemd_line ( text: &mut String, key: &str, value: &str ) {
 
         let value = Self::clean(value);
-
         if !value.is_empty() { text.push_str(format!("{}={}\n", key, value).as_str()); }
 
     }
@@ -228,7 +231,6 @@ impl Launcher {
     fn systemd_tag ( text: &mut String, value: &str ) {
 
         let value = Self::clean(value);
-
         if !value.is_empty() { text.push_str(format!("\n[{}]\n", value).as_str()); }
 
     }

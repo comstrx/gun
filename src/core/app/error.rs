@@ -42,9 +42,9 @@ impl AppError {
     }
 
 
-    pub fn missing_binary ( name: impl Into<String> ) -> Self {
+    pub fn cannot_detect ( name: impl Into<String> ) -> Self {
 
-        Self::MissingBinary(name.into())
+        Self::CannotDetect(name.into())
 
     }
 
@@ -54,29 +54,48 @@ impl AppError {
 
     }
 
-    pub fn cannot_detect ( name: impl Into<String> ) -> Self {
+    pub fn missing_service ( name: impl Into<String> ) -> Self {
 
-        Self::CannotDetect(name.into())
-
-    }
-
-    pub fn unsupported_platform ( platform: impl Into<String> ) -> Self {
-
-        Self::UnsupportedPlatform(platform.into())
+        Self::MissingService(name.into())
 
     }
 
-    pub fn unsupported_manager ( manager: impl Into<String> ) -> Self {
+    pub fn missing_tool ( name: impl Into<String> ) -> Self {
 
-        Self::UnsupportedManager(manager.into())
+        Self::MissingTool(name.into())
+
+    }
+
+    pub fn unsupported_platform ( name: impl Into<String> ) -> Self {
+
+        Self::UnsupportedPlatform(name.into())
 
     }
 
-    pub fn unsupported_operation ( operation: impl Into<String> ) -> Self {
+    pub fn unsupported_manager ( name: impl Into<String> ) -> Self {
 
-        Self::UnsupportedOperation(operation.into())
+        Self::UnsupportedManager(name.into())
 
     }
+
+    pub fn unsupported_service ( name: impl Into<String> ) -> Self {
+
+        Self::UnsupportedService(name.into())
+
+    }
+
+    pub fn unsupported_tool ( name: impl Into<String> ) -> Self {
+
+        Self::UnsupportedTool(name.into())
+
+    }
+
+    pub fn unsupported_operation ( name: impl Into<String> ) -> Self {
+
+        Self::UnsupportedOperation(name.into())
+
+    }
+
 
     pub fn invalid_argument ( name: impl Into<String>, message: impl Into<String> ) -> Self {
 
@@ -111,6 +130,31 @@ impl AppError {
 
     }
 
+
+    pub fn exit_code ( &self ) -> ExitCode {
+
+        ExitCode::from(match self {
+            Self::CannotDetect(_)          => 2,
+            Self::MissingEnvVar(_)         => 3,
+            Self::MissingService(_)        => 4,
+            Self::MissingTool(_)           => 5,
+            Self::InvalidArgument { .. }   => 6,
+            Self::UnsupportedPlatform(_)   => 7,
+            Self::UnsupportedManager(_)    => 8,
+            Self::UnsupportedService(_)    => 9,
+            Self::UnsupportedTool(_)       => 10,
+            Self::UnsupportedOperation(_)  => 11,
+            Self::PathNotFound(_)          => 12,
+            Self::PathExists(_)            => 13,
+            Self::PathTypeMismatch { .. }  => 14,
+            Self::PermissionDenied { .. }  => 15,
+            Self::CommandNotFound { .. }   => 16,
+            Self::CommandFailed { .. }     => 17,
+            Self::OperationFailed { .. }   => 18,
+            _                              => 1,
+        })
+
+    }
 
     pub fn print_block ( label: &str, value: &str, is_stderr: bool ) {
 
@@ -149,28 +193,6 @@ impl AppError {
         }
 
         self.exit_code()
-
-    }
-
-    pub fn exit_code ( &self ) -> ExitCode {
-
-        ExitCode::from(match self {
-            Self::MissingBinary(_)         => 2,
-            Self::MissingEnvVar(_)         => 3,
-            Self::CannotDetect(_)          => 4,
-            Self::InvalidArgument { .. }   => 5,
-            Self::UnsupportedPlatform(_)   => 6,
-            Self::UnsupportedManager(_)    => 7,
-            Self::UnsupportedOperation(_)  => 8,
-            Self::PathNotFound(_)          => 9,
-            Self::PathExists(_)            => 10,
-            Self::PathTypeMismatch { .. }  => 11,
-            Self::PermissionDenied { .. }  => 12,
-            Self::CommandNotFound { .. }   => 13,
-            Self::CommandFailed { .. }     => 14,
-            Self::OperationFailed { .. }   => 15,
-            _                              => 1,
-        })
 
     }
 

@@ -1,6 +1,6 @@
 
 pub use crate::core::app::{AppResult, AppError};
-pub use crate::core::process::manager::Manager;
+pub use crate::core::manager::Manager;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Restart {

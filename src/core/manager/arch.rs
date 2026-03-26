@@ -1,6 +1,5 @@
 
 pub use crate::core::app::{AppResult, AppError};
-pub use crate::core::process::manager::Manager;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Method {
@@ -9,18 +8,6 @@ pub enum Method {
     Mise,
     Bash,
     Shell,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Spec {
-    pub method  : Method,
-    pub bin     : &'static str,
-    pub name    : &'static str,
-    pub path    : &'static str,
-    pub url     : &'static str,
-    pub version : &'static str,
-    pub args    : &'static [&'static str],
-    pub aliases : &'static [&'static str],
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,6 +24,18 @@ pub struct Info {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Spec {
+    pub method  : Method,
+    pub bin     : &'static str,
+    pub name    : &'static str,
+    pub path    : &'static str,
+    pub url     : &'static str,
+    pub version : &'static str,
+    pub args    : &'static [&'static str],
+    pub aliases : &'static [&'static str],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Tool {
     pub apt    : Spec,
     pub apk    : Spec,
@@ -48,4 +47,18 @@ pub struct Tool {
     pub winget : Spec,
     pub scoop  : Spec,
     pub choco  : Spec,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Manager {
+    Apt,
+    Apk,
+    Dnf,
+    Yum,
+    Pacman,
+    Zypper,
+    Brew,
+    Winget,
+    Scoop,
+    Choco,
 }

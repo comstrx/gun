@@ -15,7 +15,7 @@ impl Service {
                 || has(&service.windows)
                 || has(&service.launchd)
                 || has(&service.systemd)
-        }).map(|(_, tool)| *tool).ok_or_else(|| AppError::command_not_found(key))
+        }).map(|(_, tool)| *tool).ok_or_else(|| AppError::unsupported_service(key))
 
     }
 
@@ -47,6 +47,7 @@ impl Service {
 
     }
 
+
     pub fn has ( name: &str ) -> bool {
 
         match Self::launcher() {
@@ -61,7 +62,7 @@ impl Service {
     pub fn need ( name: &str ) -> AppResult<()> {
 
         if Self::has(name) { return Ok(()); }
-        Err(AppError::command_not_found(name))
+        Err(AppError::missing_service(name))
 
     }
 
@@ -70,9 +71,9 @@ impl Service {
         let service = Self::get(name)?;
 
         match Self::launcher()? {
-            Launcher::Windows => Launcher::windows_install(service.windows),
-            Launcher::Launchd => Launcher::launchd_install(service.launchd),
-            Launcher::Systemd => Launcher::systemd_install(service.systemd),
+            Launcher::Windows => Self::windows_install(service.windows),
+            Launcher::Launchd => Self::launchd_install(service.launchd),
+            Launcher::Systemd => Self::systemd_install(service.systemd),
         }
 
     }
@@ -80,9 +81,9 @@ impl Service {
     pub fn remove ( name: &str ) -> AppResult<()> {
 
         match Self::launcher()? {
-            Launcher::Windows => Launcher::windows_remove(name),
-            Launcher::Launchd => Launcher::launchd_remove(name),
-            Launcher::Systemd => Launcher::systemd_remove(name),
+            Launcher::Windows => Self::windows_remove(name),
+            Launcher::Launchd => Self::launchd_remove(name),
+            Launcher::Systemd => Self::systemd_remove(name),
         }
 
     }
@@ -160,6 +161,29 @@ impl Service {
 
     }
 
+    pub fn alive ( name: &str ) -> bool {
+
+        if !Self::has(name) { return false; }
+
+        match Self::launcher() {
+            Ok(Launcher::Windows) =>
+                Manager::try_run_output("sc", &["query", name])
+                    .ok()
+                    .and_then(|output| String::from_utf8(output.stdout).ok())
+                    .map(|text| text.lines().any(|line| line.trim().starts_with("STATE") && line.contains("RUNNING")))
+                    .unwrap_or(false),
+            Ok(Launcher::Launchd) =>
+                Manager::try_run_output("launchctl", &["print", &format!("system/{}", name)])
+                    .ok()
+                    .and_then(|output| String::from_utf8(output.stdout).ok())
+                    .map(|text| text.contains("state = running") || text.contains("\"state\" = \"running\""))
+                    .unwrap_or(false),
+            Ok(Launcher::Systemd) => Manager::try_run("systemctl", &["is-active", "--quiet", name]).is_ok(),
+            Err(_) => false,
+        }
+
+    }
+
     pub fn status ( name: &str ) -> AppResult<()> {
 
         Self::need(name)?;
@@ -190,26 +214,79 @@ impl Service {
 
     }
 
-    pub fn running ( name: &str ) -> bool {
 
-        if !Self::has(name) { return false; }
+    pub fn has_all ( bins: &[&str] ) -> bool {
 
-        match Self::launcher() {
-            Ok(Launcher::Windows) =>
-                Manager::try_run_output("sc", &["query", name])
-                    .ok()
-                    .and_then(|output| String::from_utf8(output.stdout).ok())
-                    .map(|text| text.lines().any(|line| line.trim().starts_with("STATE") && line.contains("RUNNING")))
-                    .unwrap_or(false),
-            Ok(Launcher::Launchd) =>
-                Manager::try_run_output("launchctl", &["print", &format!("system/{}", name)])
-                    .ok()
-                    .and_then(|output| String::from_utf8(output.stdout).ok())
-                    .map(|text| text.contains("state = running") || text.contains("\"state\" = \"running\""))
-                    .unwrap_or(false),
-            Ok(Launcher::Systemd) => Manager::try_run("systemctl", &["is-active", "--quiet", name]).is_ok(),
-            Err(_) => false,
-        }
+        bins.iter().all(|bin| Self::has(bin))
+
+    }
+
+    pub fn need_all ( bins: &[&str] ) -> AppResult<()> {
+
+        for &bin in bins { Self::need(bin)?; }
+        Ok(())
+
+    }
+
+    pub fn install_all ( bins: &[&str] ) -> AppResult<()> {
+
+        for &bin in bins { Self::install(bin)?; }
+        Ok(())
+
+    }
+
+    pub fn remove_all ( bins: &[&str] ) -> AppResult<()> {
+
+        for &bin in bins { Self::remove(bin)?; }
+        Ok(())
+
+    }
+
+    pub fn ensure_all ( bins: &[&str] ) -> AppResult<()> {
+
+        for &bin in bins { Self::ensure(bin)?; }
+        Ok(())
+
+    }
+
+    pub fn start_all ( bins: &[&str] ) -> AppResult<()> {
+
+        for &bin in bins { Self::start(bin)?; }
+        Ok(())
+
+    }
+
+    pub fn stop_all ( bins: &[&str] ) -> AppResult<()> {
+
+        for &bin in bins { Self::stop(bin)?; }
+        Ok(())
+
+    }
+
+    pub fn restart_all ( bins: &[&str] ) -> AppResult<()> {
+
+        for &bin in bins { Self::restart(bin)?; }
+        Ok(())
+
+    }
+
+    pub fn enable_all ( bins: &[&str] ) -> AppResult<()> {
+
+        for &bin in bins { Self::enable(bin)?; }
+        Ok(())
+
+    }
+
+    pub fn disable_all ( bins: &[&str] ) -> AppResult<()> {
+
+        for &bin in bins { Self::disable(bin)?; }
+        Ok(())
+
+    }
+
+    pub fn all_alive ( bins: &[&str] ) -> bool {
+
+        bins.iter().all(|bin| Self::alive(bin))
 
     }
 

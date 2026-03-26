@@ -1,10 +1,10 @@
 #![allow(unused)]
-use crate::core::{Process, Tool, AppResult};
+use crate::core::{Manager, Service, AppResult};
 
 pub fn main () -> AppResult<()> {
 
-    println!("{:#?}", Tool::get("curl")?);
-    println!("{:#?}", Tool::get("bun")?);
+    println!("{:#?}", Service::get("redis")?);
+    println!("{:#?}", Manager::get("bun")?);
 
     Ok(())
 

@@ -46,7 +46,7 @@ impl Manager {
 
         }
 
-        Err(AppError::message("no supported package manager found"))
+        Err(AppError::cannot_detect("manager"))
 
     }
 
@@ -136,7 +136,7 @@ impl Manager {
         {
 
             if geteuid().is_root() { return Self::run(command, args); }
-            if which("sudo").is_err() { return Err(AppError::missing_binary("sudo")); }
+            if which("sudo").is_err() { return Err(AppError::missing_tool("sudo")); }
 
             let mut sudo_args = Vec::with_capacity(args.len() + 2);
             sudo_args.extend(["-n", command]);
@@ -176,7 +176,7 @@ impl Manager {
         {
 
             if geteuid().is_root() { return Self::run_output(command, args); }
-            if which("sudo").is_err() { return Err(AppError::missing_binary("sudo")); }
+            if which("sudo").is_err() { return Err(AppError::missing_tool("sudo")); }
 
             let mut sudo_args = Vec::with_capacity(args.len() + 2);
             sudo_args.extend(["-n", command]);
@@ -216,7 +216,7 @@ impl Manager {
         {
 
             if geteuid().is_root() { return Self::run_capture(command, args); }
-            if which("sudo").is_err() { return Err(AppError::missing_binary("sudo")); }
+            if which("sudo").is_err() { return Err(AppError::missing_tool("sudo")); }
 
             let mut sudo_args = Vec::with_capacity(args.len() + 2);
             sudo_args.extend(["-n", command]);

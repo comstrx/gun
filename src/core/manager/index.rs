@@ -1,5 +1,5 @@
 
-use super::arch::{Tool, Spec, Method, Manager};
+use super::arch::{Manager, Tool, Spec, Method};
 
 pub const TOOLS: &[(&'static str, Tool)] = &[
     ("curl",

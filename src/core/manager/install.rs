@@ -73,8 +73,8 @@ impl Manager {
 
         if url.is_empty() {  return Err(AppError::invalid_argument("url", "required installer url")); }
 
-        if which("curl").is_err() { return Err(AppError::missing_binary("curl")); }
-        if bash && which("bash").is_err() { return Err(AppError::missing_binary("bash")); }
+        if which("curl").is_err() { return Err(AppError::missing_tool("curl")); }
+        if bash && which("bash").is_err() { return Err(AppError::missing_tool("bash")); }
 
         let path = env::temp_dir().join(format!("{}-installer", id));
         let path_str = path.to_string_lossy().into_owned();
