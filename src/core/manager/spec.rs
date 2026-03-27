@@ -10,7 +10,7 @@ impl Spec {
             bin     : "",
             name    : "",
             version : "",
-            url     : "",
+            source  : "",
             path    : "",
             args    : &[],
             aliases : &[]
@@ -25,7 +25,7 @@ impl Spec {
             bin     : if spec.bin.is_empty()     { self.bin }     else { spec.bin },
             name    : if spec.name.is_empty()    { self.name }    else { spec.name },
             version : if spec.version.is_empty() { self.version } else { spec.version },
-            url     : if spec.url.is_empty()     { self.url }     else { spec.url },
+            source  : if spec.source.is_empty()  { self.source }     else { spec.source },
             path    : if spec.path.is_empty()    { self.path }    else { spec.path },
             args    : if spec.args.is_empty()    { self.args }    else { spec.args },
             aliases : if spec.aliases.is_empty() { self.aliases } else { spec.aliases },
@@ -61,9 +61,9 @@ impl Spec {
 
     }
 
-    pub const fn set_url ( mut self, value: &'static str ) -> Self {
+    pub const fn set_source ( mut self, value: &'static str ) -> Self {
 
-        self.url = value;
+        self.source = value;
         self
 
     }

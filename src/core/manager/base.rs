@@ -8,16 +8,17 @@ impl Manager {
     pub fn as_str ( &self ) -> &'static str {
 
         match self {
-            Self::Apt => "apt",
-            Self::Apk => "apk",
-            Self::Dnf => "dnf",
-            Self::Yum => "yum",
+            Self::Apt    => "apt",
+            Self::Apk    => "apk",
+            Self::Dnf    => "dnf",
+            Self::Yum    => "yum",
+            Self::Nix    => "nix",
             Self::Pacman => "pacman",
             Self::Zypper => "zypper",
-            Self::Brew => "brew",
+            Self::Brew   => "brew",
             Self::Winget => "winget",
-            Self::Scoop => "scoop",
-            Self::Choco => "choco",
+            Self::Scoop  => "scoop",
+            Self::Choco  => "choco",
         }
 
     }
@@ -33,6 +34,7 @@ impl Manager {
                     "apk"             => Self::Apk,
                     "dnf"             => Self::Dnf,
                     "yum"             => Self::Yum,
+                    "nix"             => Self::Nix,
                     "pacman"          => Self::Pacman,
                     "zypper"          => Self::Zypper,
                     "brew"            => Self::Brew,
@@ -46,7 +48,11 @@ impl Manager {
 
         }
 
-        Err(AppError::cannot_detect("manager"))
+        match os_info::get().os_type() {
+            Type::Windows => Ok(Self::Winget),
+            Type::Macos   => Ok(Self::Brew),
+            _ => Err(AppError::cannot_detect("manager"))
+        }
 
     }
 
@@ -81,6 +87,7 @@ impl Manager {
             | Type::EndeavourOS
             | Type::CachyOS => Self::resolve(&["pacman"])?,
 
+            Type::NixOS  => Self::resolve(&["nix"])?,
             Type::Alpine => Self::resolve(&["apk"])?,
             Type::openSUSE | Type::SUSE => Self::resolve(&["zypper"])?,
 
@@ -99,7 +106,6 @@ impl Manager {
     pub fn run ( command: &str, args: &[&str] ) -> AppResult<()> {
 
         let status = Command::new(command).args(args).status()?;
-
         if !status.success() { return Err(AppError::command_failed(command, status)); }
 
         Ok(())
@@ -136,24 +142,29 @@ impl Manager {
         {
 
             if geteuid().is_root() { return Self::run(command, args); }
-            if which("sudo").is_err() { return Err(AppError::missing_tool("sudo")); }
 
-            let mut sudo_args = Vec::with_capacity(args.len() + 2);
-            sudo_args.extend(["-n", command]);
-            sudo_args.extend_from_slice(args);
+            if which("sudo").is_ok() {
 
-            match Command::new("sudo").args(&sudo_args).status() {
-                Ok(status) if status.success() => return Ok(()),
-                Ok(_) | Err(_) => {}
-            }
+                let mut sudo_args = Vec::with_capacity(args.len() + 2);
 
-            if io::stdin().is_terminal() && io::stderr().is_terminal() {
-
-                let mut sudo_args = Vec::with_capacity(args.len() + 1);
-                sudo_args.push(command);
+                sudo_args.extend(["-n", command]);
                 sudo_args.extend_from_slice(args);
 
-                return Self::run("sudo", &sudo_args);
+                match Command::new("sudo").args(&sudo_args).status() {
+                    Ok(status) if status.success() => return Ok(()),
+                    Ok(_) | Err(_) => {}
+                }
+
+                if io::stdin().is_terminal() && io::stderr().is_terminal() {
+
+                    let mut sudo_args = Vec::with_capacity(args.len() + 1);
+
+                    sudo_args.push(command);
+                    sudo_args.extend_from_slice(args);
+
+                    return Self::run("sudo", &sudo_args);
+
+                }
 
             }
 
@@ -176,24 +187,29 @@ impl Manager {
         {
 
             if geteuid().is_root() { return Self::run_output(command, args); }
-            if which("sudo").is_err() { return Err(AppError::missing_tool("sudo")); }
+        
+            if which("sudo").is_ok() {
 
-            let mut sudo_args = Vec::with_capacity(args.len() + 2);
-            sudo_args.extend(["-n", command]);
-            sudo_args.extend_from_slice(args);
+                let mut sudo_args = Vec::with_capacity(args.len() + 2);
 
-            match Command::new("sudo").args(&sudo_args).output() {
-                Ok(output) if output.status.success() => return Ok(output),
-                Ok(_) | Err(_) => {}
-            }
-
-            if io::stdin().is_terminal() && io::stderr().is_terminal() {
-
-                let mut sudo_args = Vec::with_capacity(args.len() + 1);
-                sudo_args.push(command);
+                sudo_args.extend(["-n", command]);
                 sudo_args.extend_from_slice(args);
 
-                return Self::run_output("sudo", &sudo_args);
+                match Command::new("sudo").args(&sudo_args).output() {
+                    Ok(output) if output.status.success() => return Ok(output),
+                    Ok(_) | Err(_) => {}
+                }
+
+                if io::stdin().is_terminal() && io::stderr().is_terminal() {
+
+                    let mut sudo_args = Vec::with_capacity(args.len() + 1);
+
+                    sudo_args.push(command);
+                    sudo_args.extend_from_slice(args);
+
+                    return Self::run_output("sudo", &sudo_args);
+
+                }
 
             }
 
@@ -216,24 +232,29 @@ impl Manager {
         {
 
             if geteuid().is_root() { return Self::run_capture(command, args); }
-            if which("sudo").is_err() { return Err(AppError::missing_tool("sudo")); }
 
-            let mut sudo_args = Vec::with_capacity(args.len() + 2);
-            sudo_args.extend(["-n", command]);
-            sudo_args.extend_from_slice(args);
+            if which("sudo").is_ok() {
 
-            match Command::new("sudo").args(&sudo_args).output() {
-                Ok(output) if output.status.success() => return Ok(output),
-                Ok(_) | Err(_) => {}
-            }
+                let mut sudo_args = Vec::with_capacity(args.len() + 2);
 
-            if io::stdin().is_terminal() && io::stderr().is_terminal() {
-
-                let mut sudo_args = Vec::with_capacity(args.len() + 1);
-                sudo_args.push(command);
+                sudo_args.extend(["-n", command]);
                 sudo_args.extend_from_slice(args);
 
-                return Self::run_capture("sudo", &sudo_args);
+                match Command::new("sudo").args(&sudo_args).output() {
+                    Ok(output) if output.status.success() => return Ok(output),
+                    Ok(_) | Err(_) => {}
+                }
+
+                if io::stdin().is_terminal() && io::stderr().is_terminal() {
+
+                    let mut sudo_args = Vec::with_capacity(args.len() + 1);
+
+                    sudo_args.push(command);
+                    sudo_args.extend_from_slice(args);
+
+                    return Self::run_capture("sudo", &sudo_args);
+
+                }
 
             }
 

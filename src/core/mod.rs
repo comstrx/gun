@@ -8,4 +8,4 @@ pub mod manager;
 pub use manager::{Manager, Tool, Spec, Info, Method};
 
 pub mod service;
-pub use service::{Service, Launcher, Kind, Restart};
+pub use service::{Service, Provider, Kind, Restart};

@@ -1,37 +1,39 @@
 use {os_info::Type, which::which};
 
-use super::arch::{Service, Launcher, Spec, Manager, AppResult, AppError};
+use super::arch::{Service, Provider, Spec, Systemd, Launchd, Winsc, Manager, AppResult, AppError};
 use super::index::SERVICES;
 
 impl Service {
 
-    pub fn get ( name: &str ) -> AppResult<Self> {
+    pub fn provider () -> AppResult<Provider> {
+
+        match os_info::get().os_type() {
+            Type::Windows => {
+                return Ok(Provider::Winsc);
+            },
+            Type::Macos   => {
+                if which("launchctl").is_ok() { return Ok(Provider::Launchd); }
+                Err(AppError::cannot_detect("provider"))
+            },
+            _ => {
+                if which("systemctl").is_ok() { return Ok(Provider::Systemd); }
+                Err(AppError::cannot_detect("provider"))
+            }
+        }
+
+    }
+
+    pub fn get ( name: &str ) -> AppResult<Service> {
 
         let key = name.trim();
         let has = |spec: &Spec| spec.name.eq_ignore_ascii_case(key);
 
         SERVICES.iter().find(|(name, service)| {
             name.eq_ignore_ascii_case(key)
-                || has(&service.windows)
+                || has(&service.winsc)
                 || has(&service.launchd)
                 || has(&service.systemd)
         }).map(|(_, tool)| *tool).ok_or_else(|| AppError::unsupported_service(key))
-
-    }
-
-    pub fn launcher () -> AppResult<Launcher> {
-
-        match os_info::get().os_type() {
-            Type::Windows => Ok(Launcher::Windows),
-            Type::Macos   => {
-                if which("launchctl").is_ok() { return Ok(Launcher::Launchd); }
-                Err(AppError::cannot_detect("launcher"))
-            },
-            _ => {
-                if which("systemctl").is_ok() { return Ok(Launcher::Systemd); }
-                Err(AppError::cannot_detect("launcher"))
-            }
-        }
 
     }
 
@@ -39,10 +41,10 @@ impl Service {
 
         let service = Self::get(name)?;
 
-        Ok(match Self::launcher()? {
-            Launcher::Windows => service.windows,
-            Launcher::Launchd => service.launchd,
-            Launcher::Systemd => service.systemd,
+        Ok(match Self::provider()? {
+            Provider::Systemd => service.systemd,
+            Provider::Launchd => service.launchd,
+            Provider::Winsc   => service.winsc,
         })
 
     }
@@ -50,10 +52,10 @@ impl Service {
 
     pub fn has ( name: &str ) -> bool {
 
-        match Self::launcher() {
-            Ok(Launcher::Windows) => Manager::try_run("sc", &["query", name]).is_ok(),
-            Ok(Launcher::Launchd) => Manager::try_run("launchctl", &["print", &format!("system/{}", name)]).is_ok(),
-            Ok(Launcher::Systemd) => Manager::try_run("systemctl", &["cat", name]).is_ok(),
+        match Self::provider() {
+            Ok(Provider::Systemd) => Manager::try_run("systemctl", &["cat", name]).is_ok(),
+            Ok(Provider::Launchd) => Manager::try_run("launchctl", &["print", &format!("system/{}", name)]).is_ok(),
+            Ok(Provider::Winsc)   => Manager::try_run("sc", &["query", name]).is_ok(),
             Err(_) => false,
         }
 
@@ -70,20 +72,20 @@ impl Service {
 
         let service = Self::get(name)?;
 
-        match Self::launcher()? {
-            Launcher::Windows => Self::windows_install(service.windows),
-            Launcher::Launchd => Self::launchd_install(service.launchd),
-            Launcher::Systemd => Self::systemd_install(service.systemd),
+        match Self::provider()? {
+            Provider::Systemd => Systemd::install(service.systemd),
+            Provider::Launchd => Launchd::install(service.launchd),
+            Provider::Winsc   => Winsc::install(service.winsc),
         }
 
     }
 
     pub fn remove ( name: &str ) -> AppResult<()> {
 
-        match Self::launcher()? {
-            Launcher::Windows => Self::windows_remove(name),
-            Launcher::Launchd => Self::launchd_remove(name),
-            Launcher::Systemd => Self::systemd_remove(name),
+        match Self::provider()? {
+            Provider::Systemd => Systemd::remove(name),
+            Provider::Launchd => Launchd::remove(name),
+            Provider::Winsc   => Winsc::remove(name),
         }
 
     }
@@ -99,10 +101,10 @@ impl Service {
 
         Self::ensure(name)?;
 
-        match Self::launcher()? {
-            Launcher::Windows => Manager::try_run("sc", &["start", name]),
-            Launcher::Launchd => Manager::try_run("launchctl", &["start", name]),
-            Launcher::Systemd => Manager::try_run("systemctl", &["start", name]),
+        match Self::provider()? {
+            Provider::Systemd => Manager::try_run("systemctl", &["start", name]),
+            Provider::Launchd => Manager::try_run("launchctl", &["start", name]),
+            Provider::Winsc   => Manager::try_run("sc", &["start", name]),
         }
 
     }
@@ -111,10 +113,10 @@ impl Service {
 
         Self::need(name)?;
 
-        match Self::launcher()? {
-            Launcher::Windows => Manager::try_run("sc", &["stop", name]),
-            Launcher::Launchd => Manager::try_run("launchctl", &["stop", name]),
-            Launcher::Systemd => Manager::try_run("systemctl", &["stop", name]),
+        match Self::provider()? {
+            Provider::Systemd => Manager::try_run("systemctl", &["stop", name]),
+            Provider::Launchd => Manager::try_run("launchctl", &["stop", name]),
+            Provider::Winsc   => Manager::try_run("sc", &["stop", name]),
         }
 
     }
@@ -123,13 +125,13 @@ impl Service {
 
         Self::ensure(name)?;
 
-        match Self::launcher()? {
-            Launcher::Systemd => Manager::try_run("systemctl", &["restart", name]),
-            Launcher::Launchd => {
+        match Self::provider()? {
+            Provider::Systemd => Manager::try_run("systemctl", &["restart", name]),
+            Provider::Launchd => {
                 let _ = Manager::try_run("launchctl", &["stop", name]);
                 Manager::try_run("launchctl", &["start", name])
             }
-            Launcher::Windows => {
+            Provider::Winsc => {
                 let _ = Manager::try_run("sc", &["stop", name]);
                 Manager::try_run("sc", &["start", name])
             }
@@ -141,10 +143,10 @@ impl Service {
 
         Self::ensure(name)?;
 
-        match Self::launcher()? {
-            Launcher::Windows => Manager::try_run("sc", &["config", name, "start= auto"]),
-            Launcher::Launchd => Manager::try_run("launchctl", &["enable", &format!("system/{}", name)]),
-            Launcher::Systemd => Manager::try_run("systemctl", &["enable", name]),
+        match Self::provider()? {
+            Provider::Systemd => Manager::try_run("systemctl", &["enable", name]),
+            Provider::Launchd => Manager::try_run("launchctl", &["enable", &format!("system/{}", name)]),
+            Provider::Winsc   => Manager::try_run("sc", &["config", name, "start= auto"]),
         }
 
     }
@@ -153,10 +155,10 @@ impl Service {
 
         Self::need(name)?;
 
-        match Self::launcher()? {
-            Launcher::Windows => Manager::try_run("sc", &["config", name, "start= disabled"]),
-            Launcher::Launchd => Manager::try_run("launchctl", &["disable", &format!("system/{}", name)]),
-            Launcher::Systemd => Manager::try_run("systemctl", &["disable", name]),
+        match Self::provider()? {
+            Provider::Systemd => Manager::try_run("systemctl", &["disable", name]),
+            Provider::Launchd => Manager::try_run("launchctl", &["disable", &format!("system/{}", name)]),
+            Provider::Winsc   => Manager::try_run("sc", &["config", name, "start= disabled"]),
         }
 
     }
@@ -165,20 +167,20 @@ impl Service {
 
         if !Self::has(name) { return false; }
 
-        match Self::launcher() {
-            Ok(Launcher::Windows) =>
-                Manager::try_run_output("sc", &["query", name])
-                    .ok()
-                    .and_then(|output| String::from_utf8(output.stdout).ok())
-                    .map(|text| text.lines().any(|line| line.trim().starts_with("STATE") && line.contains("RUNNING")))
-                    .unwrap_or(false),
-            Ok(Launcher::Launchd) =>
+        match Self::provider() {
+            Ok(Provider::Systemd) => Manager::try_run("systemctl", &["is-active", "--quiet", name]).is_ok(),
+            Ok(Provider::Launchd) =>
                 Manager::try_run_output("launchctl", &["print", &format!("system/{}", name)])
                     .ok()
                     .and_then(|output| String::from_utf8(output.stdout).ok())
                     .map(|text| text.contains("state = running") || text.contains("\"state\" = \"running\""))
                     .unwrap_or(false),
-            Ok(Launcher::Systemd) => Manager::try_run("systemctl", &["is-active", "--quiet", name]).is_ok(),
+            Ok(Provider::Winsc)   =>
+                Manager::try_run_output("sc", &["query", name])
+                    .ok()
+                    .and_then(|output| String::from_utf8(output.stdout).ok())
+                    .map(|text| text.lines().any(|line| line.trim().starts_with("STATE") && line.contains("RUNNING")))
+                    .unwrap_or(false),
             Err(_) => false,
         }
 
@@ -188,10 +190,10 @@ impl Service {
 
         Self::need(name)?;
 
-        match Self::launcher()? {
-            Launcher::Windows => Manager::try_run("sc", &["query", name]),
-            Launcher::Launchd => Manager::try_run("launchctl", &["print", &format!("system/{}", name)]),
-            Launcher::Systemd => Manager::try_run("systemctl", &["status", name, "--no-pager"]),
+        match Self::provider()? {
+            Provider::Systemd => Manager::try_run("systemctl", &["status", name, "--no-pager"]),
+            Provider::Launchd => Manager::try_run("launchctl", &["print", &format!("system/{}", name)]),
+            Provider::Winsc   => Manager::try_run("sc", &["query", name]),
         }
 
     }
@@ -201,15 +203,14 @@ impl Service {
         Self::need(name)?;
         let lines = lines.max(1).to_string();
 
-        match Self::launcher()? {
-            Launcher::Windows => Manager::try_run("wevtutil", &["qe", "System", &format!("/c:{}", lines), "/rd:true", "/f:text"]),
-            Launcher::Systemd => Manager::try_run("journalctl", &["-u", name, "-n", &lines, "--no-pager"]),
-            Launcher::Launchd => {
+        match Self::provider()? {
+            Provider::Systemd => Manager::try_run("journalctl", &["-u", name, "-n", &lines, "--no-pager"]),
+            Provider::Launchd =>
                 Manager::try_run("log", &[
                     "show", "--style", "compact", "--last", "1h", "--predicate",
                     &format!("process == \"{}\" OR eventMessage CONTAINS[c] \"{}\"", name, name),
-                ])
-            }
+                ]),
+            Provider::Winsc   => Manager::try_run("wevtutil", &["qe", "System", &format!("/c:{}", lines), "/rd:true", "/f:text"]),
         }
 
     }

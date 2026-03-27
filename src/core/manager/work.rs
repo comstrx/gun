@@ -169,8 +169,13 @@ impl Manager {
         if let Some(path) = Self::find_path(bin) { return Ok(path); }
 
         if let Ok(spec) = Self::spec(bin) {
-            if !spec.path.is_empty() && PathBuf::from(spec.path).is_file() { return Ok(spec.path.into()); }
-            if let Some(path) = Self::find_path(spec.bin) { return Ok(path); }
+
+            let spec_bin = spec.bin.trim();
+            let spec_path = spec.path.trim();
+
+            if !spec_path.is_empty() && PathBuf::from(spec_path).is_file() { return Ok(spec_path.into()); }
+            if let Some(path) = Self::find_path(spec_bin) { return Ok(path); }
+
         }
 
         Err(AppError::missing_tool(bin))
@@ -185,25 +190,21 @@ impl Manager {
 
     pub fn version ( bin: &str ) -> AppResult<String> {
 
-        let bin = if Self::path(bin).is_ok() { bin.to_string() } else { Self::path(bin)?.to_string_lossy().into_owned() };
-        let key = bin.as_str();
+        let bin = Self::path(bin)
+            .map(|path| path.to_string_lossy().into_owned())
+            .unwrap_or_else(|_| bin.to_string());
 
         static RE: OnceLock<Regex> = OnceLock::new();
         let mut first_error = None;
 
-        let re = RE.get_or_init(|| {
-            Regex::new(r"(?i)(?:^|[^0-9])(?:[a-z]+)?(\d+)\.(\d+)(?:\.(\d+))?([0-9a-z.+-]*)")
-                .expect("invalid version regex")
-        });
+        let regex = r"(?i)(?:^|[^0-9])(?:[a-z]+)?(\d+)\.(\d+)(?:\.(\d+))?([0-9a-z.+-]*)";
+        let re = RE.get_or_init(|| Regex::new(regex).expect("invalid version regex"));
 
         for args in [&["--version"][..], &["-v"][..], &["-V"][..], &["version"][..]] {
 
-            let output = match Manager::run_capture(key, args) {
+            let output = match Self::run_capture(bin.as_str(), args) {
                 Ok(output) => output,
-                Err(err) => {
-                    if first_error.is_none() { first_error = Some(err); }
-                    continue;
-                }
+                Err(err) => { if first_error.is_none() { first_error = Some(err); } continue; }
             };
 
             for text in [&output.stdout[..], &output.stderr[..]] {
@@ -218,6 +219,7 @@ impl Manager {
                     let tail  = caps.get(4).map_or("", |m| m.as_str()).trim_start_matches(['.', '-', '+']);
 
                     let pre = if tail.is_empty() { String::new() } else {
+
                         let tail = tail
                             .split(['.', '-', '+'])
                             .filter(|part| !part.is_empty())
@@ -226,6 +228,7 @@ impl Manager {
 
                         if tail.is_empty() { String::new() }
                         else { format!("-{tail}") }
+
                     };
 
                     let version = format!("{major}.{minor}.{patch}{pre}");
@@ -238,6 +241,7 @@ impl Manager {
         }
 
         if let Some(err) = first_error { return Err(err.into()); }
+
         Err(AppError::cannot_detect("version"))
 
     }
@@ -251,7 +255,7 @@ impl Manager {
             spec.name.eq_ignore_ascii_case(key)
                 || spec.bin.eq_ignore_ascii_case(key)
                 || spec.path.eq_ignore_ascii_case(key)
-                || spec.url.eq_ignore_ascii_case(key)
+                || spec.source.eq_ignore_ascii_case(key)
                 || spec.aliases.iter().any(|alias| alias.eq_ignore_ascii_case(key))
         };
         TOOLS.iter().find(|(name, tool)| {
@@ -260,6 +264,7 @@ impl Manager {
                 || has(&tool.apk)
                 || has(&tool.dnf)
                 || has(&tool.yum)
+                || has(&tool.nix)
                 || has(&tool.pacman)
                 || has(&tool.zypper)
                 || has(&tool.brew)
@@ -274,17 +279,18 @@ impl Manager {
 
         let tool = Self::get(bin)?;
 
-        Ok(match Manager::detect()? {
-            Manager::Apt    => tool.apt,
-            Manager::Apk    => tool.apk,
-            Manager::Dnf    => tool.dnf,
-            Manager::Yum    => tool.yum,
-            Manager::Pacman => tool.pacman,
-            Manager::Zypper => tool.zypper,
-            Manager::Brew   => tool.brew,
-            Manager::Winget => tool.winget,
-            Manager::Scoop  => tool.scoop,
-            Manager::Choco  => tool.choco,
+        Ok(match Self::detect()? {
+            Self::Apt    => tool.apt,
+            Self::Apk    => tool.apk,
+            Self::Dnf    => tool.dnf,
+            Self::Yum    => tool.yum,
+            Self::Nix    => tool.nix,
+            Self::Pacman => tool.pacman,
+            Self::Zypper => tool.zypper,
+            Self::Brew   => tool.brew,
+            Self::Winget => tool.winget,
+            Self::Scoop  => tool.scoop,
+            Self::Choco  => tool.choco,
         })
 
     }
@@ -297,7 +303,7 @@ impl Manager {
             name    : bin.to_string(),
             path    : Self::path(bin).ok(),
             version : Self::version(bin).ok().filter(|value| !value.is_empty()),
-            url     : None,
+            source  : None,
             exists  : false,
             args    : Vec::new(),
             aliases : Vec::new(),
@@ -311,7 +317,7 @@ impl Manager {
                 name    : if spec.name.is_empty() { bin.to_string() } else { spec.name.to_string() },
                 path    : data.path.clone().or_else(|| (!spec.path.is_empty()).then(|| std::path::PathBuf::from(spec.path))),
                 version : data.version.clone().or_else(|| (!spec.version.is_empty()).then(|| spec.version.to_string())),
-                url     : (!spec.url.is_empty()).then(|| spec.url.to_string()),
+                source  : (!spec.source.is_empty()).then(|| spec.source.to_string()),
                 exists  : false,
                 args    : spec.args.iter().map(|value| (*value).to_string()).collect(),
                 aliases : spec.aliases.iter().map(|value| (*value).to_string()).collect(),
@@ -331,9 +337,50 @@ impl Manager {
         println!("name     : {}", info.name);
         println!("path     : {}", info.path.as_deref().map(|path| path.to_string_lossy().into_owned()).unwrap_or_else(|| "unknown".into()));
         println!("version  : {}", info.version.as_deref().unwrap_or("unknown"));
-        println!("url      : {}", info.url.as_deref().unwrap_or("unknown"));
+        println!("source   : {}", info.source.as_deref().unwrap_or("unknown"));
         println!("exists   : {}", info.exists);
 
+        Ok(())
+
+    }
+
+    pub fn installing ( bin: &str, latest: bool ) -> AppResult<()> {
+
+        let Ok(spec) = Self::spec(bin) else { return Self::native_install(bin, ""); };
+
+        let ver = spec.version.trim();
+        let version = if latest { "" } else { ver };
+
+        let id = if spec.name.trim().is_empty() { spec.bin.trim() } else { spec.name.trim() };
+        let source = if spec.source.trim().is_empty() { id } else { spec.source.trim() };
+
+        match spec.method {
+            Method::Native => Self::native_install(source, version),
+            Method::Nix    => Self::nix_install(source, version),
+            Method::Snap   => Self::snap_install(source, version),
+            Method::Mise   => Self::mise_install(source, version),
+            Method::Bash   => Self::script_install(id, source, ver, spec.args, true),
+            Method::Shell  => Self::script_install(id, source, ver, spec.args, false),
+        }
+
+    }
+
+    pub fn removing ( bin: &str ) -> AppResult<()> {
+
+        let id = match Self::spec(bin) {
+            Ok(spec) => {
+                let id = if spec.name.trim().is_empty() { spec.bin.trim() } else { spec.name.trim() };
+                let source = if spec.source.trim().is_empty() { id } else { spec.source.trim() };
+                if source.is_empty() { bin.trim() } else { source }
+            }
+            Err(_) => bin.trim(),
+        };
+
+        if Self::has("nix")  { let _ = Self::nix_remove(id); }
+        if Self::has("snap") { let _ = Self::snap_remove(id); }
+        if Self::has("mise") { let _ = Self::mise_remove(id); }
+
+        let _ = Self::native_remove(id);
         Ok(())
 
     }
@@ -354,42 +401,20 @@ impl Manager {
 
     pub fn install ( bin: &str ) -> AppResult<()> {
 
-        if Self::get(bin).is_err() { return Manager::native_install(bin); }
-
-        let spec = Self::spec(bin)?;
-        let id = if spec.name.is_empty() { spec.bin } else { spec.name };
-        let url = if spec.url.is_empty() { id } else { spec.url };
-
-        match spec.method {
-            Method::Native => Manager::native_install(id),
-            Method::Nix    => Manager::nix_install(url),
-            Method::Mise   => Manager::mise_install(url),
-            Method::Bash   => Manager::script_install(id, url, spec.args, true),
-            Method::Shell  => Manager::script_install(id, url, spec.args, false),
-        }
+        Self::installing(bin, false)
 
     }
 
     pub fn remove ( bin: &str ) -> AppResult<()> {
 
-        let id = match Self::spec(bin) {
-            Ok(spec) => {
-                if !spec.url.is_empty() {
-                    if Self::has("nix") { let _ = Manager::nix_remove(spec.url); }
-                    if Self::has("mise") { let _ = Manager::mise_remove(spec.url); }
-                }
+        Self::removing(bin)
 
-                let name = if spec.name.is_empty() { spec.bin } else { spec.name };
-                if name.is_empty() { bin } else { name }
-            }
-            Err(_) => bin,
-        };
+    }
 
-        if Self::has("nix") { let _ = Manager::nix_remove(id); }
-        if Self::has("mise") { let _ = Manager::mise_remove(id); }
+    pub fn upgrade ( bin: &str ) -> AppResult<()> {
 
-        let _ = Manager::native_remove(id);
-        Ok(())
+        Self::remove(bin)?;
+        Self::installing(bin, true)
 
     }
 
@@ -397,25 +422,22 @@ impl Manager {
 
         if !Self::has(bin) { Self::install(bin)?; }
 
-        match Self::version(bin) {
-            Ok(_) => Ok(()),
-            Err(_) => {
-                let spec = Self::spec(bin)?;
+        if Self::version(bin).is_ok() { return Ok(()); }
 
-                if spec.path.is_empty() {
-                    let _ = Self::version(spec.bin)?;
-                    return Ok(());
-                }
+        let spec = Self::spec(bin)?;
 
-                match Self::version(spec.path) {
-                    Ok(_) => Ok(()),
-                    Err(_) => {
-                        let _ = Self::version(spec.bin)?;
-                        Ok(())
-                    }
-                }
-            }
-        }
+        if !spec.path.trim().is_empty() && Self::version(spec.path).is_ok() { return Ok(()); }
+
+        Self::version(spec.bin)?;
+
+        Ok(())
+
+    }
+
+    pub fn reinstall ( bin: &str ) -> AppResult<()> {
+
+        Self::remove(bin)?;
+        Self::install(bin)
 
     }
 
@@ -423,6 +445,12 @@ impl Manager {
     pub fn has_all ( bins: &[&str] ) -> bool {
 
         bins.iter().all(|bin| Self::has(bin))
+
+    }
+
+    pub fn has_any ( bins: &[&str] ) -> bool {
+
+        bins.iter().any(|bin| Self::has(bin))
 
     }
 
@@ -447,6 +475,13 @@ impl Manager {
 
     }
 
+    pub fn upgrade_all ( bins: &[&str] ) -> AppResult<()> {
+
+        for &bin in bins { Self::upgrade(bin)?; }
+        Ok(())
+
+    }
+
     pub fn ensure_all ( bins: &[&str] ) -> AppResult<()> {
 
         for &bin in bins { Self::ensure(bin)?; }
@@ -454,9 +489,9 @@ impl Manager {
 
     }
 
-    pub fn show_all ( bins: &[&str] ) -> AppResult<()> {
+    pub fn reinstall_all ( bins: &[&str] ) -> AppResult<()> {
 
-        for &bin in bins { Self::show(bin)?; }
+        for &bin in bins { Self::reinstall(bin)?; }
         Ok(())
 
     }

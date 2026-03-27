@@ -1,23 +1,23 @@
 
-use super::arch::{Service, Launcher, Spec, Kind, Restart};
+use super::arch::{Service, Provider, Spec, Kind, Restart};
 
 impl Service {
 
     pub const fn new () -> Self {
 
         Self {
-            windows : Spec::new(),
             launchd : Spec::new(),
             systemd : Spec::new(),
+            winsc   : Spec::new(),
         }
 
     }
 
     pub const fn set_kind ( mut self, value: Kind ) -> Self {
 
-        self.windows = self.windows.set_kind(value);
-        self.launchd = self.launchd.set_kind(value);
         self.systemd = self.systemd.set_kind(value);
+        self.launchd = self.launchd.set_kind(value);
+        self.winsc   = self.winsc.set_kind(value);
 
         self
 
@@ -25,9 +25,9 @@ impl Service {
 
     pub const fn set_restart ( mut self, value: Restart ) -> Self {
 
-        self.windows = self.windows.set_restart(value);
-        self.launchd = self.launchd.set_restart(value);
         self.systemd = self.systemd.set_restart(value);
+        self.launchd = self.launchd.set_restart(value);
+        self.winsc   = self.winsc.set_restart(value);
 
         self
 
@@ -35,9 +35,9 @@ impl Service {
 
     pub const fn set_name ( mut self, value: &'static str ) -> Self {
 
-        self.windows = self.windows.set_name(value);
-        self.launchd = self.launchd.set_name(value);
         self.systemd = self.systemd.set_name(value);
+        self.launchd = self.launchd.set_name(value);
+        self.winsc   = self.winsc.set_name(value);
 
         self
 
@@ -45,20 +45,20 @@ impl Service {
 
     pub const fn set_description ( mut self, value: &'static str ) -> Self {
 
-        self.windows = self.windows.set_description(value);
-        self.launchd = self.launchd.set_description(value);
         self.systemd = self.systemd.set_description(value);
+        self.launchd = self.launchd.set_description(value);
+        self.winsc   = self.winsc.set_description(value);
 
         self
 
     }
 
-    pub const fn register ( mut self, launcher: Launcher, spec: Spec ) -> Self {
+    pub const fn register ( mut self, provider: Provider, spec: Spec ) -> Self {
 
-        match launcher {
-            Launcher::Windows => self.windows = self.windows.merge(spec),
-            Launcher::Launchd => self.launchd = self.launchd.merge(spec),
-            Launcher::Systemd => self.systemd = self.systemd.merge(spec),
+        match provider {
+            Provider::Systemd => self.systemd = self.systemd.merge(spec),
+            Provider::Launchd => self.launchd = self.launchd.merge(spec),
+            Provider::Winsc   => self.winsc   = self.winsc.merge(spec),
         };
 
         self
@@ -67,19 +67,19 @@ impl Service {
 
     pub const fn register_windows ( self, spec: Spec ) -> Self {
 
-        self.register(Launcher::Windows, spec)
+        self.register(Provider::Winsc, spec)
 
     }
 
     pub const fn register_macos ( self, spec: Spec ) -> Self {
 
-        self.register(Launcher::Launchd, spec)
+        self.register(Provider::Launchd, spec)
 
     }
 
     pub const fn register_linux ( self, spec: Spec ) -> Self {
 
-        self.register(Launcher::Systemd, spec)
+        self.register(Provider::Systemd, spec)
 
     }
 
