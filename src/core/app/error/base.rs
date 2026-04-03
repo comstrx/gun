@@ -54,6 +54,12 @@ impl AppError {
 
     }
 
+    pub fn missing_key ( name: impl Into<String> ) -> Self {
+
+        Self::MissingKey(name.into())
+
+    }
+
     pub fn missing_service ( name: impl Into<String> ) -> Self {
 
         Self::MissingService(name.into())
@@ -136,21 +142,22 @@ impl AppError {
         ExitCode::from(match self {
             Self::CannotDetect(_)          => 2,
             Self::MissingEnvVar(_)         => 3,
-            Self::MissingService(_)        => 4,
-            Self::MissingTool(_)           => 5,
-            Self::InvalidArgument { .. }   => 6,
-            Self::UnsupportedPlatform(_)   => 7,
-            Self::UnsupportedManager(_)    => 8,
-            Self::UnsupportedService(_)    => 9,
-            Self::UnsupportedTool(_)       => 10,
-            Self::UnsupportedOperation(_)  => 11,
-            Self::PathNotFound(_)          => 12,
-            Self::PathExists(_)            => 13,
-            Self::PathTypeMismatch { .. }  => 14,
-            Self::PermissionDenied { .. }  => 15,
-            Self::CommandNotFound { .. }   => 16,
-            Self::CommandFailed { .. }     => 17,
-            Self::OperationFailed { .. }   => 18,
+            Self::MissingKey(_)            => 4,
+            Self::MissingService(_)        => 5,
+            Self::MissingTool(_)           => 6,
+            Self::InvalidArgument { .. }   => 7,
+            Self::UnsupportedPlatform(_)   => 8,
+            Self::UnsupportedManager(_)    => 9,
+            Self::UnsupportedService(_)    => 10,
+            Self::UnsupportedTool(_)       => 11,
+            Self::UnsupportedOperation(_)  => 12,
+            Self::PathNotFound(_)          => 13,
+            Self::PathExists(_)            => 14,
+            Self::PathTypeMismatch { .. }  => 15,
+            Self::PermissionDenied { .. }  => 16,
+            Self::CommandNotFound { .. }   => 17,
+            Self::CommandFailed { .. }     => 18,
+            Self::OperationFailed { .. }   => 19,
             _                              => 1,
         })
 

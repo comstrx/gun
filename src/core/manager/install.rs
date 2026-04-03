@@ -1,4 +1,5 @@
 use std::{fs, env, process, path::PathBuf, time::{SystemTime, UNIX_EPOCH}};
+
 use super::arch::{Manager, AppResult};
 
 impl Manager {
@@ -123,7 +124,7 @@ impl Manager {
             .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
             .collect::<String>();
 
-        env::temp_dir().join(format!("{}-installer-{}-{}", name, pid, time))
+        env::temp_dir().join(format!("{}-installer-{}-{}.sh", name, pid, time))
 
     }
 

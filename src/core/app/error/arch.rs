@@ -1,8 +1,9 @@
 use std::{path::PathBuf, process::ExitStatus};
 use thiserror::Error;
 
-pub type AppResult<T> = Result<T, AppError>;
 pub type AppExitCode = std::process::ExitCode;
+
+pub type AppResult<T> = Result<T, AppError>;
 
 #[derive(Debug, Error)]
 pub enum AppError {
@@ -38,6 +39,9 @@ pub enum AppError {
 
     #[error("missing environment variable: {0}")]
     MissingEnvVar(String),
+
+    #[error("missing key: {0} not found")]
+    MissingKey(String),
 
     #[error("missing service: {0} not found")]
     MissingService(String),

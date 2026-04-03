@@ -1,3 +1,4 @@
-use super::arch::Dir as Dirs;
 
-impl Dirs {}
+use super::arch::Dir;
+
+impl Dir {}

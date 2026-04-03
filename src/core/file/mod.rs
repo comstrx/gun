@@ -1,5 +1,5 @@
 pub mod arch;
-pub mod base;
+pub mod path;
 pub mod file;
 pub mod dir;
 

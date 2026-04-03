@@ -1,5 +1,14 @@
 
-pub use crate::core::app::{AppResult, AppError};
+pub use crate::core::app::{AppResult, AppError, AppContext, ContextValue};
+pub use crate::core::file::{Path};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Context {
+    Name,
+    Path,
+    Source,
+    Version,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Method {
@@ -9,19 +18,6 @@ pub enum Method {
     Mise,
     Bash,
     Shell,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Info {
-    pub method  : Method,
-    pub bin     : String,
-    pub name    : String,
-    pub path    : Option<std::path::PathBuf>,
-    pub source  : Option<String>,
-    pub version : Option<String>,
-    pub args    : Vec<String>,
-    pub aliases : Vec<String>,
-    pub exists  : bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,6 +30,19 @@ pub struct Spec {
     pub version : &'static str,
     pub args    : &'static [&'static str],
     pub aliases : &'static [&'static str],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Info {
+    pub method  : Method,
+    pub bin     : String,
+    pub name    : Option<String>,
+    pub path    : Option<std::path::PathBuf>,
+    pub source  : Option<String>,
+    pub version : Option<String>,
+    pub args    : Vec<String>,
+    pub aliases : Vec<String>,
+    pub exists  : bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

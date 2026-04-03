@@ -1,5 +1,5 @@
 pub mod app;
-pub use app::{AppResult, AppError, AppExitCode};
+pub use app::{AppResult, AppError, AppExitCode, AppContext, ContextValue};
 
 pub mod file;
 pub use file::{File, Dir, Path};

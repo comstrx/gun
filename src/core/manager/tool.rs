@@ -1,5 +1,5 @@
 
-use super::arch::{Tool, Spec, Manager};
+use super::arch::{Manager, Tool, Spec};
 
 impl Tool {
 

@@ -94,7 +94,7 @@ impl Manager {
             Type::Macos => Self::resolve(&["brew"])?,
             Type::Windows => Self::resolve(&["winget", "scoop", "choco"])?,
 
-            _ => Self::resolve(&["apt", "apt-get", "apk", "dnf", "yum", "pacman", "zypper", "brew", "winget", "scoop", "choco"])?,
+            _ => Self::resolve(&["apt", "apt-get", "apk", "dnf", "yum", "pacman", "zypper", "nix", "brew", "winget", "scoop", "choco"])?,
         };
 
         let _ = DETECTED.set(manager);

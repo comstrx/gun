@@ -4,15 +4,22 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-rustix = { version = "1.1.4", features = ["process"] }
-os_info = "3.14.0"
-which = "8.0.0"
 thiserror = "2.0.18"
 rand = "0.10.0"
 semver = "1.0.27"
 owo-colors = "4.3.0"
 anstream = "1.0.0"
+os_info = "3.14.0"
+which = "8.0.0"
 regex = "1.12.3"
+whoami = "2.1.1"
+home = "0.5.12"
+users = "0.11.0"
+normpath = "1.5.0"
+nix = { version = "0.31", features = ["user"] }
+rustix = { version = "1.1.4", features = ["process"] }
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_System_SystemServices"] }
+dirs = "6.0.0"
 
 [profile.release]
 codegen-units = 1
