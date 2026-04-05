@@ -1,10 +1,18 @@
 
-pub use crate::core::app::{AppResult, AppError};
+pub use crate::core::app::{AppResult, AppError, AppContext, ContextValue};
 pub use crate::core::manager::Manager;
 
 pub struct Systemd;
 pub struct Launchd;
 pub struct Winsc;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Context {
+    Name,
+    Path,
+    Source,
+    Version,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Restart {

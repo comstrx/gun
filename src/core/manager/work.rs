@@ -150,16 +150,16 @@ impl Manager {
                 let id = if name.is_empty() { spec.bin } else { &name };
                 let target = if source.is_empty() { id } else { &source };
 
-                &target.to_string()
+                target.to_string()
             }
-            Err(_) => bin.trim(),
+            Err(_) => bin.trim().to_string(),
         };
 
-        if Self::has("nix")  { let _ = Self::nix_remove(id); }
-        if Self::has("snap") { let _ = Self::snap_remove(id); }
-        if Self::has("mise") { let _ = Self::mise_remove(id); }
+        if Self::has("nix")  { let _ = Self::nix_remove(&id); }
+        if Self::has("snap") { let _ = Self::snap_remove(&id); }
+        if Self::has("mise") { let _ = Self::mise_remove(&id); }
 
-        let _ = Self::native_remove(id);
+        let _ = Self::native_remove(&id);
         Ok(())
 
     }

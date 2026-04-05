@@ -20,6 +20,8 @@ nix = { version = "0.31", features = ["user"] }
 rustix = { version = "1.1.4", features = ["process"] }
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_System_SystemServices"] }
 dirs = "6.0.0"
+arc-swap = "1.9.1"
+imbl = "7.0.0"
 
 [profile.release]
 codegen-units = 1

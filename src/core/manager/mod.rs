@@ -11,3 +11,7 @@ pub mod info;
 pub mod work;
 
 pub use arch::{Manager, Tool, Spec, Info, Method, Context};
+
+
+// refresh func
+// parallel install/remove/ensure

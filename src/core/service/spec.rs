@@ -117,3 +117,34 @@ impl Spec {
     }
 
 }
+
+
+
+/*
+    src -> core -> app -> env           (AppEnv)
+                       -> config        (AppConfig)
+                       -> log           (AppLog)
+                       -> error         (AppError, AppResult, AppExitCode)
+                       -> context       (AppContext, AppContextKey, AppContextValue)
+
+                -> file -> file         (File)
+                        -> dir          (Dir)
+                        -> path         (Path)
+ 
+                -> manager -> tool      (Tool, Spec, Method, Context)
+                           -> service   (Service, Spec, Method, Context)
+                           -> manager   (Manager -> final interface)
+
+                -> lua -> parse         (Parse, Spec)
+                       -> apply         (Apply)
+                       -> lua           (Lua -> final interface)
+
+                -> yaml -> parse        (Parse, Spec)
+                        -> apply        (Apply)
+                        -> yaml         (Yaml -> final interface)
+
+        -> ... all another business layers
+        -> lib.rs
+        -> test.rs
+        -> main.rs
+*/
