@@ -1,0 +1,10 @@
+[package]
+name = "gun"
+version = "0.1.0"
+entry = "src/main.sh"
+
+[env]
+bin = "target"
+debug = true
+port = 8080
+ratio = 1.5

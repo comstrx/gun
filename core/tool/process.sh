@@ -1,5 +1,0 @@
-
-# install
-# remove
-# update
-# ensure
