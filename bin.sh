@@ -19,32 +19,13 @@ declare -a APP_TEMPS=()
 # Helpers
 
 cleanup () {
-    
-    for file in "${APP_TEMPS[@]}"; do
 
+    for file in "${APP_TEMPS[@]}"; do
         [[ -n "${file:-}" && -e "${file}" ]] || continue
         rm -f -- "${file}" 2>/dev/null || true
-
     done
 
     APP_TEMPS=()
-
-}
-tmp_file () {
-
-    local dir="${1:-/tmp}" tmp=""
-
-    if [[ -f "${dir}" ]] && ! dir="$(dirname -- "${dir}")"; then
-        printf '[ERR]: failed to detect dirname of: %s\n' "${1:-}" >&2
-        return 1
-    fi
-    if ! tmp="$(mktemp "${dir}/.out.tmp.XXXXXX")"; then
-        printf '[ERR]: failed to create temp file in dir: %s\n' "${dir}" >&2
-        return 1
-    fi
-
-    APP_TEMPS+=( "${tmp}" )
-    printf '%s\n' "${tmp}"
 
 }
 exec_file () {
@@ -60,9 +41,29 @@ out_file () {
     local dir="${3:-${BUILD_DIR}}"
 
     [[ "${name}" == *.sh ]] || name="${name}.sh"
+    printf '%s\n' "${dir}/${target}/${name}"
 
-    local out="${dir}/${target}/${name}"
-    printf '%s\n' "${out}"
+}
+tmp_file () {
+
+    local ref="${1:-}" path="${2:-/tmp}" mkt_file=""
+
+    if [[ -z "${ref}"  ]]; then
+        printf '[ERR]: missing output variable name\n' >&2
+        return 1
+    fi
+    if [[ ! -d "${path}" ]] && ! path="$(dirname -- "${path}")"; then
+        printf '[ERR]: failed to detect dirname of: %s\n' "${path}" >&2
+        return 1
+    fi
+    if ! mkt_file="$(mktemp "${path}/.out.tmp.XXXXXX")"; then
+        printf '[ERR]: failed to create temp file in dir: %s\n' "${path}" >&2
+        return 1
+    fi
+
+    local -n out_ref="${ref}"
+    out_ref="${mkt_file}"
+    APP_TEMPS+=( "${mkt_file}" )
 
 }
 bin_file () {
@@ -151,7 +152,7 @@ verify_file () {
         printf '[ERR]: verify file failed: %s\n' "${file}" >&2
         return 1
     fi
-    if (( shellcheck )) && ! shellcheck -e SC2317  "${file}" "$@"; then
+    if (( shellcheck )) && ! shellcheck -e SC2317 "${file}" "$@"; then
         printf '[ERR]: verify file failed: %s\n' "${file}" >&2
         return 1
     fi
@@ -165,7 +166,6 @@ use_mod () {
     local line="${1:-}" file=""
 
     line="${line%$'\r'}"
-
     [[ "${line}" =~ ^[[:space:]]*use[[:space:]]+([A-Za-z_][A-Za-z0-9_.-]*(::[A-Za-z_][A-Za-z0-9_.-]*)*)[[:space:]]*([#].*)?$ ]] || return 1
 
     file="${BASH_REMATCH[1]}"
@@ -213,9 +213,9 @@ entry_mod () {
         line="${line%$'\r'}"
         [[ "${line}" =~ ^[[:space:]]*(function[[:space:]]+)?main[[:space:]]*\(\)[[:space:]]*\{[[:space:]]*([#].*)?$ ]] && return 0
 
-    done < "${file}" || { printf '[ERR]: unable to load file: %s\n' "${file}" >&2; return 1; }
+    done < "${file}" || { printf '[ERR]: missing main function in: %s\n' "${file}" >&2; return 1; }
 
-    printf '[ERR]: missing required function: main\n' >&2
+    printf '[ERR]: missing main function in: %s\n' "${file}" >&2
     return 1
 
 }
@@ -266,7 +266,7 @@ build_mods () {
 
 read_test () {
 
-    local file="${1:-}" line="" fn="" mark=0
+    local file="${1:-}" line="" fn="" mark=0 probe=""
 
     if [[ ! -f "${file}" ]]; then
         printf '[ERR]: file not found: %s\n' "${file}" >&2
@@ -276,8 +276,11 @@ read_test () {
     while IFS= read -r line || [[ -n "${line}" ]]; do
 
         line="${line%$'\r'}"
+        probe="${line}"
+        probe="${probe//[[:space:]]/}"
+        probe="${probe,,}"
 
-        if [[ "${line}" =~ ^[[:space:]]*##?[[:space:]]*@?test[[:space:]]*$ ]]; then
+        if [[ "${probe}" =~ ^(##?|#\#)@?(\[\[test\]\]|\[test\]|test)$ ]]; then
             mark=1
             continue
         fi
@@ -330,6 +333,39 @@ build_tests () {
     local fn="" short=""
     local -A seen=()
 
+    printf 'declare -ag ___APP_TESTS_LIST___=(\n'
+
+    for fn in "${APP_TESTS[@]}"; do
+        printf '%q\n' "${fn}"
+    done
+
+    printf ')\n'
+
+    printf 'declare -Ag ___APP_TEST_MAP___=(\n'
+
+    for fn in "${APP_TESTS[@]}"; do
+
+        if [[ -z "${seen[${fn}]:-}" ]]; then
+
+            seen["${fn}"]=1
+            printf '[%q]=%q\n' "${fn}" "${fn}"
+
+        fi
+        if [[ "${fn}" == test_* && "${fn}" != test_ ]]; then
+
+            short="${fn#test_}"
+
+            if [[ -n "${short}" && -z "${seen[${short}]:-}" ]]; then
+                seen["${short}"]=1
+                printf '[%q]=%q\n' "${short}" "${fn}"
+            fi
+
+        fi
+
+    done
+
+    printf ')\n'
+
     printf '%s\n' "
         ___app_resolve_test___ () {
 
@@ -346,18 +382,16 @@ build_tests () {
             local fn=\"\" rc=0 pass=0 fail=0
             local -a tests=( \"\$@\" )
 
-            (( \${#tests[@]} )) || { printf '[INFO]: no test functions found\n' >&2; return 1; }
-
             for fn in \"\${tests[@]}\"; do
 
                 printf '==> %s\n' \"\${fn}\"
 
-                if \"\${fn}\"; then
+                if \"\${fn}\" 2>/dev/null; then
                     printf '[PASS]: %s\n' \"\${fn}\"
-                    (( pass++ ))
+                    (( ++pass ))
                 else
                     printf '[FAIL]: %s\n' \"\${fn}\" >&2
-                    (( fail++ ))
+                    (( ++fail ))
                     rc=1
                 fi
 
@@ -383,18 +417,19 @@ build_tests () {
 
             if ! resolved=\"\$(___app_resolve_test___ \"\${target}\" 2>/dev/null)\"; then
                 printf '[FAIL]: test not found: %s\n' \"\${target}\" >&2
+                printf '[INFO]: total=1 pass=0 fail=1\n' >&2
                 return 1
             fi
 
             printf '==> %s\n' \"\${resolved}\"
 
-            if \"\${resolved}\" \"\$@\"; then
-                printf '[PASS]: %s\n' \"\${resolved}\"
+            if \"\${resolved}\" \"\$@\" 2>/dev/null; then
+                printf '[PASS]: %s\n\n' \"\${resolved}\"
                 printf '[INFO]: total=1 pass=1 fail=0\n'
                 return 0
             fi
 
-            printf '[FAIL]: %s\n' \"\${resolved}\" >&2
+            printf '[FAIL]: %s\n\n' \"\${resolved}\" >&2
             printf '[INFO]: total=1 pass=0 fail=1\n' >&2
             return 1
 
@@ -409,37 +444,6 @@ build_tests () {
 
         }
     "
-
-    printf 'declare -ag ___APP_TESTS_LIST___=(\n'
-
-    for fn in "${APP_TESTS[@]}"; do
-        printf '%q\n' "${fn}"
-    done
-
-    printf ')\n'
-
-    printf 'declare -Ag ___APP_TEST_MAP___=(\n'
-
-    for fn in "${APP_TESTS[@]}"; do
-
-        if [[ -z "${seen[${fn}]:-}" ]]; then
-            seen["${fn}"]=1
-            printf '[%q]=%q\n' "${fn}" "${fn}"
-        fi
-        if [[ "${fn}" == test_* && "${fn}" != test_ ]]; then
-
-            short="${fn#test_}"
-
-            if [[ -n "${short}" && -z "${seen[${short}]:-}" ]]; then
-                seen["${short}"]=1
-                printf '[%q]=%q\n' "${short}" "${fn}"
-            fi
-
-        fi
-
-    done
-
-    printf ')\n'
 
 }
 
@@ -524,7 +528,7 @@ build_file () {
     walk_mods           || return 1
     walk_tests          || return 1
 
-    tmp="$(tmp_file "${out}")" || return 1
+    tmp_file tmp "${out}" || return 1
     { build_content || return 1; } > "${tmp}" || return 1
 
     verify_file "${tmp}"          || return 1
@@ -543,7 +547,6 @@ install () {
     local out="${1:-}" dest=""
 
     build_file "${out}" || return 1
-
     dest="$(bin_file "${out}")" || return 1
 
     mkdir_file "${dest}"          || return 1
@@ -664,10 +667,7 @@ main () {
     local -a rest=()
 
     case "${cmd}" in
-        ""|help|-h|--help|-help)
-            usage
-            return 0
-        ;;
+        ""|help|-h|--help|-help) usage; return 0 ;;
     esac
 
     shift || true
