@@ -17,6 +17,8 @@ test_quality1 () {
 
 main () {
 
-    echo "Hello World"
+    trace_prod
+
+    echos "Hello World"
 
 }

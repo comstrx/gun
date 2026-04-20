@@ -1,2 +1,22 @@
+#!/usr/bin/env bash
 
-# all GLOBAL ENV_VARS required in core (YES - VERBOSE - QUITE - ROOT_DIR, ...)
+# c1
+
+
+echo "start"
+
+
+
+(
+    # c2
+    echo "pipe-sub"
+
+
+    # c3
+    missing_runtime_cmd_10     # target inline comment
+
+    # c4
+) | cat
+
+
+echo "end"

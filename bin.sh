@@ -247,16 +247,28 @@ walk_mods () {
 }
 build_mods () {
 
-    local line=""
+    local path="" line="" printed=0
 
     for path in "${APP_SRCS[@]}" "${ENTRY_FILE}"; do
+
+        printed=0
+
+        verify_file "${path}" || return 1
 
         while IFS= read -r line || [[ -n "${line}" ]]; do
 
             use_mod "${line}" >/dev/null && continue
+
+            if (( ! printed )); then
+                printf '__file_marker__ %q\n' "${path}"
+                printed=1
+            fi
+
             printf '%s\n' "${line%$'\r'}"
 
         done < "${path}" || { printf '[ERR]: unable to read file: %s\n' "${path}" >&2; return 1; }
+
+        (( ! printed )) || printf '\n'
 
     done
 
@@ -488,9 +500,6 @@ build_checksum () {
 # Build
 
 build_content () {
-
-    printf '#!/usr/bin/env bash\n'
-    printf 'set -Eeuo pipefail\n'
 
     build_mods     || return 1
     build_tests    || return 1
