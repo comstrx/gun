@@ -1,434 +1,7 @@
 # shellcheck shell=bash
 # shellcheck disable=SC1090,SC2178
 
-# Env
-
-use () {
-
-    local mod="${1:-}" root="" path="" file=""
-
-    [[ -n "${mod}" ]] || return 1
-    [[ -z "${root}" && -n "${ENTRY_FILE:-}" ]] && root="$(dirname "${ENTRY_FILE}")"
-    [[ -z "${root}" && -n "${SOURCE_DIR:-}" ]] && root="${SOURCE_DIR}"
-    [[ -z "${root}" && -n "${ROOT_DIR:-}" ]] && root="${ROOT_DIR}/src"
-    [[ -z "${root}" ]] && root="${PWD}"
-
-    path="${mod//::/\/}"
-    file="${root%/}/${path}.sh"
-
-    [[ -f "${file}" ]] || file="${root%/}/${path}/mod.sh"
-    [[ -f "${file}" ]] || return 1
-
-    [[ -z "${__BUILTIN_USE_MAP__+x}" ]] && { declare -gA __BUILTIN_USE_MAP__=(); }
-    [[ -n "${__BUILTIN_USE_MAP__[$file]+x}" ]] && return 0
-    __BUILTIN_USE_MAP__["$file"]=1
-
-    source "${file}"
-
-}
-has_env () {
-
-    local key="${1:-}"
-
-    [[ -n "${key}" ]] || return 1
-    [[ "${key}" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]] || return 1
-    [[ -n "${!key+x}" ]]
-
-}
-get_env () {
-
-    local key="${1:-}" def="${2-}"
-
-    [[ -n "${key}" ]] || { printf '%s' "${def}"; return 0; }
-    [[ "${key}" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]] || { printf '%s' "${def}"; return 0; }
-
-    if [[ -n "${!key+x}" ]]; then printf '%s' "${!key}"
-    else printf '%s' "${def}"
-    fi
-
-}
-set_env () {
-
-    local key="${1:-}" value="${2-}"
-
-    [[ -n "${key}" ]] || return 1
-    [[ "${key}" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]] || return 1
-
-    declare -gx "${key}=${value}"
-
-}
-
-# Log
-
-log () {
-
-    local IFS=' '
-
-    (( $# )) || { printf '\n' >&2; return 0; }
-    printf '%s\n' "$*" >&2
-
-}
-print () {
-
-    local IFS=' '
-
-    (( $# )) || { printf '\n'; return 0; }
-    printf '%s\n' "$*"
-
-}
-eprint () {
-
-    local IFS=' '
-
-    (( $# )) || { printf '\n' >&2; return 0; }
-    printf '%s\n' "$*" >&2
-
-}
-info () {
-
-    local tag="💥"
-    local IFS=' '
-
-    (( $# )) || { printf '%s\n' "${tag}" >&2; return 0; }
-    printf '%s %s\n' "${tag}" "$*" >&2
-
-}
-warn () {
-
-    local tag="⚠️"
-    local IFS=' '
-
-    (( $# )) || { printf '%s\n' "${tag}" >&2; return 0; }
-    printf '%s %s\n' "${tag}" "$*" >&2
-
-}
-error () {
-
-    local tag="❌"
-    local IFS=' '
-
-    (( $# )) || { printf '%s\n' "${tag}" >&2; return 0; }
-    printf '%s %s\n' "${tag}" "$*" >&2
-
-}
-success () {
-
-    local tag="✅"
-    local IFS=' '
-
-    (( $# )) || { printf '%s\n' "${tag}" >&2; return 0; }
-    printf '%s %s\n' "${tag}" "$*" >&2
-
-}
-die () {
-
-    local msg="${1-}" code="${2:-1}"
-
-    [[ "${code}" =~ ^[0-9]+$ ]] || code=1
-    [[ -n "${msg}" ]] && error "${msg}"
-
-    if [[ "${-}" == *i* ]]; then
-        return "${code}"
-    fi
-
-    exit "${code}"
-
-}
-
-# Run
-
-run () {
-
-    (( $# )) || return 0
-    "$@"
-
-}
-run_ok () {
-
-    (( $# )) || return 1
-    "$@" >/dev/null 2>&1
-
-}
-has () {
-
-    [[ -n "${1:-}" ]] || return 1
-    command -v -- "${1:-}" >/dev/null 2>&1
-
-}
-need () {
-
-    local cmd="${1:-}"
-
-    has "${cmd}" && return 0
-    die "Missing command: ${cmd}"
-
-}
-has_any () {
-
-    local x=""
-    (( $# )) || return 1
-
-    for x in "$@"; do
-        has "${x}" && return 0
-    done
-
-    return 1
-
-}
-need_any () {
-
-    local x=""
-    (( $# )) || die "need_any: missing commands"
-
-    for x in "$@"; do
-        has "${x}" && return 0
-    done
-
-    die "Missing command from: $*"
-
-}
-has_all () {
-
-    local x=""
-    (( $# )) || return 1
-
-    for x in "$@"; do
-        has "${x}" || return 1
-    done
-
-    return 0
-
-}
-need_all () {
-
-    local x="" miss=0
-    (( $# )) || die "need_all: missing commands"
-
-    for x in "$@"; do
-        has "${x}" || { error "Missing command: ${x}"; miss=1; }
-    done
-
-    (( miss == 0 )) || die "Missing required commands"
-
-}
-
-# Input
-
-input () {
-
-    local prompt="${1-}" def="${2-}" line="" tty="/dev/tty" rc=0
-
-    if [[ -c "${tty}" && -r "${tty}" && -w "${tty}" ]]; then
-
-        [[ -n "${prompt}" ]] && printf '%s' "${prompt}" > "${tty}"
-        IFS= read -r line < "${tty}" || rc=$?
-
-    else
-
-        [[ -n "${prompt}" ]] && printf '%s' "${prompt}" >&2
-        IFS= read -r line || rc=$?
-
-    fi
-
-    if (( rc != 0 )); then
-
-        [[ -n "${def}" ]] && { printf '%s' "${def}"; return 0; }
-        return "${rc}"
-
-    fi
-
-    [[ -z "${line}" && -n "${def}" ]] && line="${def}"
-    printf '%s' "${line}"
-
-}
-input_bool () {
-
-    local prompt="${1-}" def="${2-}" tries="${3:-3}" def_norm="" v="" i=0
-
-    case "${def}" in
-        1|true|TRUE|True|yes|YES|Yes|y|Y) def_norm="1" ;;
-        0|false|FALSE|False|no|NO|No|n|N) def_norm="0" ;;
-    esac
-
-    for (( i=0; i<tries; i++ )); do
-
-        v="$(input "${prompt}" "${def}")" || return $?
-
-        case "${v}" in
-            1|true|TRUE|True|yes|YES|Yes|y|Y) printf '1'; return 0 ;;
-            0|false|FALSE|False|no|NO|No|n|N) printf '0'; return 0 ;;
-            "") [[ -n "${def_norm}" ]] && { printf '%s' "${def_norm}"; return 0; } ;;
-        esac
-
-        eprint "Invalid bool. Use: y/n, yes/no, 1/0, true/false"
-
-    done
-
-    die "Too many invalid attempts"
-
-}
-input_int () {
-
-    local prompt="${1-}" def="${2-}" tries="${3:-3}" v="" i=0
-
-    for (( i=0; i<tries; i++ )); do
-
-        v="$(input "${prompt}" "${def}")" || return $?
-
-        [[ -z "${v}" && -n "${def}" ]] && v="${def}"
-        [[ "${v}" =~ ^-?[0-9]+$ ]] && { printf '%s' "${v}"; return 0; }
-
-        eprint "Invalid int. Example: 0, 12, -7"
-
-    done
-
-    die "Too many invalid attempts"
-
-}
-input_uint () {
-
-    local prompt="${1-}" def="${2-}" tries="${3:-3}" v="" i=0
-
-    for (( i=0; i<tries; i++ )); do
-
-        v="$(input "${prompt}" "${def}")" || return $?
-
-        [[ -z "${v}" && -n "${def}" ]] && v="${def}"
-        [[ "${v}" =~ ^[0-9]+$ ]] && { printf '%s' "${v}"; return 0; }
-
-        eprint "Invalid uint. Example: 0, 12, 7"
-
-    done
-
-    die "Too many invalid attempts"
-
-}
-input_float () {
-
-    local prompt="${1-}" def="${2-}" tries="${3:-3}" v="" i=0
-
-    for (( i=0; i<tries; i++ )); do
-
-        v="$(input "${prompt}" "${def}")" || return $?
-
-        [[ -z "${v}" && -n "${def}" ]] && v="${def}"
-        [[ "${v}" =~ ^[+-]?([0-9]+([.][0-9]+)?|[.][0-9]+)$ ]] && { printf '%s' "${v}"; return 0; }
-
-        eprint "Invalid float. Example: 0, 12.5, -7, .3"
-
-    done
-
-    die "Too many invalid attempts"
-
-}
-input_char () {
-
-    local prompt="${1-}" def="${2-}" tries="${3:-3}" v="" i=0
-
-    for (( i=0; i<tries; i++ )); do
-
-        v="$(input "${prompt}" "${def}")" || return $?
-
-        [[ -z "${v}" && -n "${def}" ]] && v="${def}"
-        (( ${#v} == 1 )) && { printf '%s' "${v}"; return 0; }
-
-        eprint "Invalid char. Example: a"
-
-    done
-
-    die "Too many invalid attempts"
-
-}
-input_path () {
-
-    local prompt="${1-}" def="${2-}" mode="${3:-any}" tries="${4:-3}"
-    local p="" i=0
-
-    for (( i=0; i<tries; i++ )); do
-
-        p="$(input "${prompt}" "${def}")" || return $?
-
-        [[ -z "${p}" && -n "${def}" ]] && p="${def}"
-        [[ -n "${p}" ]] || { eprint "Path is required"; continue; }
-
-        case "${mode}" in
-            any)    printf '%s' "${p}"; return 0 ;;
-            exists) [[ -e "${p}" ]] && { printf '%s' "${p}"; return 0; } ;;
-            file)   [[ -f "${p}" ]] && { printf '%s' "${p}"; return 0; } ;;
-            dir)    [[ -d "${p}" ]] && { printf '%s' "${p}"; return 0; } ;;
-            *)      die "Invalid mode '${mode}'" ;;
-        esac
-
-        eprint "Invalid path for mode '${mode}': ${p}"
-
-    done
-
-    die "Too many invalid attempts"
-
-}
-input_password () {
-
-    local prompt="${1-}" tty="/dev/tty" line=""
-
-    [[ -c "${tty}" && -r "${tty}" && -w "${tty}" ]] || die "No /dev/tty"
-    [[ -n "${prompt}" ]] && printf '%s' "${prompt}" > "${tty}"
-
-    IFS= read -r -s line < "${tty}" || return $?
-
-    printf '\n' > "${tty}"
-    printf '%s' "${line}"
-
-}
-choose () {
-
-    local prompt="${1:-Choose:}" pick="" i=0 attempt=0
-    shift || true
-
-    local -a items=( "$@" )
-    (( ${#items[@]} )) || die "Missing items"
-
-    eprint "${prompt}"
-
-    for (( i=0; i<${#items[@]}; i++ )); do
-        eprint "  $(( i + 1 ))) ${items[$i]}"
-    done
-
-    for (( attempt=0; attempt<3; attempt++ )); do
-
-        pick="$(input "Enter number [1-${#items[@]}]: ")" || return $?
-
-        [[ "${pick}" =~ ^[0-9]+$ ]] || { eprint "Invalid number"; continue; }
-        (( pick >= 1 && pick <= ${#items[@]} )) || { eprint "Out of range"; continue; }
-
-        printf '%s' "${items[$(( pick - 1 ))]}"
-        return 0
-
-    done
-
-    die "Too many invalid attempts"
-
-}
-confirm () {
-
-    local msg="${1:-Continue?}" def="${2:-N}" hint="[y/N]: " d_is_yes=0 ans=""
-
-    case "${def,,}" in
-        1|true|y|yes) d_is_yes=1 ;;
-    esac
-
-    (( d_is_yes )) && hint="[Y/n]: "
-    ans="$(input "${msg} ${hint}" "${def}")" || return $?
-
-    case "${ans,,}" in
-        1|true|y|yes) return 0 ;;
-        0|false|n|no) return 1 ;;
-        "") (( d_is_yes )) && return 0 || return 1 ;;
-        *) return 1 ;;
-    esac
-
-}
-
-# Cast
+# ======>> Numeric <<======
 
 int () {
 
@@ -491,10 +64,9 @@ bool () {
     local v="${1-}"
 
     case "${v,,}" in
-        1|true|yes|y) return 0 ;;
+        1|true|yes|y|on) printf '%s' "1" ;;
+        *)               printf '%s' "0" ;;
     esac
-
-    return 1
 
 }
 char () {
@@ -535,7 +107,7 @@ is_bool () {
 is_true () {
 
     case "${1,,}" in
-        1|true|yes|y) return 0 ;;
+        1|true|yes|y|on) return 0 ;;
         *) return 1 ;;
     esac
 
@@ -547,7 +119,120 @@ is_char () {
 
 }
 
-# List
+# ======>> String <<======
+
+trim () {
+
+    local s="${1-}"
+
+    s="${s#"${s%%[![:space:]]*}"}"
+    s="${s%"${s##*[![:space:]]}"}"
+
+    printf '%s' "${s}"
+
+}
+lower () {
+
+    printf '%s' "${1-}" | tr '[:upper:]' '[:lower:]'
+
+}
+upper () {
+
+    printf '%s' "${1-}" | tr '[:lower:]' '[:upper:]'
+
+}
+title () {
+
+    local s="${1-}" buf="" word=""
+
+    for word in ${s}; do
+        [[ -n "${buf}" ]] && buf+=' '
+        buf+="$(capitalize "${word}")"
+    done
+
+    printf '%s' "${buf}"
+
+}
+capitalize () {
+
+    local s="${1-}"
+
+    [[ -n "${s}" ]] || return 0
+    printf '%s%s' "${s:0:1^^}" "${s:1}"
+
+}
+repeat () {
+
+    local s="${1-}" n="${2:-0}" i=0
+    [[ "${n}" =~ ^[0-9]+$ ]] || return 1
+
+    for (( i=0; i<n; i++ )); do
+        printf '%s' "${s}"
+    done
+
+}
+before () {
+
+    local s="${1-}" x="${2-}"
+
+    [[ -n "${x}" && "${s}" == *"${x}"* ]] || { printf '%s' "${s}"; return 0; }
+    printf '%s' "${s%%"${x}"*}"
+
+}
+after () {
+
+    local s="${1-}" x="${2-}"
+
+    [[ -n "${x}" && "${s}" == *"${x}"* ]] || return 1
+    printf '%s' "${s#*"${x}"}"
+
+}
+join_by () {
+
+    local sep="${1-}" buf="" x=""
+    shift || true
+
+    for x in "$@"; do
+
+        if [[ -z "${buf}" ]]; then buf="${x}"
+        else buf="${buf}${sep}${x}"
+        fi
+
+    done
+
+    printf '%s' "${buf}"
+
+}
+contains () {
+
+    local s="${1-}" part="${2-}"
+    [[ "${s}" == *"${part}"* ]]
+
+}
+starts_with () {
+
+    local s="${1-}" prefix="${2-}"
+    [[ "${s}" == "${prefix}"* ]]
+
+}
+ends_with () {
+
+    local s="${1-}" suffix="${2-}"
+    [[ "${s}" == *"${suffix}" ]]
+
+}
+is_email () {
+
+    [[ "${1:-}" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]
+
+}
+is_url () {
+
+    [[ "${1:-}" =~ ^https?://[^[:space:]]+$ ]]
+
+}
+
+# ======>> List <<======
 
 list_len () {
 
@@ -687,7 +372,7 @@ list_clear () {
 
 }
 
-# Map
+# ======>> Dict <<======
 
 map_keys () {
 
@@ -771,137 +456,447 @@ map_clear () {
 
 }
 
-# String
+# ======>> Stdout <<======
 
-trim () {
+log () {
 
-    local s="${1-}"
+    local IFS=' '
 
-    s="${s#"${s%%[![:space:]]*}"}"
-    s="${s%"${s##*[![:space:]]}"}"
-
-    printf '%s' "${s}"
+    (( $# )) || { printf '\n' >&2; return 0; }
+    printf '%s\n' "$*" >&2
 
 }
-lower () {
+print () {
 
-    printf '%s' "${1-}" | tr '[:upper:]' '[:lower:]'
+    local IFS=' '
 
-}
-upper () {
-
-    printf '%s' "${1-}" | tr '[:lower:]' '[:upper:]'
+    (( $# )) || { printf '\n'; return 0; }
+    printf '%s\n' "$*"
 
 }
-title () {
+eprint () {
 
-    local s="${1-}" buf="" word=""
+    local IFS=' '
 
-    for word in ${s}; do
-        [[ -n "${buf}" ]] && buf+=' '
-        buf+="$(capitalize "${word}")"
+    (( $# )) || { printf '\n' >&2; return 0; }
+    printf '%s\n' "$*" >&2
+
+}
+info () {
+
+    local tag="💥"
+    local IFS=' '
+
+    (( $# )) || { printf '%s\n' "${tag}" >&2; return 0; }
+    printf '%s %s\n' "${tag}" "$*" >&2
+
+}
+warn () {
+
+    local tag="⚠️"
+    local IFS=' '
+
+    (( $# )) || { printf '%s\n' "${tag}" >&2; return 0; }
+    printf '%s %s\n' "${tag}" "$*" >&2
+
+}
+error () {
+
+    local tag="❌"
+    local IFS=' '
+
+    (( $# )) || { printf '%s\n' "${tag}" >&2; return 0; }
+    printf '%s %s\n' "${tag}" "$*" >&2
+
+}
+success () {
+
+    local tag="✅"
+    local IFS=' '
+
+    (( $# )) || { printf '%s\n' "${tag}" >&2; return 0; }
+    printf '%s %s\n' "${tag}" "$*" >&2
+
+}
+die () {
+
+    local msg="${1-}" code="${2:-1}"
+
+    [[ "${code}" =~ ^[0-9]+$ ]] || code=1
+    [[ -n "${msg}" ]] && error "${msg}"
+
+    if [[ "${-}" == *i* ]]; then
+        return "${code}"
+    fi
+
+    exit "${code}"
+
+}
+
+# ======>> Stdin <<======
+
+input () {
+
+    local prompt="${1-}" def="${2-}" line="" rc=0
+    local tty="/dev/tty"
+
+    if [[ -r "${tty}" && -w "${tty}" ]]; then
+        [[ -n "${prompt}" ]] && printf '%s' "${prompt}" > "${tty}"
+        IFS= read -r line < "${tty}" || rc=$?
+    else
+        [[ -n "${prompt}" ]] && printf '%s' "${prompt}" >&2
+        IFS= read -r line || rc=$?
+    fi
+
+    if (( rc != 0 )); then
+        [[ -n "${def}" ]] && { printf '%s' "${def}"; return 0; }
+        return "${rc}"
+    fi
+
+    [[ -z "${line}" && -n "${def}" ]] && line="${def}"
+    printf '%s' "${line}"
+
+}
+input_bool () {
+
+    local prompt="${1-}" def="${2-}" tries="${3:-3}" v="" i=0
+
+    [[ "${tries}" =~ ^[0-9]+$ ]] || tries=3
+    (( tries > 0 )) || tries=3
+
+    for (( i=0; i<tries; i++ )); do
+
+        v="$(input "${prompt}" "${def}")" || return $?
+
+        case "${v,,}" in
+            1|true|yes|y|on)  printf '1'; return 0 ;;
+            0|false|no|n|off) printf '0'; return 0 ;;
+        esac
+
+        eprint "Invalid bool. Use: y/n, yes/no, on/off, 1/0, true/false"
+
     done
 
-    printf '%s' "${buf}"
+    die "Too many invalid attempts"
 
 }
-capitalize () {
+input_int () {
 
-    local s="${1-}"
+    local prompt="${1-}" def="${2-}" tries="${3:-3}" v="" i=0
 
-    [[ -n "${s}" ]] || return 0
-    printf '%s%s' "${s:0:1^^}" "${s:1}"
+    [[ "${tries}" =~ ^[0-9]+$ ]] || tries=3
+    (( tries > 0 )) || tries=3
 
-}
-repeat () {
+    for (( i=0; i<tries; i++ )); do
 
-    local s="${1-}" n="${2:-0}" i=0
-    [[ "${n}" =~ ^[0-9]+$ ]] || return 1
+        v="$(input "${prompt}" "${def}")" || return $?
 
-    for (( i=0; i<n; i++ )); do
-        printf '%s' "${s}"
+        [[ "${v}" =~ ^-?[0-9]+$ ]] && { printf '%s' "${v}"; return 0; }
+        eprint "Invalid int. Example: 0, 12, -7"
+
     done
 
-}
-before () {
-
-    local s="${1-}" x="${2-}"
-
-    [[ -n "${x}" && "${s}" == *"${x}"* ]] || { printf '%s' "${s}"; return 0; }
-    printf '%s' "${s%%"${x}"*}"
+    die "Too many invalid attempts"
 
 }
-after () {
+input_uint () {
 
-    local s="${1-}" x="${2-}"
+    local prompt="${1-}" def="${2-}" tries="${3:-3}" v="" i=0
 
-    [[ -n "${x}" && "${s}" == *"${x}"* ]] || return 1
-    printf '%s' "${s#*"${x}"}"
+    [[ "${tries}" =~ ^[0-9]+$ ]] || tries=3
+    (( tries > 0 )) || tries=3
 
-}
-basename () {
+    for (( i=0; i<tries; i++ )); do
 
-    local s="${1-}"
-    s="${s##*/}"
+        v="$(input "${prompt}" "${def}")" || return $?
 
-    printf '%s' "${s%.*}"
+        [[ "${v}" =~ ^[0-9]+$ ]] && { printf '%s' "${v}"; return 0; }
+        eprint "Invalid uint. Example: 0, 12, 7"
 
-}
-extension () {
+    done
 
-    local s="${1-}"
-    s="${s##*/}"
-
-    [[ "${s}" == *.* ]] || return 1
-    printf '%s' "${s##*.}"
+    die "Too many invalid attempts"
 
 }
-join_by () {
+input_float () {
 
-    local sep="${1-}" buf="" x=""
+    local prompt="${1-}" def="${2-}" tries="${3:-3}" v="" i=0
+
+    [[ "${tries}" =~ ^[0-9]+$ ]] || tries=3
+    (( tries > 0 )) || tries=3
+
+    for (( i=0; i<tries; i++ )); do
+
+        v="$(input "${prompt}" "${def}")" || return $?
+
+        [[ "${v}" =~ ^[+-]?([0-9]+([.][0-9]+)?|[.][0-9]+)$ ]] && { printf '%s' "${v}"; return 0; }
+        eprint "Invalid float. Example: 0, 12.5, -7, .3"
+
+    done
+
+    die "Too many invalid attempts"
+
+}
+input_char () {
+
+    local prompt="${1-}" def="${2-}" tries="${3:-3}" v="" i=0
+
+    [[ "${tries}" =~ ^[0-9]+$ ]] || tries=3
+    (( tries > 0 )) || tries=3
+
+    for (( i=0; i<tries; i++ )); do
+
+        v="$(input "${prompt}" "${def}")" || return $?
+
+        (( ${#v} == 1 )) && { printf '%s' "${v}"; return 0; }
+        eprint "Invalid char. Example: a"
+
+    done
+
+    die "Too many invalid attempts"
+
+}
+input_path () {
+
+    local prompt="${1-}" def="${2-}" mode="${3:-any}" tries="${4:-3}"
+    local p="" i=0
+
+    [[ "${tries}" =~ ^[0-9]+$ ]] || tries=3
+    (( tries > 0 )) || tries=3
+
+    case "${mode}" in
+        any|exists|file|dir) ;;
+        *) die "Invalid mode '${mode}'" ;;
+    esac
+
+    for (( i=0; i<tries; i++ )); do
+
+        p="$(input "${prompt}" "${def}")" || return $?
+
+        [[ -n "${p}" ]] || { eprint "Path is required"; continue; }
+
+        case "${mode}" in
+            any)    printf '%s' "${p}"; return 0 ;;
+            exists) [[ -e "${p}" ]] && { printf '%s' "${p}"; return 0; } ;;
+            file)   [[ -f "${p}" ]] && { printf '%s' "${p}"; return 0; } ;;
+            dir)    [[ -d "${p}" ]] && { printf '%s' "${p}"; return 0; } ;;
+        esac
+
+        eprint "Invalid path for mode '${mode}': ${p}"
+
+    done
+
+    die "Too many invalid attempts"
+
+}
+input_password () {
+
+    local prompt="${1-}" line="" rc=0
+    local tty="/dev/tty"
+
+    [[ -r "${tty}" && -w "${tty}" ]] || die "No /dev/tty"
+    [[ -n "${prompt}" ]] && printf '%s' "${prompt}" > "${tty}"
+
+    IFS= read -r -s line < "${tty}" || rc=$?
+    printf '\n' > "${tty}"
+
+    (( rc == 0 )) || return "${rc}"
+    printf '%s' "${line}"
+
+}
+choose () {
+
+    local prompt="${1:-Choose:}" pick="" i=0 attempt=0
     shift || true
 
-    for x in "$@"; do
+    local -a items=( "$@" )
+    (( ${#items[@]} )) || die "Missing items"
 
-        if [[ -z "${buf}" ]]; then buf="${x}"
-        else buf="${buf}${sep}${x}"
-        fi
+    eprint "${prompt}"
+
+    for (( i=0; i<${#items[@]}; i++ )); do
+        eprint "  $(( i + 1 ))) ${items[$i]}"
+    done
+
+    for (( attempt=0; attempt<3; attempt++ )); do
+
+        pick="$(input "Enter number [1-${#items[@]}]: ")" || return $?
+
+        [[ "${pick}" =~ ^[0-9]+$ ]] || { eprint "Invalid number"; continue; }
+        (( pick >= 1 && pick <= ${#items[@]} )) || { eprint "Out of range"; continue; }
+
+        printf '%s' "${items[$(( pick - 1 ))]}"
+        return 0
 
     done
 
-    printf '%s' "${buf}"
+    die "Too many invalid attempts"
 
 }
-contains () {
+confirm () {
 
-    local s="${1-}" part="${2-}"
-    [[ "${s}" == *"${part}"* ]]
+    local msg="${1:-Continue?}" def="${2:-N}" tries="${3:-3}" ans="" i=0
+    local hint="[y/N]: "
+
+    [[ "${tries}" =~ ^[0-9]+$ ]] || tries=3
+    (( tries > 0 )) || tries=3
+
+    case "${def,,}" in
+        1|true|y|yes|on) hint="[Y/n]: " ;;
+    esac
+
+    for (( i=0; i<tries; i++ )); do
+
+        ans="$(input "${msg} ${hint}" "${def}")" || return $?
+
+        case "${ans,,}" in
+            1|true|y|yes|on)  return 0 ;;
+            0|false|n|no|off) return 1 ;;
+        esac
+
+        eprint "Invalid choice. Use: y/n, yes/no, on/off, 1/0, true/false"
+
+    done
+
+    die "Too many invalid attempts"
 
 }
-starts_with () {
 
-    local s="${1-}" prefix="${2-}"
-    [[ "${s}" == "${prefix}"* ]]
+# ======>> Env <<======
+
+use () {
+
+    local mod="${1:-}" root="" path="" file=""
+
+    [[ -n "${mod}" ]] || return 1
+    [[ -z "${root}" && -n "${ENTRY_FILE:-}" ]] && root="$(dirname "${ENTRY_FILE}")"
+    [[ -z "${root}" && -n "${SOURCE_DIR:-}" ]] && root="${SOURCE_DIR}"
+    [[ -z "${root}" && -n "${ROOT_DIR:-}" ]] && root="${ROOT_DIR}/src"
+    [[ -z "${root}" ]] && root="${PWD}"
+
+    path="${mod//::/\/}"
+    file="${root%/}/${path}.sh"
+
+    [[ -f "${file}" ]] || file="${root%/}/${path}/mod.sh"
+    [[ -f "${file}" ]] || return 1
+
+    [[ -z "${__BUILTIN_USE_MAP__+x}" ]] && { declare -gA __BUILTIN_USE_MAP__=(); }
+    [[ -n "${__BUILTIN_USE_MAP__[$file]+x}" ]] && return 0
+    __BUILTIN_USE_MAP__["$file"]=1
+
+    source "${file}"
 
 }
-ends_with () {
+has_env () {
 
-    local s="${1-}" suffix="${2-}"
-    [[ "${s}" == *"${suffix}" ]]
+    local key="${1:-}"
 
-}
-is_email () {
-
-    [[ "${1:-}" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]
+    [[ -n "${key}" ]] || return 1
+    [[ "${key}" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]] || return 1
+    [[ -n "${!key+x}" ]]
 
 }
-is_url () {
+get_env () {
 
-    [[ "${1:-}" =~ ^https?://[^[:space:]]+$ ]]
+    local key="${1:-}" def="${2-}"
+
+    [[ -n "${key}" ]] || { printf '%s' "${def}"; return 0; }
+    [[ "${key}" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]] || { printf '%s' "${def}"; return 0; }
+
+    if [[ -n "${!key+x}" ]]; then printf '%s' "${!key}"
+    else printf '%s' "${def}"
+    fi
+
+}
+set_env () {
+
+    local key="${1:-}" value="${2-}"
+
+    [[ -n "${key}" ]] || return 1
+    [[ "${key}" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]] || return 1
+
+    declare -gx "${key}=${value}"
 
 }
 
-# Platform
+# ======>> Process <<======
+
+run () {
+
+    (( $# )) || return 0
+    "$@"
+
+}
+run_ok () {
+
+    (( $# )) || return 1
+    "$@" >/dev/null 2>&1
+
+}
+has () {
+
+    [[ -n "${1:-}" ]] || return 1
+    command -v -- "${1:-}" >/dev/null 2>&1
+
+}
+need () {
+
+    local cmd="${1:-}"
+
+    has "${cmd}" && return 0
+    die "Missing command: ${cmd}"
+
+}
+has_any () {
+
+    local x=""
+    (( $# )) || return 1
+
+    for x in "$@"; do
+        has "${x}" && return 0
+    done
+
+    return 1
+
+}
+need_any () {
+
+    local x=""
+    (( $# )) || die "need_any: missing commands"
+
+    for x in "$@"; do
+        has "${x}" && return 0
+    done
+
+    die "Missing command from: $*"
+
+}
+has_all () {
+
+    local x=""
+    (( $# )) || return 1
+
+    for x in "$@"; do
+        has "${x}" || return 1
+    done
+
+    return 0
+
+}
+need_all () {
+
+    local x="" miss=0
+    (( $# )) || die "need_all: missing commands"
+
+    for x in "$@"; do
+        has "${x}" || { error "Missing command: ${x}"; miss=1; }
+    done
+
+    (( miss == 0 )) || die "Missing required commands"
+
+}
+
+# ======>> System <<======
 
 is_linux () {
 
@@ -1073,7 +1068,7 @@ os_manager () {
 
 }
 
-# Dir
+# ======>> Dir <<======
 
 ssh_dir () {
 
@@ -1307,7 +1302,7 @@ documents_dir () {
 
 }
 
-# Path
+# ======>> File <<======
 
 copy () {
 
@@ -1342,6 +1337,7 @@ link () {
     command ln -s -- "${src}" "${dest}"
 
 }
+
 is_path () {
 
     [[ -e "${1:-}" ]]
@@ -1383,101 +1379,6 @@ is_block () {
 
 }
 
-# File
-
-new_dir () {
-
-    local path="${1:-}"
-    [[ -n "${path}" ]] || return 1
-
-    command mkdir -p -- "${path}"
-
-}
-new_file () {
-
-    local path="${1:-}" dir=""
-    [[ -n "${path}" ]] || return 1
-
-    dir="$(dir_name "${path}")" || return 1
-    command mkdir -p -- "${dir}" || return 1
-
-    : > "${path}"
-
-}
-read_file () {
-
-    local path="${1:-}"
-    [[ -f "${path}" ]] || return 1
-
-    cat -- "${path}"
-
-}
-write_file () {
-
-    local path="${1:-}" data="${2-}" dir=""
-    [[ -n "${path}" ]] || return 1
-
-    dir="$(dir_name "${path}")" || return 1
-    command mkdir -p -- "${dir}" || return 1
-
-    printf '%s' "${data}" > "${path}"
-
-}
-append_file () {
-
-    local path="${1:-}" data="${2-}" dir=""
-    [[ -n "${path}" ]] || return 1
-
-    dir="$(dir_name "${path}")" || return 1
-    command mkdir -p -- "${dir}" || return 1
-
-    printf '%s' "${data}" >> "${path}"
-
-}
-file_size () {
-
-    local path="${1:-}"
-    [[ -f "${path}" ]] || return 1
-
-    wc -c < "${path}" | tr -d '[:space:]'
-
-}
-file_lines () {
-
-    local path="${1:-}"
-    [[ -f "${path}" ]] || return 1
-
-    wc -l < "${path}" | tr -d '[:space:]'
-
-}
-file_ext () {
-
-    local path="${1:-}" base=""
-    base="${path##*/}"
-
-    [[ -n "${path}" ]] || return 1
-    [[ "${base}" == *.* ]] || return 1
-    [[ "${base}" != .* ]] || { [[ "${base#*.}" == *.* ]] || return 1; }
-
-    printf '%s\n' "${base##*.}"
-
-}
-file_name () {
-
-    local path="${1:-}" base=""
-    base="${path##*/}"
-
-    [[ -n "${path}" ]] || return 1
-    [[ -n "${base}" && "${base}" != "/" ]] || return 1
-
-    if [[ "${base}" == .* && "${base#*.}" != *.* ]]; then
-        printf '%s\n' "${base}"
-        return 0
-    fi
-
-    printf '%s\n' "${base%.*}"
-
-}
 base_name () {
 
     local path="${1:-}"
@@ -1547,5 +1448,538 @@ join_path () {
     done
 
     printf '%s' "${path}"
+
+}
+
+new_dir () {
+
+    local path="${1:-}"
+    [[ -n "${path}" ]] || return 1
+
+    command mkdir -p -- "${path}"
+
+}
+new_file () {
+
+    local path="${1:-}" dir=""
+    [[ -n "${path}" ]] || return 1
+
+    dir="$(dir_name "${path}")" || return 1
+    command mkdir -p -- "${dir}" || return 1
+
+    : > "${path}"
+
+}
+read_file () {
+
+    local path="${1:-}"
+    [[ -f "${path}" ]] || return 1
+
+    cat -- "${path}"
+
+}
+write_file () {
+
+    local path="${1:-}" data="${2-}" dir=""
+    [[ -n "${path}" ]] || return 1
+
+    dir="$(dir_name "${path}")" || return 1
+    command mkdir -p -- "${dir}" || return 1
+
+    printf '%s' "${data}" > "${path}"
+
+}
+append_file () {
+
+    local path="${1:-}" data="${2-}" dir=""
+    [[ -n "${path}" ]] || return 1
+
+    dir="$(dir_name "${path}")" || return 1
+    command mkdir -p -- "${dir}" || return 1
+
+    printf '%s' "${data}" >> "${path}"
+
+}
+
+file_name () {
+
+    local path="${1:-}" base=""
+    base="${path##*/}"
+
+    [[ -n "${path}" ]] || return 1
+    [[ -n "${base}" && "${base}" != "/" ]] || return 1
+
+    if [[ "${base}" == .* && "${base#*.}" != *.* ]]; then
+        printf '%s\n' "${base}"
+        return 0
+    fi
+
+    printf '%s\n' "${base%.*}"
+
+}
+file_ext () {
+
+    local path="${1:-}" base=""
+    base="${path##*/}"
+
+    [[ -n "${path}" ]] || return 1
+    [[ "${base}" == *.* ]] || return 1
+    [[ "${base}" != .* ]] || { [[ "${base#*.}" == *.* ]] || return 1; }
+
+    printf '%s\n' "${base##*.}"
+
+}
+file_size () {
+
+    local path="${1:-}"
+    [[ -f "${path}" ]] || return 1
+
+    wc -c < "${path}" | tr -d '[:space:]'
+
+}
+file_lines () {
+
+    local path="${1:-}"
+    [[ -f "${path}" ]] || return 1
+
+    wc -l < "${path}" | tr -d '[:space:]'
+
+}
+
+has_line () {
+
+    local file="${1:-}" line="${2-}"
+
+    [[ -f "${file}" && -n "${line}" ]] || return 1
+    grep -Fqx -- "${line}" "${file}" 2>/dev/null
+
+}
+need_line () {
+
+    local file="${1:-}" line="${2-}"
+
+    has_line "${file}" "${line}" && return 0
+    die "Missing line in file: ${file}"
+
+}
+line_position () {
+
+    local file="${1:-}" line="${2-}" out=""
+
+    [[ -f "${file}" && -n "${line}" ]] || return 1
+
+    out="$(grep -n -F -x -- "${line}" "${file}" 2>/dev/null | head -n 1)" || return 1
+    [[ -n "${out}" ]] || return 1
+
+    printf '%s\n' "${out%%:*}"
+
+}
+add_line () {
+
+    local file="${1:-}" line="${2-}"
+
+    [[ -n "${file}" && -n "${line}" ]] || return 1
+
+    if [[ ! -e "${file}" ]]; then
+        printf '%s\n' "${line}" > "${file}" || return 1
+        return 0
+    fi
+
+    printf '%s\n' "${line}" >> "${file}"
+
+}
+ensure_line () {
+
+    local file="${1:-}" line="${2-}"
+
+    [[ -n "${file}" && -n "${line}" ]] || return 1
+
+    has_line "${file}" "${line}" && return 0
+    add_line "${file}" "${line}"
+
+}
+remove_line () {
+
+    local file="${1:-}" line="${2-}" tmp="" x="" removed=0
+
+    [[ -f "${file}" && -n "${line}" ]] || return 1
+    tmp="$(mktemp "${TMPDIR:-/tmp}/remove_line.XXXXXX")" || return 1
+
+    while IFS= read -r x || [[ -n "${x}" ]]; do
+
+        if [[ "${x}" == "${line}" ]]; then
+            removed=1
+            continue
+        fi
+
+        printf '%s\n' "${x}" >> "${tmp}" || { rm -f -- "${tmp}"; return 1; }
+
+    done < "${file}"
+
+    (( removed )) || { rm -f -- "${tmp}"; return 1; }
+    command mv -- "${tmp}" "${file}"
+
+}
+replace_line () {
+
+    local file="${1:-}" old="${2-}" new="${3-}" tmp="" done=0 x=""
+
+    [[ -f "${file}" && -n "${old}" ]] || return 1
+    tmp="$(mktemp "${TMPDIR:-/tmp}/replace_line.XXXXXX")" || return 1
+
+    while IFS= read -r x || [[ -n "${x}" ]]; do
+
+        if (( ! done )) && [[ "${x}" == "${old}" ]]; then
+            printf '%s\n' "${new}" >> "${tmp}" || { rm -f -- "${tmp}"; return 1; }
+            done=1
+            continue
+        fi
+
+        printf '%s\n' "${x}" >> "${tmp}" || { rm -f -- "${tmp}"; return 1; }
+
+    done < "${file}"
+
+    (( done )) || { rm -f -- "${tmp}"; return 1; }
+    command mv -- "${tmp}" "${file}"
+
+}
+replace_all_lines () {
+
+    local file="${1:-}" old="${2-}" new="${3-}" tmp="" x="" done=0
+
+    [[ -f "${file}" && -n "${old}" ]] || return 1
+    tmp="$(mktemp "${TMPDIR:-/tmp}/replace_all_lines.XXXXXX")" || return 1
+
+    while IFS= read -r x || [[ -n "${x}" ]]; do
+
+        if [[ "${x}" == "${old}" ]]; then
+            printf '%s\n' "${new}" >> "${tmp}" || { rm -f -- "${tmp}"; return 1; }
+            done=1
+            continue
+        fi
+
+        printf '%s\n' "${x}" >> "${tmp}" || { rm -f -- "${tmp}"; return 1; }
+
+    done < "${file}"
+
+    (( done )) || { rm -f -- "${tmp}"; return 1; }
+    command mv -- "${tmp}" "${file}"
+
+}
+
+# ======>> Lifecycle <<======
+
+run_hooks () {
+
+    local name="${1:-}" fn="" i=0
+    [[ -n "${name}" ]] || return 1
+
+    declare -n ref="${name}"
+
+    for (( i=${#ref[@]}-1; i>=0; i-- )); do
+
+        fn="${ref[$i]}"
+        [[ -n "${fn}" ]] || continue
+
+        if declare -F -- "${fn}" >/dev/null 2>&1; then "${fn}" || true
+        else bash -c "${fn}" || true
+        fi
+
+    done
+
+}
+on_exit () {
+
+    [[ -v __ON_EXIT_HOOKS__ ]] || declare -ag __ON_EXIT_HOOKS__=()
+
+    local fn="${1:-}"
+    [[ -n "${fn}" ]] || return 1
+
+    __ON_EXIT_HOOKS__+=( "${fn}" )
+    trap 'run_hooks __ON_EXIT_HOOKS__' EXIT
+
+}
+on_err () {
+
+    [[ -v __ON_ERR_HOOKS__ ]] || declare -ag __ON_ERR_HOOKS__=()
+
+    local fn="${1:-}"
+    [[ -n "${fn}" ]] || return 1
+
+    __ON_ERR_HOOKS__+=( "${fn}" )
+    trap 'run_hooks __ON_ERR_HOOKS__' ERR
+
+}
+on_int () {
+
+    [[ -v __ON_INT_HOOKS__ ]] || declare -ag __ON_INT_HOOKS__=()
+
+    local fn="${1:-}"
+    [[ -n "${fn}" ]] || return 1
+
+    __ON_INT_HOOKS__+=( "${fn}" )
+    trap 'run_hooks __ON_INT_HOOKS__' INT
+
+}
+on_term () {
+
+    [[ -v __ON_TERM_HOOKS__ ]] || declare -ag __ON_TERM_HOOKS__=()
+
+    local fn="${1:-}"
+    [[ -n "${fn}" ]] || return 1
+
+    __ON_TERM_HOOKS__+=( "${fn}" )
+    trap 'run_hooks __ON_TERM_HOOKS__' TERM
+
+}
+on_hook () {
+
+    on_exit "$@"
+    on_err  "$@"
+    on_int  "$@"
+    on_term "$@"
+
+}
+cleanup_tmps () {
+
+    [[ -v __TMP_FILES__ ]] || return 0
+
+    local file=""
+
+    for file in "${__TMP_FILES__[@]}"; do
+        [[ -n "${file:-}" && ( -e "${file}" || -L "${file}" ) ]] || continue
+        rm -rf -- "${file}" 2>/dev/null || true
+    done
+
+    __TMP_FILES__=()
+
+}
+tmp_file () {
+
+    [[ -v __TMP_FILES__  ]] || declare -ag __TMP_FILES__=()
+    [[ -v __TMP_HOOKED__ ]] || declare -g  __TMP_HOOKED__=0
+
+    local ref="${1:-}" path="${2:-/tmp}" __mktmp_file__=""
+
+    [[ -n "${ref}" ]] || die "Missing output variable name"
+    [[ -d "${path}" ]] || { path="$(dirname -- "${path}")" || die "Failed to detect dirname of: ${path}"; }
+
+    __mktmp_file__="$(mktemp "${path}/.out.tmp.XXXXXX")" || die "Failed to create temp file in dir: ${path}"
+    __TMP_FILES__+=( "${__mktmp_file__}" )
+
+    if (( ! __TMP_HOOKED__ )); then
+        on_hook cleanup_tmps
+        __TMP_HOOKED__=1
+    fi
+    if [[ -z "${ref}" ]]; then
+        printf '%s\n' "${__mktmp_file__}"
+        return 0
+    fi
+
+    local -n out_ref="${ref}"
+    out_ref="${__mktmp_file__}"
+
+}
+assert () {
+
+    local msg="${1:-assert failed}"
+    shift || true
+
+    (( $# )) || { error "${msg}"; return 1; }
+
+    "$@" && return 0
+
+    error "${msg}"
+    return 1
+
+}
+assert_eq () {
+
+    local want="${1-}" got="${2-}" msg="${3:-}"
+
+    [[ -n "${msg}" ]] || msg="assert_eq failed: expected '${want}', got '${got}'"
+    [[ "${want}" == "${got}" ]] && return 0
+
+    error "${msg}"
+    return 1
+
+}
+assert_ne () {
+
+    local left="${1-}" right="${2-}" msg="${3:-}"
+
+    [[ -n "${msg}" ]] || msg="assert_ne failed: both are '${left}'"
+    [[ "${left}" != "${right}" ]] && return 0
+
+    error "${msg}"
+    return 1
+
+}
+
+# ======>> Arg <<======
+
+get () {
+
+    local long="${1:-}" short="${2:-}" position="${3:-}" def="${4-}" ref="${5-}"
+    local x="" next="" alt="" out="" found=0 i=0 pos=0
+    shift 5 || true
+
+    [[ -z "${long}"  || "${long}"  == --* ]] || long=""
+    [[ -z "${short}" || "${short}" == -?  ]] || short=""
+    [[ "${position}" =~ ^[1-9][0-9]*$ ]] || position=0
+    [[ -n "${long}" ]] && alt="-${long#--}"
+
+    local -a rest=()
+
+    for (( i=1; i<=$#; i++ )); do
+
+        x="${!i}"
+
+        if [[ "${x}" == "--" ]]; then
+
+            for (( ; i<=$#; i++ )); do
+                rest+=( "${!i}" )
+            done
+
+            break
+
+        fi
+
+        if (( ! found )) && [[ -n "${long}" && "${x}" == "${long}"=* ]]; then
+            out="${x#*=}"
+            found=1
+            continue
+        fi
+
+        if (( ! found )) && [[ -n "${alt}" && "${x}" == "${alt}"=* ]]; then
+            out="${x#*=}"
+            found=1
+            continue
+        fi
+
+        if (( ! found )) && {
+            { [[ -n "${long}"  && "${x}" == "${long}"  ]]; } || \
+            { [[ -n "${short}" && "${x}" == "${short}" ]]; } || \
+            { [[ -n "${alt}"   && "${x}" == "${alt}"   ]]; }
+        }; then
+
+            if (( i < $# )); then
+
+                next="${!(( i + 1 ))}"
+
+                if [[ "${next}" == "--" ]]; then
+                    out="true"
+                    found=1
+                    continue
+                fi
+
+                if [[ "${next}" =~ ^[+-]?([0-9]+([.][0-9]+)?|[.][0-9]+)$ ]]; then
+                    out="${next}"
+                    found=1
+                    (( i++ ))
+                    continue
+                fi
+
+                if [[ "${next}" != --* && "${next}" != -?* ]]; then
+                    out="${next}"
+                    found=1
+                    (( i++ ))
+                    continue
+                fi
+
+            fi
+
+            out="true"
+            found=1
+            continue
+
+        fi
+
+        pos=$(( pos + 1 ))
+
+        if (( ! found && position > 0 && pos == position )); then
+
+            if [[ "${x}" != --* && "${x}" != -?* ]] || [[ "${x}" =~ ^[+-]?([0-9]+([.][0-9]+)?|[.][0-9]+)$ ]]; then
+                out="${x}"
+                found=1
+                continue
+            fi
+
+        fi
+
+        rest+=( "${x}" )
+
+    done
+
+    if [[ -n "${ref}" ]]; then
+        declare -n ref_out="${ref}"
+        ref_out=( "${rest[@]}" )
+    fi
+
+    (( found )) && printf '%s' "${out}" || printf '%s' "${def}"
+
+}
+get_bool () {
+
+    local long="${1:-}" short="${2:-}" ref="${3:-}"
+    shift 3 || true
+
+    local v=""
+    v="$(get "${long}" "${short}" 0 0 "${ref}" "$@")" || return 1
+
+    case "${v,,}" in
+        1|true|yes|y|on) printf '%s' 1 ;;
+        *)               printf '%s' 0 ;;
+    esac
+
+}
+get_flag () {
+
+    local long="${1:-}" short="${2:-}" def="${3:-}" ref="${4:-}"
+    shift 4 || true
+
+    get "${long}" "${short}" 0 "${def}" "${ref}" "$@"
+
+}
+get_position () {
+
+    local position="${1:-}" def="${2:-}" ref="${3:-}"
+    shift 3 || true
+
+    get "" "" "${position}" "${def}" "${ref}" "$@"
+
+}
+has_flag () {
+
+    local long="${1:-}" short="${2:-}" ref="${3:-}" v=""
+    shift 3 || true
+
+    v="$(get "${long}" "${short}" 0 "__MISSING_9A7F1C__" "${ref}" "$@")" || return 1
+    [[ "${v}" != "__MISSING_9A7F1C__" ]]
+
+}
+has_value () {
+
+    local long="${1:-}" short="${2:-}" position="${3:-0}" ref="${4:-}" v=""
+    shift 4 || true
+
+    v="$(get "${long}" "${short}" "${position}" "__MISSING_9A7F1C__" "${ref}" "$@")" || return 1
+    [[ "${v}" != "__MISSING_9A7F1C__" ]]
+
+}
+need_flag () {
+
+    local long="${1:-}" short="${2:-}" def="${3-}" ref="${4:-}" v=""
+    shift 4 || true
+
+    v="$(get_flag "${long}" "${short}" "__GET_MISSING_9A7F1C__" "${ref}" "$@")" || return 1
+    [[ "${v}" != "__GET_MISSING_9A7F1C__" ]] && { printf '%s' "${v}"; return 0; }
+
+    if [[ -n "${long}" && -n "${short}" ]]; then die "Missing required flag: ${long} | ${short}"
+    elif [[ -n "${long}" ]]; then die "Missing required flag: ${long}"
+    elif [[ -n "${short}" ]]; then die "Missing required flag: ${short}"
+    fi
+
+    die "${def:-Missing required flag}"
 
 }

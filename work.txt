@@ -27,16 +27,7 @@ safe_remove
 safe_move
 safe_copy
 exists_or_die
-4) file read helpers
 
-أنت عندك الأساس، لكن ينقص:
-
-prepend_file
-remove_file
-copy_file
-move_file
-read_lines
-write_lines
 5) path normalize
 
 لو تريد قوة حقيقية:
@@ -53,16 +44,7 @@ capture
 capture_ok
 capture_err
 capture_status
-7) guard/assert
 
-مهمة جدًا في أي framework:
-
-assert
-assert_eq
-assert_ne
-assert_file
-assert_dir
-assert_cmd
 8) trap / cleanup
 
 مهمة جدًا جدًا:
@@ -72,14 +54,7 @@ on_err
 on_int
 cleanup_push
 cleanup_run
-9) parse mini helpers
 
-ليس parser كامل، فقط أساسيات:
-
-has_flag
-get_flag
-shift_flag
-rest_args
 10) text/file search helpers
 
 خفيفة لكن مفيدة:
