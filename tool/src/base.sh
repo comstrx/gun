@@ -19,27 +19,13 @@ declare -a APP_TEMPS=()
 cleanup () {
 
     for file in "${APP_TEMPS[@]}"; do
+
         [[ -n "${file:-}" && -e "${file}" ]] || continue
         rm -f -- "${file}" 2>/dev/null || true
+
     done
 
     APP_TEMPS=()
-
-}
-exec_file () {
-
-    local file="${1:-}"
-    chmod +x "${file}" 2>/dev/null || true
-
-}
-out_file () {
-
-    local name="${1:-${APP_NAME}}"
-    local target="${2:-${APP_TARGET}}"
-    local dir="${3:-${BUILD_DIR}}"
-
-    [[ "${name}" == *.sh ]] || name="${name}.sh"
-    printf '%s\n' "${dir}/${target}/${name}"
 
 }
 tmp_file () {
@@ -63,6 +49,23 @@ tmp_file () {
 
     local -n out_ref="${ref}"
     out_ref="${mkt_file}"
+
+}
+
+exec_file () {
+
+    local file="${1:-}"
+    chmod +x "${file}" 2>/dev/null || true
+
+}
+out_file () {
+
+    local name="${1:-${APP_NAME}}"
+    local target="${2:-${APP_TARGET}}"
+    local dir="${3:-${BUILD_DIR}}"
+
+    [[ "${name}" == *.sh ]] || name="${name}.sh"
+    printf '%s\n' "${dir}/${target}/${name}"
 
 }
 bin_file () {
@@ -123,6 +126,7 @@ move_file () {
     fi
 
 }
+
 minify_file () {
 
     local file="${1:-}"
@@ -155,5 +159,41 @@ verify_file () {
         printf '[ERR]: verify file failed: %s\n' "${file}" >&2
         return 1
     fi
+
+}
+
+new_checksum () {
+
+    local -a targets=( "${SOURCE_DIR}" )
+
+    if ! find "${targets[@]}" -type f -exec sha256sum {} + | LC_ALL=C sort | sha256sum | awk '{print $1}'; then
+        printf '[ERR]: failed to calculate sha256sum\n' >&2
+        return 1
+    fi
+
+}
+read_checksum () {
+
+    local file="${1:-}"
+
+    [[ -f "${file}" ]] || return 1
+    sed -n "s/^readonly ___APP_SRC_CHECKSUM___='\(.*\)'$/\1/p" "${file}" | head -n 1 || return 1
+
+}
+check_checksum () {
+
+    local file="${1:-}" old="" new=""
+
+    old="$(read_checksum "${file}")" || return 1
+    new="$(new_checksum)" || return 1
+
+    [[ "${old}" == "${new}" ]]
+
+}
+build_checksum () {
+
+    local sum=""
+    sum="$(new_checksum)" || return 1
+    printf "readonly ___APP_SRC_CHECKSUM___='%s'\n" "${sum}"
 
 }

@@ -188,7 +188,6 @@ load_mod () {
 
     path="${SOURCE_DIR}/${mod//::/\/}"
     file="${path%.sh}.sh"
-
     [[ -f "${file}" ]] || file="${path%.sh}/mod.sh"
 
     if [[ ! -f "${file}" ]]; then
@@ -234,7 +233,6 @@ walk_mods () {
     while IFS= read -r line || [[ -n "${line}" ]]; do
 
         line="${line%$'\r'}"
-
         mod="$(use_mod "${line}")" || continue
         dep="$(load_mod "${mod}")" || return 1
 
@@ -247,28 +245,18 @@ walk_mods () {
 }
 build_mods () {
 
-    local path="" line="" printed=0
+    local line="" path=""
 
     for path in "${APP_SRCS[@]}" "${ENTRY_FILE}"; do
-
-        printed=0
 
         verify_file "${path}" || return 1
 
         while IFS= read -r line || [[ -n "${line}" ]]; do
 
             use_mod "${line}" >/dev/null && continue
-
-            if (( ! printed )); then
-                printf '__file_marker__ %q\n' "${path}"
-                printed=1
-            fi
-
             printf '%s\n' "${line%$'\r'}"
 
         done < "${path}" || { printf '[ERR]: unable to read file: %s\n' "${path}" >&2; return 1; }
-
-        (( ! printed )) || printf '\n'
 
     done
 
@@ -500,6 +488,9 @@ build_checksum () {
 # Build
 
 build_content () {
+
+    printf '#!/usr/bin/env bash\n'
+    printf 'set -Eeuo pipefail\n'
 
     build_mods     || return 1
     build_tests    || return 1

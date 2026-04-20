@@ -3,22 +3,14 @@ use core
 use module
 
 #[test]
-function quality () {
+test_hello () {
 
-    echo "Quality Passed"
-
-}
-
-test_quality1 () {
-
-    echo "Qsuality 1 Passed"
+    echo "Hello World"
 
 }
 
 main () {
 
-    trace_prod
-
-    echos "Hello World"
+    echo "Hello World"
 
 }

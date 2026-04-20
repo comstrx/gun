@@ -81,7 +81,6 @@ merge_tests () {
 merge () {
 
     merge_parts head    || return 1
-    merge_parts builtin || return 1
     merge_mods          || return 1
     merge_tests         || return 1
     merge_parts test    || return 1
