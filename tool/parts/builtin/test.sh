@@ -349,9 +349,12 @@ test_arch_contract () {
 test_mock_ci_matrix () {
 
     (
+        unset GITLAB_CI JENKINS_URL BUILDKITE CIRCLECI TRAVIS APPVEYOR TF_BUILD
+        unset BITBUCKET_BUILD_NUMBER TEAMCITY_VERSION DRONE SEMAPHORE CODEBUILD_BUILD_ID
         export GITHUB_ACTIONS=true
         export GITHUB_EVENT_NAME=pull_request
         export CI=true
+
         expect_ok "mock github ci" is_ci
         expect_eq "mock github ci_name" "$(ci_name)" "github"
         expect_ok "mock github pull" is_ci_pull
@@ -359,10 +362,13 @@ test_mock_ci_matrix () {
     )
 
     (
+        unset GITHUB_ACTIONS JENKINS_URL BUILDKITE CIRCLECI TRAVIS APPVEYOR TF_BUILD
+        unset BITBUCKET_BUILD_NUMBER TEAMCITY_VERSION DRONE SEMAPHORE CODEBUILD_BUILD_ID
         export GITLAB_CI=true
         export CI=true
         export CI_PIPELINE_SOURCE=push
         unset CI_MERGE_REQUEST_IID
+
         expect_ok "mock gitlab ci" is_ci
         expect_eq "mock gitlab ci_name" "$(ci_name)" "gitlab"
         expect_ok "mock gitlab push" is_ci_push
@@ -370,8 +376,11 @@ test_mock_ci_matrix () {
     )
 
     (
+        unset GITHUB_ACTIONS GITLAB_CI JENKINS_URL BUILDKITE CIRCLECI TRAVIS APPVEYOR TF_BUILD
+        unset BITBUCKET_BUILD_NUMBER TEAMCITY_VERSION DRONE SEMAPHORE CODEBUILD_BUILD_ID
         export CI=true
         export GITHUB_REF_TYPE=tag
+
         expect_ok "mock ci tag" is_ci_tag
     )
 
