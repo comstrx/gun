@@ -25,8 +25,7 @@ eprint () {
 }
 info () {
 
-    local tag="💥"
-    local IFS=' '
+    local tag="💥" IFS=' '
 
     (( $# )) || { printf '%s\n' "${tag}" >&2; return 0; }
     printf '%s %s\n' "${tag}" "$*" >&2
@@ -34,8 +33,7 @@ info () {
 }
 warn () {
 
-    local tag="⚠️"
-    local IFS=' '
+    local tag="⚠️" IFS=' '
 
     (( $# )) || { printf '%s\n' "${tag}" >&2; return 0; }
     printf '%s %s\n' "${tag}" "$*" >&2
@@ -43,8 +41,7 @@ warn () {
 }
 error () {
 
-    local tag="❌"
-    local IFS=' '
+    local tag="❌" IFS=' '
 
     (( $# )) || { printf '%s\n' "${tag}" >&2; return 0; }
     printf '%s %s\n' "${tag}" "$*" >&2
@@ -52,8 +49,7 @@ error () {
 }
 success () {
 
-    local tag="✅"
-    local IFS=' '
+    local tag="✅" IFS=' '
 
     (( $# )) || { printf '%s\n' "${tag}" >&2; return 0; }
     printf '%s %s\n' "${tag}" "$*" >&2
@@ -66,9 +62,7 @@ die () {
     [[ "${code}" =~ ^[0-9]+$ ]] || code=1
     [[ -n "${msg}" ]] && error "${msg}"
 
-    if [[ "${-}" == *i* ]]; then
-        return "${code}"
-    fi
+    [[ "${-}" == *i* ]] && return "${code}"
 
     exit "${code}"
 

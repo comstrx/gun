@@ -1,7 +1,7 @@
 
 int () {
 
-    local v="${1-}" m=""
+    local v="${1:-}" m=""
 
     case "${v,,}" in
         "" ) printf '%s' "0"; return 0 ;;
@@ -29,7 +29,7 @@ int () {
 }
 float () {
 
-    local v="${1-}" m=""
+    local v="${1:-}" m=""
 
     case "${v,,}" in
         "" ) printf '%s' "0.0"; return 0 ;;
@@ -67,21 +67,11 @@ float () {
 abs () {
 
     local v=""
-    v="$(int "${1-}")" || return 1
+    v="$(int "${1:-}")" || return 1
 
     if [[ "${v}" == -* ]]; then printf '%s' "${v#-}"
     else printf '%s' "${v#+}"
     fi
-
-}
-bool () {
-
-    local v="${1-}"
-
-    case "${v,,}" in
-        1|true|yes|y|on) printf '%s' "1" ;;
-        *)               printf '%s' "0" ;;
-    esac
 
 }
 char () {
@@ -91,48 +81,62 @@ char () {
     printf '%s' "${v:0:1}"
 
 }
+bool () {
+
+    local v="${1:-}"
+
+    case "${v,,}" in
+        1|true|yes|y|on) printf '%s' "1" ;;
+        *)               printf '%s' "0" ;;
+    esac
+
+}
 
 is_int () {
 
-    local v="${1-}"
+    local v="${1:-}"
 
     case "${v,,}" in
         true|yes|y|on|false|no|n|off) return 0 ;;
     esac
 
-    [[ "${v}" =~ ^[[:space:]]*[+-]?[0-9]+$ ]]
+    [[ "${v}" =~ ^[[:space:]]*[+-]?[0-9]+[[:space:]]*$ ]]
 
 }
 is_uint () {
 
-    local v="${1-}"
+    local v="${1:-}"
 
     case "${v,,}" in
         true|yes|y|on|false|no|n|off) return 0 ;;
     esac
 
-    [[ "${v}" =~ ^[[:space:]]*[0-9]+$ ]]
+    [[ "${v}" =~ ^[[:space:]]*\+?[0-9]+[[:space:]]*$ ]]
 
 }
 is_float () {
 
-    local v="${1-}"
+    local v="${1:-}"
 
     case "${v,,}" in
         true|yes|y|on|false|no|n|off) return 0 ;;
     esac
 
-    [[ "${v}" =~ ^[[:space:]]*[+-]?([0-9]+\.[0-9]+|[0-9]+|[.][0-9]+)$ ]]
+    [[ "${v}" =~ ^[[:space:]]*[+-]?([0-9]+\.[0-9]+|[0-9]+|[.][0-9]+|[0-9]+[.])[[:space:]]*$ ]]
 
 }
-is_number () {
+is_char () {
 
-    is_float "${1-}"
+    local v="${1:-}"
+    (( ${#v} == 1 ))
 
 }
+
 is_bool () {
 
-    case "${1,,}" in
+    local v="${1:-}"
+
+    case "${v,,}" in
         1|0|true|false|yes|no|y|n|on|off) return 0 ;;
         *) return 1 ;;
     esac
@@ -140,15 +144,16 @@ is_bool () {
 }
 is_true () {
 
-    case "${1,,}" in
+    local v="${1:-}"
+
+    case "${v,,}" in
         1|true|yes|y|on) return 0 ;;
         *) return 1 ;;
     esac
 
 }
-is_char () {
+is_number () {
 
-    local v="${1-}"
-    (( ${#v} == 1 ))
+    is_float "$@"
 
 }

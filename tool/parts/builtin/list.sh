@@ -1,8 +1,25 @@
 
+list_init () {
+
+    local name="${1:-}" decl=""
+
+    [[ "${name}" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]] || return 1
+
+    if ! declare -p "${name}" >/dev/null 2>&1; then
+        declare -g -a "${name}=()"
+        return 0
+    fi
+
+    decl="$(declare -p "${name}" 2>/dev/null)" || return 1
+
+    [[ "${decl}" =~ ^declare\ -[a-zA-Z]*a[a-zA-Z]*[[:space:]] ]]
+
+}
 list_len () {
 
     local name="${1:-}"
-    [[ -n "${name}" ]] || return 1
+
+    list_init "${name}" || return 1
 
     local -n ref="${name}"
     printf '%s\n' "${#ref[@]}"
@@ -11,7 +28,8 @@ list_len () {
 list_add () {
 
     local name="${1:-}"
-    [[ -n "${name}" ]] || return 1
+
+    list_init "${name}" || return 1
     shift || true
 
     local -n ref="${name}"
@@ -20,39 +38,35 @@ list_add () {
 }
 list_pop () {
 
-    local name="${1:-}" out="${2-}" i="" last="" value=""
-    [[ -n "${name}" ]] || return 1
+    local name="${1:-}" target="${2-}" last="" value=""
+
+    list_init "${name}" || return 1
 
     local -n ref="${name}"
-
     (( ${#ref[@]} > 0 )) || return 1
 
-    for i in "${!ref[@]}"; do
-        [[ -z "${last}" || "${i}" -gt "${last}" ]] && last="${i}"
-    done
-
-    [[ -n "${last}" ]] || return 1
-
+    last=$(( ${#ref[@]} - 1 ))
     value="${ref[$last]}"
     unset 'ref[$last]'
 
-    if [[ -n "${out}" ]]; then printf -v "${out}" '%s' "${value}"
+    if [[ -n "${target}" ]]; then printf -v "${target}" '%s' "${value}"
     else printf '%s' "${value}"
     fi
 
 }
 list_shift () {
 
-    local name="${1:-}" out="${2-}"
-    [[ -n "${name}" ]] || return 1
+    local name="${1:-}" target="${2-}" value=""
+
+    list_init "${name}" || return 1
 
     local -n ref="${name}"
     (( ${#ref[@]} > 0 )) || return 1
 
-    local value="${ref[0]}"
+    value="${ref[0]}"
     ref=( "${ref[@]:1}" )
 
-    if [[ -n "${out}" ]]; then printf -v "${out}" '%s' "${value}"
+    if [[ -n "${target}" ]]; then printf -v "${target}" '%s' "${value}"
     else printf '%s' "${value}"
     fi
 
@@ -61,7 +75,7 @@ list_unshift () {
 
     local name="${1:-}"
 
-    [[ -n "${name}" ]] || return 1
+    list_init "${name}" || return 1
     shift || true
 
     local -n ref="${name}"
@@ -72,7 +86,7 @@ list_get () {
 
     local name="${1:-}" index="${2-}" def="${3-}"
 
-    [[ -n "${name}" ]] || return 1
+    list_init "${name}" || return 1
     [[ "${index}" =~ ^[0-9]+$ ]] || { printf '%s' "${def}"; return 0; }
 
     local -n ref="${name}"
@@ -84,19 +98,25 @@ list_get () {
 }
 list_set () {
 
-    local name="${1:-}" index="${2-}" value="${3-}"
+    local name="${1:-}" index="${2-}" value="${3-}" len=0
 
-    [[ -n "${name}" ]] || return 1
+    list_init "${name}" || return 1
     [[ "${index}" =~ ^[0-9]+$ ]] || return 1
 
     local -n ref="${name}"
+    len="${#ref[@]}"
+
+    (( index <= len )) || return 1
+
     ref["${index}"]="${value}"
 
 }
 list_concat () {
 
     local name="${1:-}" other="${2:-}"
-    [[ -n "${name}" && -n "${other}" ]] || return 1
+
+    list_init "${name}"  || return 1
+    list_init "${other}" || return 1
 
     local -n ref="${name}"
     local -n src="${other}"
@@ -106,19 +126,19 @@ list_concat () {
 }
 list_unique () {
 
-    local name="${1:-}"
-    [[ -n "${name}" ]] || return 1
-
-    local -n ref="${name}"
-
-    local x=""
+    local name="${1:-}" x=""
     local -A seen=()
+    local -a src=()
     local -a out=()
 
-    for x in "${ref[@]}"; do
+    list_init "${name}" || return 1
 
-        [[ -n "${seen[$x]+x}" ]] && continue
+    local -n ref="${name}"
+    src=( "${ref[@]}" )
 
+    for x in "${src[@]}"; do
+
+        [[ -v "seen[$x]" ]] && continue
         seen["$x"]=1
         out+=( "${x}" )
 
@@ -130,7 +150,8 @@ list_unique () {
 list_clear () {
 
     local name="${1:-}"
-    [[ -n "${name}" ]] || return 1
+
+    list_init "${name}" || return 1
 
     local -n ref="${name}"
     ref=()
