@@ -21,19 +21,15 @@ jobs:
         include:
           - name: linux-bash
             os: ubuntu-latest
-            shell: bash
+            bash_path: bash
 
           - name: macos-bash
             os: macos-latest
-            shell: bash
+            bash_path: /opt/homebrew/bin/bash
 
           - name: windows-gitbash
             os: windows-latest
-            shell: bash
-
-    defaults:
-      run:
-        shell: ${{ matrix.shell }}
+            bash_path: bash
 
     env:
       CI: true
@@ -42,28 +38,36 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install modern bash on macOS
+        if: runner.os == 'macOS'
+        run: |
+          brew install bash
+          /opt/homebrew/bin/bash --version
+
       - name: Show environment
         run: |
-          echo "runner.os=${RUNNER_OS}"
-          echo "shell=${SHELL:-unknown}"
-          echo "ostype=${OSTYPE:-unknown}"
+          "${{ matrix.bash_path }}" --version || true
           uname -a || true
-          bash --version || true
+        shell: bash
 
       - name: Normalize line endings
         run: |
           git config --global core.autocrlf false || true
           git config --global core.eol lf || true
+        shell: bash
 
       - name: Make scripts executable
         if: runner.os != 'Windows'
         run: |
           chmod +x tool/parts/builtin/test.sh || true
+        shell: bash
 
       - name: Run builtin tests
         run: |
-          bash tool/parts/builtin/test.sh
+          "${{ matrix.bash_path }}" tool/parts/builtin/test.sh
+        shell: bash
 
       - name: Run builtin tests with timing
         run: |
-          time bash tool/parts/builtin/test.sh
+          time "${{ matrix.bash_path }}" tool/parts/builtin/test.sh
+        shell: bash
