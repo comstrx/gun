@@ -13,7 +13,8 @@ source "${BUILTIN_DIR}/map.sh"        # Done
 source "${BUILTIN_DIR}/parse.sh"      # 
 source "${BUILTIN_DIR}/path.sh"       # 
 source "${BUILTIN_DIR}/process.sh"    # Done
-source "${BUILTIN_DIR}/platform.sh"   # Done
+source "${BUILTIN_DIR}/service.sh"    # Done
+source "${BUILTIN_DIR}/system.sh"     # Done
 source "${BUILTIN_DIR}/stdin.sh"      # Done
 source "${BUILTIN_DIR}/stdout.sh"     # Done
 source "${BUILTIN_DIR}/string.sh"     # Done

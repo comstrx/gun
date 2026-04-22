@@ -1,4 +1,6 @@
 
+# type::int,float,char,str,list,dict,is_xxx,type::of
+
 int () {
 
     local v="${1:-}" m=""

@@ -1,4 +1,6 @@
 
+# proc::has, need, run, show, kill, chmod
+
 has () {
 
     [[ -n "${1:-}" ]] || return 1

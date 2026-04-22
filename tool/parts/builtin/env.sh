@@ -1,4 +1,6 @@
 
+# env::has, set, get, del, list
+
 has_env () {
 
     local key="${1:-}"
