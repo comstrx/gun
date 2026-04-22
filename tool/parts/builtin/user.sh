@@ -145,25 +145,35 @@ sys::uname () {
 }
 sys::uexists () {
 
-    local user="${1:-}" group="${2:-}" v="" x="" found=0
+    local user="${1:-}" group="${2:-}" current="" v="" x="" found=0
 
     [[ -n "${user}" ]] || return 1
     [[ "${user}" != *$'\n'* && "${user}" != *$'\r'* && "${user}" != *$'\0'* ]] || return 1
 
+    current="$(sys::uname 2>/dev/null || true)"
+
+    if [[ -n "${current}" && "${user}" == "${current}" ]]; then
+        [[ -n "${group}" ]] || return 0
+        [[ "${group}" != *$'\n'* && "${group}" != *$'\r'* && "${group}" != *$'\0'* ]] || return 1
+
+        v="$(sys::groups "${user}" 2>/dev/null || true)"
+        [[ -n "${v}" ]] || return 1
+
+        while IFS= read -r x || [[ -n "${x}" ]]; do
+            [[ "${x}" == "${group}" ]] && return 0
+        done <<< "${v}"
+
+        return 1
+    fi
+
     if sys::is_linux || sys::is_wsl; then
 
         if sys::has getent; then
-
             getent passwd "${user}" >/dev/null 2>&1 || return 1
-
         elif [[ -r /etc/passwd ]]; then
-
             awk -F: -v u="${user}" '$1 == u { found = 1; exit } END { exit(found ? 0 : 1) }' /etc/passwd >/dev/null 2>&1 || return 1
-
         else
-
             return 1
-
         fi
 
     elif sys::is_macos; then
@@ -174,19 +184,13 @@ sys::uexists () {
     elif sys::is_windows; then
 
         if sys::has powershell.exe; then
-
             SYS_USER_QUERY="${user}" powershell.exe -NoProfile -NonInteractive -Command '
                 try { Get-LocalUser -Name $env:SYS_USER_QUERY -ErrorAction Stop | Out-Null; exit 0 } catch { exit 1 }
             ' >/dev/null 2>&1 || return 1
-
         elif sys::has net.exe; then
-
             net.exe user "${user}" >/dev/null 2>&1 || return 1
-
         else
-
             return 1
-
         fi
 
     else
@@ -202,9 +206,7 @@ sys::uexists () {
     [[ -n "${v}" ]] || return 1
 
     while IFS= read -r x || [[ -n "${x}" ]]; do
-
         [[ "${x}" == "${group}" ]] && return 0
-
     done <<< "${v}"
 
     return 1
@@ -320,15 +322,22 @@ sys::ushell () {
 }
 sys::ugroup () {
 
-    local user="${1:-}" v=""
+    local user="${1:-}" current="" v=""
 
-    [[ -n "${user}" ]] || user="$(sys::uname 2>/dev/null || true)"
+    current="$(sys::uname 2>/dev/null || true)"
+
+    [[ -n "${user}" ]] || user="${current}"
     [[ -n "${user}" ]] || return 1
     [[ "${user}" != *$'\n'* && "${user}" != *$'\r'* && "${user}" != *$'\0'* ]] || return 1
 
     if sys::has id; then
 
-        v="$(id -gn "${user}" 2>/dev/null || true)"
+        if [[ -n "${current}" && "${user}" == "${current}" ]]; then
+            v="$(id -gn 2>/dev/null || true)"
+        else
+            v="$(id -gn "${user}" 2>/dev/null || true)"
+        fi
+
         [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
 
     fi
@@ -356,7 +365,9 @@ sys::ugroup () {
 
 sys::groups () {
 
-    local user="${1:-}" v="" x=""
+    local user="${1:-}" current="" v="" x=""
+
+    current="$(sys::uname 2>/dev/null || true)"
 
     if [[ -n "${user}" ]]; then
 
@@ -364,7 +375,12 @@ sys::groups () {
 
         if sys::has id; then
 
-            v="$(id -Gn "${user}" 2>/dev/null || true)"
+            if [[ -n "${current}" && "${user}" == "${current}" ]]; then
+                v="$(id -Gn 2>/dev/null || true)"
+            else
+                v="$(id -Gn "${user}" 2>/dev/null || true)"
+            fi
+
             [[ -n "${v}" ]] || return 1
 
             for x in ${v}; do
@@ -394,13 +410,12 @@ sys::groups () {
         return 1
 
     fi
+
     if sys::is_linux || sys::is_wsl; then
 
         if sys::has getent; then
-
             getent group 2>/dev/null | awk -F: '{print $1}' | awk 'NF && !seen[$0]++ { print }'
             return
-
         fi
 
         [[ -r /etc/group ]] || return 1
@@ -423,8 +438,8 @@ sys::groups () {
             powershell.exe -NoProfile -NonInteractive -Command "Get-LocalGroup | Select-Object -ExpandProperty Name" 2>/dev/null | tr -d '\r' | awk 'NF && !seen[$0]++ { print }'
             return
         fi
-        if sys::has net.exe; then
 
+        if sys::has net.exe; then
             net.exe localgroup 2>/dev/null | tr -d '\r' | awk '
                 BEGIN { cap = 0 }
                 /^---/ { cap = 1; next }
@@ -435,9 +450,7 @@ sys::groups () {
                     if ( line != "" ) print line
                 }
             ' | awk 'NF && !seen[$0]++ { print }'
-
             return
-
         fi
 
         return 1
