@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 SYS_FILE="${1:-./system.sh}"
-SYS_TEST_DESTRUCTIVE="${SYS_TEST_DESTRUCTIVE:-0}"
+SYS_TEST_DESTRUCTIVE="${SYS_TEST_DESTRUCTIVE:-1}"
 SYS_TEST_SKIP_CODE=200
 
 [[ -f "${SYS_FILE}" ]] || {

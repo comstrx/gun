@@ -64,6 +64,6 @@ jobs:
 
       - name: Run builtin tests
         run: |
-          SYS_TEST_DESTRUCTIVE=1 "${{ matrix.bash_path }}" tool/parts/builtin/test.sh tool/parts/builtin/system.sh
+          "${{ matrix.bash_path }}" tool/parts/builtin/test.sh tool/parts/builtin/system.sh
         shell: bash
 
