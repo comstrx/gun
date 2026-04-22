@@ -835,8 +835,19 @@ sys::gid () {
 }
 sys::gname () {
 
-    local v=""
+    local v="" name=""
 
+    if sys::is_windows; then
+
+        name="$(sys::uname 2>/dev/null || true)"
+        [[ -n "${name}" ]] || return 1
+
+        v="$(sys::ugroup "${name}" 2>/dev/null || true)"
+        [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
+
+        return 1
+
+    fi
     if sys::__has id; then
         v="$(id -gn 2>/dev/null || true)"
         [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
@@ -847,20 +858,31 @@ sys::gname () {
 }
 sys::gexists () {
 
-    local name="${1:-}"
+    local name="${1:-}" cmd=""
 
     [[ -n "${name}" ]] || return 1
 
+    if sys::is_windows; then
+
+        if sys::__has powershell.exe; then
+            cmd='param([string]$GroupName); $ErrorActionPreference = "Stop"; if (Get-Command Get-LocalGroup -ErrorAction SilentlyContinue) { Get-LocalGroup -Name $GroupName | Out-Null; exit 0 }; exit 1'
+            powershell.exe -NoProfile -NonInteractive -Command "${cmd}" "${name}" >/dev/null 2>&1
+            [[ "$?" == "0" ]] && return 0
+        fi
+        if sys::__has net.exe; then
+            net.exe localgroup "${name}" >/dev/null 2>&1
+            return
+        fi
+
+        return 1
+
+    fi
     if sys::__has getent; then
         getent group "${name}" >/dev/null 2>&1
         return
     fi
     if sys::is_macos && sys::__has dscl; then
         dscl . -read "/Groups/${name}" >/dev/null 2>&1
-        return
-    fi
-    if sys::is_windows && sys::__has net.exe; then
-        net.exe localgroup "${name}" >/dev/null 2>&1
         return
     fi
 
