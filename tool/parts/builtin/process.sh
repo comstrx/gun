@@ -1,5 +1,5 @@
 
-# proc::has, need, run, show, kill, chmod
+# proc::has, need, run, show, kill, chmod, pid_id, signal, background jobs
 
 has () {
 
