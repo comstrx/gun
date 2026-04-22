@@ -96,6 +96,7 @@ sys::is_gitbash () {
     sys::is_msys || return 1
 
     [[ -n "${GitInstallRoot:-}" ]] && return 0
+    [[ "${OSTYPE:-}" == msys* && "${MSYSTEM:-}" == MINGW* && -n "${WINDIR:-}" ]] && return 0
 
     case "${TERM_PROGRAM:-}" in
         mintty)
@@ -305,7 +306,7 @@ sys::is_root () {
     return 1
 
 }
-sys::has_sudo () {
+sys::can_sudo () {
 
     local v="" x=""
 
@@ -530,8 +531,7 @@ sys::open () {
 
     local target="${1:-}" type="${2:-auto}" v=""
 
-    [[ -n "${target}" ]] || return 1
-    [[ "${target}" == *$'\n'* || "${target}" == *$'\r'* ]] && return 1
+    [[ -z "${target}" || "${target}" == *$'\n'* || "${target}" == *$'\r'* ]] && return 1
 
     if [[ "${type}" == "app" ]]; then
 
@@ -584,40 +584,30 @@ sys::open () {
     fi
 
     if sys::is_macos && sys::has open; then
-
         open "${target}" >/dev/null 2>&1
         return
-
     fi
     if sys::is_windows; then
 
         if [[ "${type}" == "path" ]] && sys::has cygpath; then
-
             v="$(cygpath -aw "${target}" 2>/dev/null || true)"
             [[ -n "${v}" ]] && target="${v}"
-
         fi
         if sys::has explorer.exe; then
-
             explorer.exe "${target}" >/dev/null 2>&1
             return
-
         fi
         if sys::has cmd.exe; then
-
             cmd.exe /C start "" "${target}" >/dev/null 2>&1
             return
-
         fi
 
         return 1
 
     fi
     if sys::has xdg-open; then
-
         xdg-open "${target}" >/dev/null 2>&1
         return
-
     fi
 
     return 1

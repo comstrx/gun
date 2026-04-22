@@ -98,7 +98,7 @@ test_detect () {
     print_bool_call "sys::is_headless"    sys::is_headless
     print_bool_call "sys::is_container"   sys::is_container
     print_bool_call "sys::is_root"        sys::is_root
-    print_bool_call "sys::has_sudo"       sys::has_sudo
+    print_bool_call "sys::can_sudo"       sys::can_sudo
 
     printf '\n'
 
