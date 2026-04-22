@@ -92,9 +92,9 @@ print_value sys::ingroup  "${current_group}" "${current_user}"
 print_value sys::is_root
 print_value sys::is_admin
 
-sys::addgroup "gun_test_group_01"
-sys::adduser "gun_test_user_01"
-sys::adduser "gun_test_user_02" "gun_test_group_01"
+print_value sys::addgroup "gun_test_group_01"
+print_value sys::adduser "gun_test_user_01"
+print_value sys::adduser "gun_test_user_02" "gun_test_group_01"
 
 print_value sys::uexists "gun_test_user_01"
 print_value sys::uexists "gun_test_user_02"
@@ -102,8 +102,9 @@ print_value sys::gexists "gun_test_group_01"
 print_value sys::ingroup "gun_test_group_01" "gun_test_user_02"
 print_value sys::ingroup "gun_test_group_01" "gun_test_user_01"
 
-sudo userdel -r "gun_test_user_04" 2>/dev/null || true
-sudo groupdel "gun_test_group_04" 2>/dev/null || true
+sudo userdel -r "gun_test_user_01" 2>/dev/null || true
+sudo userdel -r "gun_test_user_02" 2>/dev/null || true
+sudo groupdel "gun_test_group_01" 2>/dev/null || true
 
 print_value sys::uexists "gun_test_user_01"
 print_value sys::uexists "gun_test_user_02"
