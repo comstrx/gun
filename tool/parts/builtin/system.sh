@@ -1499,3 +1499,222 @@ sys::add_user () {
     return 1
 
 }
+
+
+
+sys::ugroup () {
+
+    local name="${1:-}" v="" dscl_v="" current="" cmd=""
+
+    if [[ -z "${name}" ]]; then
+
+        if ! sys::is_windows && sys::__has id; then
+
+            v="$(id -gn 2>/dev/null || true)"
+            [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
+
+        fi
+
+        name="$(sys::uname 2>/dev/null || true)"
+
+    fi
+
+    [[ -n "${name}" ]] || return 1
+
+    if sys::is_windows; then
+
+        if sys::__has powershell.exe; then
+
+            cmd='
+param([string]$UserName)
+$ErrorActionPreference = "Stop"
+
+if (-not (Get-Command Get-LocalGroup -ErrorAction SilentlyContinue)) {
+    exit 1
+}
+if (-not (Get-Command Get-LocalGroupMember -ErrorAction SilentlyContinue)) {
+    exit 1
+}
+
+$target = $UserName.ToLowerInvariant()
+
+foreach ($group in Get-LocalGroup) {
+    try {
+        foreach ($member in Get-LocalGroupMember -Group $group.Name -ErrorAction Stop) {
+            $memberName = [string]$member.Name
+            if ($memberName -match "\\\\") {
+                $memberName = $memberName.Split("\\")[-1]
+            }
+            if ($memberName.ToLowerInvariant() -eq $target) {
+                [Console]::Out.WriteLine($group.Name)
+                exit 0
+            }
+        }
+    } catch {}
+}
+
+exit 1
+'
+            v="$(powershell.exe -NoProfile -NonInteractive -Command "${cmd}" "${name}" 2>/dev/null | tr -d '\r' | head -n 1)"
+            [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
+
+        fi
+
+        current="$(sys::uname 2>/dev/null || true)"
+
+        if [[ -n "${current}" && "${name}" == "${current}" ]] && sys::__has whoami.exe; then
+
+            v="$(
+                whoami.exe /groups /fo csv /nh 2>/dev/null | tr -d '\r' | awk -F'","' '
+                    NR == 1 {
+                        gsub(/^"/, "", $1)
+                        gsub(/"$/, "", $1)
+                        sub(/^[^\\]+\\/, "", $1)
+                        if ($1 != "") print $1
+                    }
+                ' | head -n 1
+            )"
+
+            [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
+
+        fi
+
+        return 1
+
+    fi
+
+    if sys::__has id; then
+
+        v="$(id -gn "${name}" 2>/dev/null || true)"
+        [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
+
+    fi
+    if sys::__has getent; then
+
+        v="$(getent passwd "${name}" 2>/dev/null | awk -F: 'NR==1 {print $4}' | head -n 1)"
+
+        if [[ "${v}" =~ ^[0-9]+$ ]] && sys::__has getent; then
+            v="$(getent group "${v}" 2>/dev/null | awk -F: 'NR==1 {print $1}' | head -n 1)"
+            [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
+        fi
+
+    fi
+    if sys::is_macos && sys::__has dscl; then
+
+        dscl_v="$(dscl . -read "/Users/${name}" PrimaryGroupID 2>/dev/null | awk 'NR==1 {print $2}' | head -n 1)"
+
+        if [[ "${dscl_v}" =~ ^[0-9]+$ ]]; then
+            v="$(dscl . -search /Groups PrimaryGroupID "${dscl_v}" 2>/dev/null | awk 'NR==1 {print $1}' | head -n 1)"
+            [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
+        fi
+
+    fi
+
+    return 1
+
+}
+sys::uingroup () {
+
+    local group="${1:-}" user="${2:-}" x="" groups="" current="" lower_user="" line="" probe="" cmd=""
+
+    [[ -n "${group}" ]] || return 1
+    [[ -n "${user}" ]] || user="$(sys::uname 2>/dev/null || true)"
+    [[ -n "${user}" ]] || return 1
+
+    if sys::is_windows; then
+
+        if sys::__has powershell.exe; then
+
+            cmd='
+param([string]$GroupName, [string]$UserName)
+$ErrorActionPreference = "Stop"
+
+if (-not (Get-Command Get-LocalGroupMember -ErrorAction SilentlyContinue)) {
+    exit 1
+}
+
+$target = $UserName.ToLowerInvariant()
+
+foreach ($member in Get-LocalGroupMember -Group $GroupName -ErrorAction Stop) {
+    $memberName = [string]$member.Name
+    if ($memberName -match "\\\\") {
+        $memberName = $memberName.Split("\\")[-1]
+    }
+    if ($memberName.ToLowerInvariant() -eq $target) {
+        exit 0
+    }
+}
+
+exit 1
+'
+            powershell.exe -NoProfile -NonInteractive -Command "${cmd}" "${group}" "${user}" >/dev/null 2>&1
+            [[ "$?" == "0" ]] && return 0
+
+        fi
+
+        lower_user="$(sys::__lower "${user}")"
+        current="$(sys::uname 2>/dev/null || true)"
+
+        if sys::__has net.exe; then
+
+            while IFS= read -r line || [[ -n "${line}" ]]; do
+
+                line="${line%$'\r'}"
+                [[ -n "${line}" ]] || continue
+
+                probe="$(sys::__lower "${line}")"
+                [[ "${probe}" == "${lower_user}" ]] && return 0
+                [[ "${probe##*\\}" == "${lower_user}" ]] && return 0
+
+            done < <(
+                net.exe localgroup "${group}" 2>/dev/null | tr -d '\r' | awk '
+                    BEGIN { in_members = 0 }
+                    /^-+$/ { if (!in_members) { in_members = 1; next } else { exit } }
+                    in_members {
+                        if ($0 !~ /The command completed successfully\./ && $0 !~ /^[[:space:]]*$/) {
+                            sub(/^[[:space:]]+/, "", $0)
+                            print
+                        }
+                    }
+                '
+            )
+
+        fi
+        if [[ -n "${current}" && "${user}" == "${current}" ]] && sys::__has whoami.exe; then
+
+            probe="$(sys::__lower "${group}")"
+
+            while IFS= read -r line || [[ -n "${line}" ]]; do
+
+                line="${line%$'\r'}"
+                [[ -n "${line}" ]] || continue
+
+                line="${line##*\\}"
+                [[ "$(sys::__lower "${line}")" == "${probe}" ]] && return 0
+
+            done < <(
+                whoami.exe /groups /fo csv /nh 2>/dev/null | tr -d '\r' | awk -F'","' '
+                    {
+                        gsub(/^"/, "", $1)
+                        gsub(/"$/, "", $1)
+                        if ($1 != "") print $1
+                    }
+                '
+            )
+
+        fi
+
+        return 1
+
+    fi
+
+    groups="$(sys::ugroups "${user}" 2>/dev/null || true)"
+    [[ -n "${groups}" ]] || return 1
+
+    for x in ${groups}; do
+        [[ "${x}" == "${group}" ]] && return 0
+    done
+
+    return 1
+
+}
