@@ -64,6 +64,6 @@ jobs:
 
       - name: Run builtin tests
         run: |
-          "${{ matrix.bash_path }}" tool/parts/builtin/test.sh tool/parts/builtin/system.sh
+          "${{ matrix.bash_path }}" tool/parts/builtin/test.sh
         shell: bash
 
