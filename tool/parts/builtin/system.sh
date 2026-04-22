@@ -1597,3 +1597,12 @@ sys::is_admin () {
     sys::ingroup admin
 
 }
+sys::gusers () {
+
+    local name="${1:-}"
+
+    [[ -n "${name}" ]] || return 1
+
+    sys::users "${name}"
+
+}
