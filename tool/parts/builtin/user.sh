@@ -148,7 +148,7 @@ sys::uexists () {
     local user="${1:-}" group="${2:-}" current="" v="" x="" found=0
 
     [[ -n "${user}" ]] || return 1
-    [[ "${user}" != *$'\n'* && "${user}" != *$'\r'* && "${user}" != *$'\0'* ]] || return 1
+    [[ "${user}" != *$'\n'* && "${user}" != *$'\r'* ]] || return 1
 
     current="$(sys::uname 2>/dev/null || true)"
 
@@ -328,7 +328,7 @@ sys::ugroup () {
 
     [[ -n "${user}" ]] || user="${current}"
     [[ -n "${user}" ]] || return 1
-    [[ "${user}" != *$'\n'* && "${user}" != *$'\r'* && "${user}" != *$'\0'* ]] || return 1
+    [[ "${user}" != *$'\n'* && "${user}" != *$'\r'* ]] || return 1
 
     if sys::has id; then
 
@@ -371,7 +371,7 @@ sys::groups () {
 
     if [[ -n "${user}" ]]; then
 
-        [[ "${user}" != *$'\n'* && "${user}" != *$'\r'* && "${user}" != *$'\0'* ]] || return 1
+        [[ "${user}" != *$'\n'* && "${user}" != *$'\r'* ]] || return 1
 
         if sys::has id; then
 
@@ -540,7 +540,7 @@ sys::delgroup () {
 
     if [[ -n "${user}" ]]; then
 
-        [[ "${user}" != *$'\n'* && "${user}" != *$'\r'* && "${user}" != *$'\0'* ]] || return 1
+        [[ "${user}" != *$'\n'* && "${user}" != *$'\r'* ]] || return 1
         sys::uexists "${user}" "${group}" || return 1
 
     fi
@@ -727,7 +727,7 @@ sys::adduser () {
     local user="${1:-}" group="${2:-}" uid="" gid="" home="" shell=""
 
     [[ -n "${user}" ]] || return 1
-    [[ "${user}" != *$'\n'* && "${user}" != *$'\r'* && "${user}" != *$'\0'* ]] || return 1
+    [[ "${user}" != *$'\n'* && "${user}" != *$'\r'* ]] || return 1
 
     sys::uexists "${user}" && return 0
 
@@ -819,7 +819,7 @@ sys::deluser () {
     local user="${1:-}" group="${2:-}"
 
     [[ -n "${user}" ]] || return 1
-    [[ "${user}" != *$'\n'* && "${user}" != *$'\r'* && "${user}" != *$'\0'* ]] || return 1
+    [[ "${user}" != *$'\n'* && "${user}" != *$'\r'* ]] || return 1
 
     sys::uexists "${user}" || return 0
 
