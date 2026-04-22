@@ -1,9 +1,90 @@
 
+sys::__has () {
+
+    command -v "${1:-}" >/dev/null 2>&1
+
+}
+sys::__lower () {
+
+    printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]'
+
+}
+sys::__open_target () {
+
+    local target="${1:-}" kind="${2:-auto}" v=""
+
+    [[ -n "${target}" ]] || return 1
+
+    if sys::is_macos && sys::__has open; then
+        open "${target}" >/dev/null 2>&1
+        return
+    fi
+    if sys::is_windows; then
+
+        if [[ "${kind}" == "path" ]] && sys::__has cygpath; then
+            v="$(cygpath -aw "${target}" 2>/dev/null || true)"
+            [[ -n "${v}" ]] && target="${v}"
+        fi
+        if sys::__has explorer.exe; then
+            explorer.exe "${target}" >/dev/null 2>&1
+            return
+        fi
+        if sys::__has cmd.exe; then
+            cmd.exe /C start "" "${target}" >/dev/null 2>&1
+            return
+        fi
+
+        return 1
+
+    fi
+    if sys::__has xdg-open; then
+        xdg-open "${target}" >/dev/null 2>&1
+        return
+    fi
+
+    return 1
+
+}
+sys::__normalize_open_target () {
+
+    local target="${1:-}"
+
+    [[ -n "${target}" ]] || return 1
+    [[ "${target}" == *$'\n'* || "${target}" == *$'\r'* ]] && return 1
+
+    case "${target}" in
+        www.*)
+            printf 'https://%s\n' "${target}"
+            return 0
+        ;;
+        http://*|https://*|ftp://*|ftps://*|file://*|mailto:*|ssh://*)
+            printf '%s\n' "${target}"
+            return 0
+        ;;
+        localhost|localhost:*|localhost/*|localhost:*/*)
+            printf 'http://%s\n' "${target}"
+            return 0
+        ;;
+    esac
+
+    if [[ "${target}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(:[0-9]+)?([/?#].*)?$ ]]; then
+        printf 'http://%s\n' "${target}"
+        return 0
+    fi
+    if [[ "${target}" =~ ^[A-Za-z0-9._-]+\.[A-Za-z0-9._-]+(:[0-9]+)?([/?#].*)?$ ]]; then
+        printf 'https://%s\n' "${target}"
+        return 0
+    fi
+
+    return 1
+
+}
+
 sys::is_linux () {
 
     local s=""
 
-    if has uname; then
+    if sys::__has uname; then
         s="$(uname -s 2>/dev/null || true)"
     fi
 
@@ -15,7 +96,7 @@ sys::is_macos () {
 
     local s=""
 
-    if has uname; then
+    if sys::__has uname; then
         s="$(uname -s 2>/dev/null || true)"
     fi
 
@@ -25,7 +106,7 @@ sys::is_macos () {
 }
 sys::is_wsl () {
 
-    local r=""
+    local r="" lower=""
 
     sys::is_linux || return 1
 
@@ -34,13 +115,15 @@ sys::is_wsl () {
     if [[ -r /proc/sys/kernel/osrelease ]]; then
 
         IFS= read -r r < /proc/sys/kernel/osrelease || true
-        [[ "${r,,}" == *"microsoft"* ]] && return 0
+        lower="$(sys::__lower "${r}")"
+        [[ "${lower}" == *microsoft* ]] && return 0
 
     fi
     if [[ -r /proc/version ]]; then
 
         IFS= read -r r < /proc/version || true
-        [[ "${r,,}" == *"microsoft"* ]] && return 0
+        lower="$(sys::__lower "${r}")"
+        [[ "${lower}" == *microsoft* ]] && return 0
 
     fi
 
@@ -49,14 +132,27 @@ sys::is_wsl () {
 }
 sys::is_cygwin () {
 
-    [[ "${OSTYPE:-}" == cygwin* ]]
+    local s=""
+
+    [[ "${OSTYPE:-}" == cygwin* ]] && return 0
+
+    if sys::__has uname; then
+        s="$(uname -s 2>/dev/null || true)"
+    fi
+
+    [[ "${s}" == CYGWIN* ]]
 
 }
 sys::is_msys () {
 
-    local m="${MSYSTEM:-}"
+    local m="${MSYSTEM:-}" s=""
 
     [[ "${OSTYPE:-}" == msys* ]] && return 0
+
+    if sys::__has uname; then
+        s="$(uname -s 2>/dev/null || true)"
+        [[ "${s}" == MSYS* || "${s}" == MINGW* ]] && return 0
+    fi
 
     case "${m}" in
         MSYS|MINGW*|UCRT*|CLANG*) return 0 ;;
@@ -69,6 +165,7 @@ sys::is_gitbash () {
     sys::is_msys || return 1
 
     [[ -n "${GitInstallRoot:-}" ]] && return 0
+    [[ -n "${MSYSTEM:-}" && -z "${MSYS2_PATH_TYPE:-}" ]] && return 0
 
     case "${TERM_PROGRAM:-}" in
         mintty) return 0 ;;
@@ -86,7 +183,8 @@ sys::is_windows () {
     sys::is_msys   && return 0
     sys::is_cygwin && return 0
 
-    [[ -n "${WINDIR:-}" || -n "${SystemRoot:-}" ]] || return 1
+    [[ "${OSTYPE:-}" == win32* || "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* ]] && return 0
+    [[ -n "${WINDIR:-}" || -n "${SystemRoot:-}" || -n "${COMSPEC:-}" ]] || return 1
 
     sys::is_linux && return 1
     sys::is_macos && return 1
@@ -227,7 +325,7 @@ sys::is_headless () {
 }
 sys::is_container () {
 
-    local r=""
+    local r="" lower=""
 
     [[ -f "/.dockerenv" ]] && return 0
     [[ -f "/run/.containerenv" ]] && return 0
@@ -241,11 +339,15 @@ sys::is_container () {
     if [[ -r /proc/1/cgroup ]]; then
 
         while IFS= read -r r || [[ -n "${r}" ]]; do
-            [[ "${r,,}" == *"docker"* ]]     && return 0
-            [[ "${r,,}" == *"kubepods"* ]]   && return 0
-            [[ "${r,,}" == *"containerd"* ]] && return 0
-            [[ "${r,,}" == *"podman"* ]]     && return 0
-            [[ "${r,,}" == *"lxc"* ]]        && return 0
+
+            lower="$(sys::__lower "${r}")"
+
+            [[ "${lower}" == *docker* ]]     && return 0
+            [[ "${lower}" == *kubepods* ]]   && return 0
+            [[ "${lower}" == *containerd* ]] && return 0
+            [[ "${lower}" == *podman* ]]     && return 0
+            [[ "${lower}" == *lxc* ]]        && return 0
+
         done < /proc/1/cgroup
 
     fi
@@ -282,11 +384,11 @@ sys::name () {
 }
 sys::family () {
 
-    if sys::is_windows; then
+    if sys::is_windows || sys::is_msys || sys::is_cygwin; then
         printf '%s\n' "windows"
         return 0
     fi
-    if sys::is_linux || sys::is_macos; then
+    if sys::is_linux || sys::is_macos || sys::is_wsl; then
         printf '%s\n' "unix"
         return 0
     fi
@@ -347,10 +449,13 @@ sys::distro () {
                 line="${line#*=}"
                 line="${line%\"}"
                 line="${line#\"}"
-
                 id="${line}"
 
+                [[ -n "${id}" ]] && break
+
             done < "${file}"
+
+            [[ -n "${id}" ]] && break
 
         done
 
@@ -372,11 +477,14 @@ sys::distro () {
     if sys::is_windows; then
 
         runtime="$(sys::runtime 2>/dev/null || true)"
-        
-        if [[ -n "${runtime}" ]]; then
+
+        if [[ -n "${runtime}" && "${runtime}" != "unknown" ]]; then
             printf '%s\n' "${runtime}"
             return 0
         fi
+
+        printf '%s\n' "windows"
+        return 0
 
     fi
 
@@ -388,14 +496,14 @@ sys::manager () {
 
     if sys::is_linux; then
 
-        has apt-get      && { printf '%s\n' "apt";     return 0; }
-        has apk          && { printf '%s\n' "apk";     return 0; }
-        has dnf          && { printf '%s\n' "dnf";     return 0; }
-        has yum          && { printf '%s\n' "yum";     return 0; }
-        has pacman       && { printf '%s\n' "pacman";  return 0; }
-        has zypper       && { printf '%s\n' "zypper";  return 0; }
-        has xbps-install && { printf '%s\n' "xbps";    return 0; }
-        has nix          && { printf '%s\n' "nix";     return 0; }
+        sys::__has apt-get      && { printf '%s\n' "apt";     return 0; }
+        sys::__has apk          && { printf '%s\n' "apk";     return 0; }
+        sys::__has dnf          && { printf '%s\n' "dnf";     return 0; }
+        sys::__has yum          && { printf '%s\n' "yum";     return 0; }
+        sys::__has pacman       && { printf '%s\n' "pacman";  return 0; }
+        sys::__has zypper       && { printf '%s\n' "zypper";  return 0; }
+        sys::__has xbps-install && { printf '%s\n' "xbps";    return 0; }
+        sys::__has nix          && { printf '%s\n' "nix";     return 0; }
 
         printf '%s\n' "unknown"
         return 1
@@ -403,8 +511,8 @@ sys::manager () {
     fi
     if sys::is_macos; then
 
-        has brew && { printf '%s\n' "brew"; return 0; }
-        has port && { printf '%s\n' "port"; return 0; }
+        sys::__has brew && { printf '%s\n' "brew"; return 0; }
+        sys::__has port && { printf '%s\n' "port"; return 0; }
 
         printf '%s\n' "unknown"
         return 1
@@ -412,15 +520,15 @@ sys::manager () {
     fi
     if sys::is_windows; then
 
-        if ( sys::is_msys || sys::is_gitbash ) && has pacman; then
+        if ( sys::is_msys || sys::is_gitbash ) && sys::__has pacman; then
             printf '%s\n' "pacman"
             return 0
         fi
 
-        has winget && { printf '%s\n' "winget"; return 0; }
-        has choco  && { printf '%s\n' "choco";  return 0; }
-        has scoop  && { printf '%s\n' "scoop";  return 0; }
-        has pacman && { printf '%s\n' "pacman"; return 0; }
+        sys::__has winget && { printf '%s\n' "winget"; return 0; }
+        sys::__has choco  && { printf '%s\n' "choco";  return 0; }
+        sys::__has scoop  && { printf '%s\n' "scoop";  return 0; }
+        sys::__has pacman && { printf '%s\n' "pacman"; return 0; }
 
         printf '%s\n' "unknown"
         return 1
@@ -433,14 +541,16 @@ sys::manager () {
 }
 sys::arch () {
 
-    local v=""
+    local v="" lower=""
 
-    has uname && v="$(uname -m 2>/dev/null || true)"
+    sys::__has uname && v="$(uname -m 2>/dev/null || true)"
 
     [[ -n "${v}" ]] || v="${PROCESSOR_ARCHITECTURE:-${HOSTTYPE:-}}"
     [[ -n "${v}" ]] || v="unknown"
 
-    case "${v,,}" in
+    lower="$(sys::__lower "${v}")"
+
+    case "${lower}" in
         x86_64|amd64)             printf '%s\n' "x64" ;;
         x86|i386|i486|i586|i686)  printf '%s\n' "x86" ;;
         aarch64|arm64)            printf '%s\n' "arm64" ;;
@@ -457,102 +567,25 @@ sys::arch () {
 }
 sys::open () {
 
-    local target="${1:-}" scheme="" rest="" hostport="" host="" suffix=""
+    local target="${1:-}" normalized=""
     shift || true
 
     [[ -n "${target}" ]] || return 1
 
     if [[ -e "${target}" ]]; then
-
-        if [[ "${OSTYPE:-}" == darwin* ]]; then
-            open "${target}" >/dev/null 2>&1
-            return
-        fi
-        if has explorer.exe; then
-            explorer.exe "${target}" >/dev/null 2>&1
-            return
-        fi
-        if has powershell.exe; then
-            powershell.exe -NoProfile -Command "Start-Process -LiteralPath '${target}'" >/dev/null 2>&1
-            return
-        fi
-        if has cmd.exe; then
-            cmd.exe /C start "" "${target}" >/dev/null 2>&1
-            return
-        fi
-        if has xdg-open; then
-            xdg-open "${target}" >/dev/null 2>&1
-            return
-        fi
-
-        return 1
-
-    fi
-
-    case "${target}" in
-        http://*|https://*|www.*|localhost|localhost:*|[0-9]*.[0-9]*.[0-9]*.[0-9]*) ;;
-        *)
-            if has "${target}"; then
-                "${target}" "$@" >/dev/null 2>&1 &
-                disown || true
-                return 0
-            fi
-            return 1
-        ;;
-    esac
-
-    [[ "${target}" == *"://"* ]] || target="https://${target}"
-
-    scheme="${target%%://*}"
-    rest="${target#*://}"
-    hostport="${rest%%[/?#]*}"
-    suffix="${rest#${hostport}}"
-
-    [[ "${suffix}" == "${rest}" ]] && suffix=""
-
-    host="${hostport%%:*}"
-
-    if [[ "${scheme}" == http || "${scheme}" == https ]]; then
-
-        if [[ "${host}" != *.* && "${host}" != localhost && ! "${host}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            host="${host}.com"
-            hostport="${host}${hostport#"${hostport%%:*}"}"
-        fi
-
-        host="${hostport%%:*}"
-
-        if [[ "${host}" != www.* && "${host}" != localhost && ! "${host}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            hostport="www.${host}${hostport#"${host}"}"
-        fi
-
-    fi
-
-    target="${scheme}://${hostport}${suffix}"
-
-    if [[ "${OSTYPE:-}" == darwin* ]]; then
-
-        open "${target}" >/dev/null 2>&1
-        return
-
-    fi
-    if [[ "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* || -n "${WINDIR:-}" || -n "${SystemRoot:-}" ]]; then
-
-        if has powershell.exe; then
-            powershell.exe -NoProfile -Command "Start-Process '${target}'" >/dev/null 2>&1
-            return
-        fi
-        if has cmd.exe; then
-            cmd.exe /C start "" "${target}" >/dev/null 2>&1
-            return
-        fi
-
-    fi
-    if has xdg-open; then
-        xdg-open "${target}" >/dev/null 2>&1
+        sys::__open_target "${target}" "path"
         return
     fi
+    if sys::__has "${target}"; then
+        "${target}" "$@" >/dev/null 2>&1 &
+        disown || true
+        return 0
+    fi
 
-    return 1
+    normalized="$(sys::__normalize_open_target "${target}" 2>/dev/null || true)"
+    [[ -n "${normalized}" ]] || return 1
+
+    sys::__open_target "${normalized}" "uri"
 
 }
 
@@ -563,7 +596,7 @@ sys::disk_total () {
     [[ -n "${path}" ]] || path='.'
     [[ -e "${path}" ]] || return 1
 
-    if has df; then
+    if sys::__has df; then
         v="$(df -Pk "${path}" 2>/dev/null | awk 'NR==2 {print $2}' | head -n 1)"
         [[ "${v}" =~ ^[0-9]+$ ]] && { printf '%s\n' "$(( v * 1024 ))"; return 0; }
     fi
@@ -578,7 +611,7 @@ sys::disk_free () {
     [[ -n "${path}" ]] || path='.'
     [[ -e "${path}" ]] || return 1
 
-    if has df; then
+    if sys::__has df; then
         v="$(df -Pk "${path}" 2>/dev/null | awk 'NR==2 {print $4}' | head -n 1)"
         [[ "${v}" =~ ^[0-9]+$ ]] && { printf '%s\n' "$(( v * 1024 ))"; return 0; }
     fi
@@ -621,7 +654,7 @@ sys::disk_size () {
     [[ -n "${path}" ]] || return 1
     [[ -e "${path}" ]] || return 1
 
-    if has du; then
+    if sys::__has du; then
         v="$(du -sk "${path}" 2>/dev/null | awk 'NR==1 {print $1}' | head -n 1)"
         [[ "${v}" =~ ^[0-9]+$ ]] && { printf '%s\n' "$(( v * 1024 ))"; return 0; }
     fi
@@ -669,7 +702,7 @@ sys::mem_total () {
     fi
     if sys::is_windows; then
 
-        if has powershell.exe; then
+        if sys::__has powershell.exe; then
 
             v="$(powershell.exe -NoProfile -Command "[int64](Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory" 2>/dev/null | tr -d '\r')"
             [[ "${v}" =~ ^[0-9]+$ ]] && { printf '%s\n' "${v}"; return 0; }
@@ -708,7 +741,7 @@ sys::mem_free () {
     fi
     if sys::is_macos; then
 
-        if has vm_stat && has sysctl; then
+        if sys::__has vm_stat && sys::__has sysctl; then
 
             local page_size="" free_pages="" inactive_pages="" speculative_pages=""
 
@@ -730,7 +763,7 @@ sys::mem_free () {
     fi
     if sys::is_windows; then
 
-        if has powershell.exe; then
+        if sys::__has powershell.exe; then
 
             v="$(powershell.exe -NoProfile -Command "[int64]((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory * 1024)" 2>/dev/null | tr -d '\r')"
             [[ "${v}" =~ ^[0-9]+$ ]] && { printf '%s\n' "${v}"; return 0; }
@@ -792,7 +825,7 @@ sys::gid () {
 
     local v=""
 
-    if has id; then
+    if sys::__has id; then
         v="$(id -g 2>/dev/null || true)"
         [[ "${v}" =~ ^[0-9]+$ ]] && { printf '%s\n' "${v}"; return 0; }
     fi
@@ -804,7 +837,7 @@ sys::gname () {
 
     local v=""
 
-    if has id; then
+    if sys::__has id; then
         v="$(id -gn 2>/dev/null || true)"
         [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
     fi
@@ -818,15 +851,15 @@ sys::gexists () {
 
     [[ -n "${name}" ]] || return 1
 
-    if has getent; then
+    if sys::__has getent; then
         getent group "${name}" >/dev/null 2>&1
         return
     fi
-    if sys::is_macos && has dscl; then
+    if sys::is_macos && sys::__has dscl; then
         dscl . -read "/Groups/${name}" >/dev/null 2>&1
         return
     fi
-    if sys::is_windows && has net.exe; then
+    if sys::is_windows && sys::__has net.exe; then
         net.exe localgroup "${name}" >/dev/null 2>&1
         return
     fi
@@ -840,19 +873,21 @@ sys::gusers () {
 
     [[ -n "${name}" ]] || return 1
 
-    if has getent; then
+    if sys::__has getent; then
 
-        v="$(getent group "${name}" 2>/dev/null | awk -F: 'NR==1 {print $4}' | head -n 1)"
+        v="$(getent group "${name}" 2>/dev/null | awk -F: 'NR==1 {print $4}' | head -n 1 | tr ',' ' ')"
+        v="$(printf '%s\n' "${v}" | awk '{$1=$1; print}' | head -n 1)"
+
         [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
 
     fi
-    if sys::is_macos && has dscl; then
+    if sys::is_macos && sys::__has dscl; then
 
         v="$(dscl . -read "/Groups/${name}" GroupMembership 2>/dev/null | sed -n 's/^GroupMembership:[[:space:]]*//p' | head -n 1)"
         [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
 
     fi
-    if sys::is_windows && has net.exe; then
+    if sys::is_windows && sys::__has net.exe; then
 
         v="$(
             net.exe localgroup "${name}" 2>/dev/null | tr -d '\r' | awk '
@@ -879,7 +914,7 @@ sys::uid () {
 
     local v=""
 
-    if has id; then
+    if sys::__has id; then
 
         v="$(id -u 2>/dev/null || true)"
         [[ "${v}" =~ ^[0-9]+$ ]] && { printf '%s\n' "${v}"; return 0; }
@@ -899,7 +934,7 @@ sys::uname () {
 
     local v=""
 
-    if has id; then
+    if sys::__has id; then
 
         v="$(id -un 2>/dev/null || true)"
         [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
@@ -909,13 +944,13 @@ sys::uname () {
     v="${USER:-${LOGNAME:-${USERNAME:-}}}"
     [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
 
-    if sys::is_windows && has whoami.exe; then
+    if sys::is_windows && sys::__has whoami.exe; then
 
         v="$(whoami.exe 2>/dev/null | tr -d '\r' | awk -F'\\' 'NR==1 {print $NF}' | head -n 1)"
         [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
 
     fi
-    if has whoami; then
+    if sys::__has whoami; then
 
         v="$(whoami 2>/dev/null || true)"
         v="${v##*\\}"
@@ -937,13 +972,13 @@ sys::uhome () {
     name="$(sys::uname 2>/dev/null || true)"
     [[ -n "${name}" ]] || return 1
 
-    if has getent; then
+    if sys::__has getent; then
 
         v="$(getent passwd "${name}" 2>/dev/null | awk -F: 'NR==1 {print $6}' | head -n 1)"
         [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
 
     fi
-    if sys::is_macos && has dscl; then
+    if sys::is_macos && sys::__has dscl; then
 
         dscl_v="$(dscl . -read "/Users/${name}" NFSHomeDirectory 2>/dev/null | awk 'NR==1 {print $2}' | head -n 1)"
         [[ -n "${dscl_v}" ]] && { printf '%s\n' "${dscl_v}"; return 0; }
@@ -976,13 +1011,13 @@ sys::ushell () {
     name="$(sys::uname 2>/dev/null || true)"
     [[ -n "${name}" ]] || return 1
 
-    if has getent; then
+    if sys::__has getent; then
 
         v="$(getent passwd "${name}" 2>/dev/null | awk -F: 'NR==1 {print $7}' | head -n 1)"
         [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
 
     fi
-    if sys::is_macos && has dscl; then
+    if sys::is_macos && sys::__has dscl; then
 
         dscl_v="$(dscl . -read "/Users/${name}" UserShell 2>/dev/null | awk 'NR==1 {print $2}' | head -n 1)"
         [[ -n "${dscl_v}" ]] && { printf '%s\n' "${dscl_v}"; return 0; }
@@ -994,7 +1029,7 @@ sys::ushell () {
             printf '%s\n' "${COMSPEC}"
             return 0
         fi
-        if has powershell.exe; then
+        if sys::__has powershell.exe; then
             printf '%s\n' "powershell.exe"
             return 0
         fi
@@ -1009,19 +1044,19 @@ sys::uexists () {
     local name="${1:-}"
     [[ -n "${name}" ]] || return 1
 
-    if has id; then
+    if sys::__has id; then
         id -u "${name}" >/dev/null 2>&1
         return
     fi
-    if has getent; then
+    if sys::__has getent; then
         getent passwd "${name}" >/dev/null 2>&1
         return
     fi
-    if sys::is_macos && has dscl; then
+    if sys::is_macos && sys::__has dscl; then
         dscl . -read "/Users/${name}" >/dev/null 2>&1
         return
     fi
-    if sys::is_windows && has net.exe; then
+    if sys::is_windows && sys::__has net.exe; then
         net.exe user "${name}" >/dev/null 2>&1
         return
     fi
@@ -1035,11 +1070,9 @@ sys::ugroup () {
 
     if [[ -z "${name}" ]]; then
 
-        if has id; then
-
+        if sys::__has id; then
             v="$(id -gn 2>/dev/null || true)"
             [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
-
         fi
 
         name="$(sys::uname 2>/dev/null || true)"
@@ -1048,35 +1081,29 @@ sys::ugroup () {
 
     [[ -n "${name}" ]] || return 1
 
-    if has id; then
+    if sys::__has id; then
 
         v="$(id -gn "${name}" 2>/dev/null || true)"
         [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
 
     fi
-
-    if has getent; then
+    if sys::__has getent; then
 
         v="$(getent passwd "${name}" 2>/dev/null | awk -F: 'NR==1 {print $4}' | head -n 1)"
 
-        if [[ "${v}" =~ ^[0-9]+$ ]] && has getent; then
-
+        if [[ "${v}" =~ ^[0-9]+$ ]] && sys::__has getent; then
             v="$(getent group "${v}" 2>/dev/null | awk -F: 'NR==1 {print $1}' | head -n 1)"
             [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
-
         fi
 
     fi
-
-    if sys::is_macos && has dscl; then
+    if sys::is_macos && sys::__has dscl; then
 
         dscl_v="$(dscl . -read "/Users/${name}" PrimaryGroupID 2>/dev/null | awk 'NR==1 {print $2}' | head -n 1)"
 
         if [[ "${dscl_v}" =~ ^[0-9]+$ ]]; then
-
             v="$(dscl . -search /Groups PrimaryGroupID "${dscl_v}" 2>/dev/null | awk 'NR==1 {print $1}' | head -n 1)"
             [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
-
         fi
 
     fi
@@ -1086,20 +1113,20 @@ sys::ugroup () {
 }
 sys::ugroups () {
 
-    local name="${1:-}" v="" primary="" line="" out="" current=""
+    local name="${1:-}" v="" primary="" out="" current=""
 
     [[ -n "${name}" ]] || name="$(sys::uname 2>/dev/null || true)"
     [[ -n "${name}" ]] || return 1
 
     current="$(sys::uname 2>/dev/null || true)"
 
-    if has id; then
+    if sys::__has id; then
 
-        v="$(id -nG "${name}" 2>/dev/null || true)"
+        v="$(id -Gn "${name}" 2>/dev/null || true)"
         [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
 
     fi
-    if has getent; then
+    if sys::__has getent; then
 
         primary="$(sys::ugroup "${name}" 2>/dev/null || true)"
 
@@ -1129,7 +1156,7 @@ sys::ugroups () {
         [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
 
     fi
-    if sys::is_macos && has dscl; then
+    if sys::is_macos && sys::__has dscl; then
 
         primary="$(sys::ugroup "${name}" 2>/dev/null || true)"
         v="$(dscl . -search /Groups GroupMembership "${name}" 2>/dev/null | awk '{print $1}' | paste -sd' ' - 2>/dev/null || true)"
@@ -1153,7 +1180,7 @@ sys::ugroups () {
 
         if [[ -z "${current}" || "${name}" == "${current}" ]]; then
 
-            if has whoami.exe; then
+            if sys::__has whoami.exe; then
 
                 out="$(
                     whoami.exe /groups 2>/dev/null | tr -d '\r' | awk '
@@ -1177,7 +1204,7 @@ sys::ugroups () {
                 [[ -n "${out}" ]] && { printf '%s\n' "${out}"; return 0; }
 
             fi
-            if has net.exe; then
+            if sys::__has net.exe; then
 
                 primary="$(sys::ugroup "${name}" 2>/dev/null || true)"
                 [[ -n "${primary}" ]] && { printf '%s\n' "${primary}"; return 0; }
@@ -1193,27 +1220,83 @@ sys::ugroups () {
 }
 sys::uingroup () {
 
-    local group="${1:-}" user="${2:-}" x="" groups=""
+    local group="${1:-}" user="${2:-}" x="" groups="" current="" lower_user="" line="" probe=""
 
     [[ -n "${group}" ]] || return 1
     [[ -n "${user}" ]] || user="$(sys::uname 2>/dev/null || true)"
     [[ -n "${user}" ]] || return 1
 
-    groups="$(sys::ugroups "${user}" 2>/dev/null || true)"
+    if sys::is_windows; then
 
+        lower_user="$(sys::__lower "${user}")"
+        current="$(sys::uname 2>/dev/null || true)"
+
+        if sys::__has net.exe; then
+
+            while IFS= read -r line || [[ -n "${line}" ]]; do
+
+                line="${line%$'\r'}"
+                [[ -n "${line}" ]] || continue
+
+                probe="$(sys::__lower "${line}")"
+                [[ "${probe}" == "${lower_user}" ]] && return 0
+                [[ "${probe##*\\}" == "${lower_user}" ]] && return 0
+
+            done < <(
+                net.exe localgroup "${group}" 2>/dev/null | tr -d '\r' | awk '
+                    BEGIN { in_members = 0 }
+                    /^-+$/ { if (!in_members) { in_members = 1; next } else { exit } }
+                    in_members {
+                        if ($0 !~ /The command completed successfully\./ && $0 !~ /^[[:space:]]*$/) {
+                            sub(/^[[:space:]]+/, "", $0)
+                            print
+                        }
+                    }
+                '
+            )
+
+        fi
+        if [[ -n "${current}" && "${user}" == "${current}" ]] && sys::__has whoami.exe; then
+
+            probe="$(sys::__lower "${group}")"
+
+            while IFS= read -r line || [[ -n "${line}" ]]; do
+
+                line="${line%$'\r'}"
+                [[ -n "${line}" ]] || continue
+                [[ "$(sys::__lower "${line}")" == "${probe}" ]] && return 0
+
+            done < <(
+                whoami.exe /groups 2>/dev/null | tr -d '\r' | awk '
+                    BEGIN { started = 0 }
+                    /^[[:space:]]*GROUP INFORMATION[[:space:]]*$/ { started = 1; next }
+                    started && /^[= -]+$/ { next }
+                    started && NF {
+                        line = $0
+                        sub(/^[[:space:]]+/, "", line)
+                        sub(/[[:space:]]+Mandatory group.*$/, "", line)
+                        sub(/[[:space:]]+Enabled group.*$/, "", line)
+                        sub(/[[:space:]]+Group used for deny only.*$/, "", line)
+                        sub(/[[:space:]]+Deny only.*$/, "", line)
+                        sub(/[[:space:]]+Well-known group.*$/, "", line)
+                        sub(/[[:space:]]+Owner group.*$/, "", line)
+                        if (line != "") print line
+                    }
+                '
+            )
+
+        fi
+
+        return 1
+
+    fi
+
+    groups="$(sys::ugroups "${user}" 2>/dev/null || true)"
     [[ -n "${groups}" ]] || return 1
 
     for x in ${groups}; do
         [[ "${x}" == "${group}" ]] && return 0
     done
-
-    if sys::is_windows; then
-
-        for x in ${groups}; do
-            [[ "${x,,}" == "${group,,}" ]] && return 0
-        done
-
-    fi
 
     return 1
 
@@ -1225,16 +1308,16 @@ sys::is_root () {
 
     if sys::is_windows; then
 
-        if has net.exe; then
+        if sys::__has net.exe; then
 
             net.exe session >/dev/null 2>&1
             return
 
         fi
-        if has powershell.exe; then
+        if sys::__has powershell.exe; then
 
             cmd="[bool](([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))"
-            powershell.exe -NoProfile -Command "${cmd}" 2>/dev/null | tr -d '\r' | grep -qi '^True$'
+            powershell.exe -NoProfile -NonInteractive -Command "${cmd}" 2>/dev/null | tr -d '\r' | grep -qi '^True$'
 
             return
 
@@ -1243,7 +1326,7 @@ sys::is_root () {
         return 1
 
     fi
-    if has id; then
+    if sys::__has id; then
 
         v="$(id -u 2>/dev/null || true)"
         [[ "${v}" == "0" ]]
@@ -1258,10 +1341,7 @@ sys::is_root () {
 sys::is_admin () {
 
     sys::is_root && return 0
-
-    if sys::is_windows; then
-        return 1
-    fi
+    sys::is_windows && return 1
 
     sys::uingroup sudo && return 0
     sys::uingroup wheel && return 0
@@ -1279,7 +1359,7 @@ sys::add_group () {
 
     if sys::is_linux; then
 
-        if has groupadd; then
+        if sys::__has groupadd; then
             groupadd "${name}" >/dev/null 2>&1
             return
         fi
@@ -1289,7 +1369,7 @@ sys::add_group () {
     fi
     if sys::is_macos; then
 
-        if has dseditgroup; then
+        if sys::__has dseditgroup; then
             dseditgroup -o create "${name}" >/dev/null 2>&1
             return
         fi
@@ -1299,7 +1379,7 @@ sys::add_group () {
     fi
     if sys::is_windows; then
 
-        if has net.exe; then
+        if sys::__has net.exe; then
             net.exe localgroup "${name}" /add >/dev/null 2>&1
             return
         fi
@@ -1321,7 +1401,7 @@ sys::add_user () {
 
         if sys::is_linux; then
 
-            if has useradd; then
+            if sys::__has useradd; then
 
                 if [[ -n "${group}" ]]; then
                     sys::gexists "${group}" || sys::add_group "${group}" || return 1
@@ -1336,7 +1416,7 @@ sys::add_user () {
 
         elif sys::is_macos; then
 
-            if has sysadminctl; then
+            if sys::__has sysadminctl; then
                 sysadminctl -addUser "${name}" >/dev/null 2>&1 || return 1
             else
                 return 1
@@ -1344,7 +1424,7 @@ sys::add_user () {
 
         elif sys::is_windows; then
 
-            if has net.exe; then
+            if sys::__has net.exe; then
                 net.exe user "${name}" /add >/dev/null 2>&1 || return 1
             else
                 return 1
@@ -1365,7 +1445,7 @@ sys::add_user () {
 
     if sys::is_linux; then
 
-        if has usermod; then
+        if sys::__has usermod; then
             usermod -aG "${group}" "${name}" >/dev/null 2>&1
             return
         fi
@@ -1375,7 +1455,7 @@ sys::add_user () {
     fi
     if sys::is_macos; then
 
-        if has dseditgroup; then
+        if sys::__has dseditgroup; then
             dseditgroup -o edit -a "${name}" -t user "${group}" >/dev/null 2>&1
             return
         fi
@@ -1385,7 +1465,7 @@ sys::add_user () {
     fi
     if sys::is_windows; then
 
-        if has net.exe; then
+        if sys::__has net.exe; then
             net.exe localgroup "${group}" "${name}" /add >/dev/null 2>&1
             return
         fi
