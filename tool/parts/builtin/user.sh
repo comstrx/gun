@@ -1,757 +1,704 @@
 
-sys::__has () {
+sys::__uint () {
 
-    command -v "${1:-}" >/dev/null 2>&1
+    [[ "${1:-}" =~ ^[0-9]+$ ]]
 
 }
+sys::__passwd_line () {
 
-sys::gid () {
+    local want="${1:-}" name="" uid="" gid="" line=""
 
-    local v=""
-
-    if sys::__has id; then
-        v="$(id -g 2>/dev/null || true)"
-        [[ "${v}" =~ ^[0-9]+$ ]] && { printf '%s\n' "${v}"; return 0; }
+    if [[ -z "${want}" ]]; then
+        if sys::__has id; then
+            want="$(id -un 2>/dev/null || true)"
+        fi
     fi
 
-    return 1
+    [[ -n "${want}" ]] || return 1
 
-}
-sys::gname () {
+    if sys::is_macos && sys::__has dscl; then
 
-    local v="" name=""
+        if sys::__uint "${want}"; then
+            name="$(dscl . -search /Users UniqueID "${want}" 2>/dev/null | awk 'NR == 1 { print $1; exit }')"
+        else
+            name="${want}"
+        fi
 
-    if sys::is_windows; then
-
-        name="$(sys::uname 2>/dev/null || true)"
         [[ -n "${name}" ]] || return 1
 
-        v="$(sys::ugroup "${name}" 2>/dev/null || true)"
-        [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
+        uid="$(dscl . -read "/Users/${name}" UniqueID 2>/dev/null | awk '$1 == "UniqueID:" { print $2; exit }')"
+        gid="$(dscl . -read "/Users/${name}" PrimaryGroupID 2>/dev/null | awk '$1 == "PrimaryGroupID:" { print $2; exit }')"
 
-        return 1
+        [[ "${uid}" =~ ^[0-9]+$ ]] || return 1
+        [[ "${gid}" =~ ^[0-9]+$ ]] || return 1
 
-    fi
-    if sys::__has id; then
-        v="$(id -gn 2>/dev/null || true)"
-        [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
-    fi
-
-    return 1
-
-}
-sys::gexists () {
-
-    local name="${1:-}" cmd=""
-
-    [[ -n "${name}" ]] || return 1
-
-    if sys::is_windows; then
-
-        if sys::__has powershell.exe; then
-
-            # shellcheck disable=SC2016
-            cmd='param([string]$GroupName); $ErrorActionPreference = "Stop"; if (Get-Command Get-LocalGroup -ErrorAction SilentlyContinue) { Get-LocalGroup -Name $GroupName | Out-Null; exit 0 }; exit 1'
-
-            if powershell.exe -NoProfile -NonInteractive -Command "${cmd}" "${name}" >/dev/null 2>&1; then
-                return 0
-            fi
-
-        fi
-        if sys::__has net.exe; then
-            net.exe localgroup "${name}" >/dev/null 2>&1
-            return
-        fi
-
-        return 1
+        printf '%s:x:%s:%s:::\n' "${name}" "${uid}" "${gid}"
+        return 0
 
     fi
     if sys::__has getent; then
-        getent group "${name}" >/dev/null 2>&1
-        return
+        line="$(getent passwd "${want}" 2>/dev/null | awk 'NR == 1 { print; exit }')"
+        [[ -n "${line}" ]] && { printf '%s\n' "${line}"; return 0; }
     fi
-    if sys::is_macos && sys::__has dscl; then
-        dscl . -read "/Groups/${name}" >/dev/null 2>&1
+
+    [[ -r /etc/passwd ]] || return 1
+
+    if sys::__uint "${want}"; then
+        awk -F: -v want="${want}" '$3 == want { print; exit }' /etc/passwd
         return
     fi
 
-    return 1
+    awk -F: -v want="${want}" '$1 == want { print; exit }' /etc/passwd
 
 }
+sys::__group_line () {
+
+    local want="${1:-}" name="" gid="" members="" line=""
+
+    if [[ -z "${want}" ]]; then
+        if sys::__has id; then
+            want="$(id -gn 2>/dev/null || true)"
+        fi
+    fi
+
+    [[ -n "${want}" ]] || return 1
+
+    if sys::is_macos && sys::__has dscl; then
+
+        if sys::__uint "${want}"; then
+            name="$(dscl . -search /Groups PrimaryGroupID "${want}" 2>/dev/null | awk 'NR == 1 { print $1; exit }')"
+        else
+            name="${want}"
+        fi
+
+        [[ -n "${name}" ]] || return 1
+
+        gid="$(dscl . -read "/Groups/${name}" PrimaryGroupID 2>/dev/null | awk '$1 == "PrimaryGroupID:" { print $2; exit }')"
+        [[ "${gid}" =~ ^[0-9]+$ ]] || return 1
+
+        members="$(
+            dscl . -read "/Groups/${name}" GroupMembership 2>/dev/null \
+            | sed -n 's/^GroupMembership:[[:space:]]*//p' \
+            | awk 'NR == 1 { print; exit }'
+        )"
+
+        members="${members// /,}"
+
+        printf '%s:*:%s:%s\n' "${name}" "${gid}" "${members}"
+        return 0
+
+    fi
+    if sys::__has getent; then
+        line="$(getent group "${want}" 2>/dev/null | awk 'NR == 1 { print; exit }')"
+        [[ -n "${line}" ]] && { printf '%s\n' "${line}"; return 0; }
+    fi
+
+    [[ -r /etc/group ]] || return 1
+
+    if sys::__uint "${want}"; then
+        awk -F: -v want="${want}" '$3 == want { print; exit }' /etc/group
+        return
+    fi
+
+    awk -F: -v want="${want}" '$1 == want { print; exit }' /etc/group
+
+}
+
 sys::uid () {
 
-    local v=""
+    local want="${1:-}" line="" v=""
 
-    if sys::__has id; then
-
+    if [[ -z "${want}" ]] && sys::__has id; then
         v="$(id -u 2>/dev/null || true)"
         [[ "${v}" =~ ^[0-9]+$ ]] && { printf '%s\n' "${v}"; return 0; }
-
-    fi
-    if sys::is_windows; then
-
-        v="${UID:-}"
-        [[ "${v}" =~ ^[0-9]+$ ]] && { printf '%s\n' "${v}"; return 0; }
-
     fi
 
-    return 1
+    line="$(sys::__passwd_line "${want}" 2>/dev/null || true)"
+    [[ -n "${line}" ]] || return 1
+
+    v="$(printf '%s\n' "${line}" | awk -F: 'NR == 1 { print $3; exit }')"
+    [[ "${v}" =~ ^[0-9]+$ ]] || return 1
+
+    printf '%s\n' "${v}"
 
 }
 sys::uname () {
 
-    local v=""
+    local want="${1:-}" line="" v=""
 
-    if sys::__has id; then
-
+    if [[ -z "${want}" ]] && sys::__has id; then
         v="$(id -un 2>/dev/null || true)"
         [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
-
     fi
 
-    v="${USER:-${LOGNAME:-${USERNAME:-}}}"
-    [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
+    line="$(sys::__passwd_line "${want}" 2>/dev/null || true)"
+    [[ -n "${line}" ]] || return 1
 
-    if sys::is_windows && sys::__has whoami.exe; then
+    v="$(printf '%s\n' "${line}" | awk -F: 'NR == 1 { print $1; exit }')"
+    [[ -n "${v}" ]] || return 1
 
-        v="$(whoami.exe 2>/dev/null | tr -d '\r' | head -n 1 || true)"
-        v="${v##*\\}"
-        [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
-
-    fi
-    if sys::__has whoami; then
-
-        v="$(whoami 2>/dev/null || true)"
-        v="${v##*\\}"
-
-        [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
-
-    fi
-
-    return 1
-
-}
-sys::uhome () {
-
-    local v="" name="" dscl_v=""
-
-    v="${HOME:-}"
-    [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
-
-    name="$(sys::uname 2>/dev/null || true)"
-    [[ -n "${name}" ]] || return 1
-
-    if sys::__has getent; then
-
-        v="$(getent passwd "${name}" 2>/dev/null | awk -F: 'NR==1 {print $6}' | head -n 1)"
-        [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
-
-    fi
-    if sys::is_macos && sys::__has dscl; then
-
-        dscl_v="$(dscl . -read "/Users/${name}" NFSHomeDirectory 2>/dev/null | awk 'NR==1 {print $2}' | head -n 1)"
-        [[ -n "${dscl_v}" ]] && { printf '%s\n' "${dscl_v}"; return 0; }
-
-    fi
-    if sys::is_windows; then
-
-        v="${USERPROFILE:-}"
-        [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
-
-        if [[ -n "${HOMEDRIVE:-}" || -n "${HOMEPATH:-}" ]]; then
-
-            printf '%s\n' "${HOMEDRIVE:-}${HOMEPATH:-}"
-            return 0
-
-        fi
-
-    fi
-
-    return 1
-
-}
-sys::ushell () {
-
-    local v="" name="" dscl_v=""
-
-    v="${SHELL:-}"
-    [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
-
-    name="$(sys::uname 2>/dev/null || true)"
-    [[ -n "${name}" ]] || return 1
-
-    if sys::__has getent; then
-
-        v="$(getent passwd "${name}" 2>/dev/null | awk -F: 'NR==1 {print $7}' | head -n 1)"
-        [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
-
-    fi
-    if sys::is_macos && sys::__has dscl; then
-
-        dscl_v="$(dscl . -read "/Users/${name}" UserShell 2>/dev/null | awk 'NR==1 {print $2}' | head -n 1)"
-        [[ -n "${dscl_v}" ]] && { printf '%s\n' "${dscl_v}"; return 0; }
-
-    fi
-    if sys::is_windows; then
-
-        if [[ -n "${COMSPEC:-}" ]]; then
-            printf '%s\n' "${COMSPEC}"
-            return 0
-        fi
-        if sys::__has powershell.exe; then
-            printf '%s\n' "powershell.exe"
-            return 0
-        fi
-
-    fi
-
-    return 1
+    printf '%s\n' "${v}"
 
 }
 sys::uexists () {
 
-    local name="${1:-}"
-    [[ -n "${name}" ]] || return 1
-
-    if sys::__has id; then
-        id -u "${name}" >/dev/null 2>&1
-        return
-    fi
-    if sys::__has getent; then
-        getent passwd "${name}" >/dev/null 2>&1
-        return
-    fi
-    if sys::is_macos && sys::__has dscl; then
-        dscl . -read "/Users/${name}" >/dev/null 2>&1
-        return
-    fi
-    if sys::is_windows && sys::__has net.exe; then
-        net.exe user "${name}" >/dev/null 2>&1
-        return
-    fi
-
-    return 1
+    [[ -n "${1:-}" ]] || return 1
+    sys::__passwd_line "${1}" >/dev/null 2>&1
 
 }
 sys::ugroup () {
 
-    local name="${1:-}" v="" dscl_v=""
+    local want="${1:-}" line="" gid=""
 
-    if [[ -z "${name}" ]]; then
-
-        if sys::__has id; then
-            v="$(id -gn 2>/dev/null || true)"
-            [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
-        fi
-
-        name="$(sys::uname 2>/dev/null || true)"
-
-    fi
-    if [[ -z "${name}" ]]; then
-
-        return 1
-
-    fi
-    if sys::__has id; then
-
-        v="$(id -gn "${name}" 2>/dev/null || true)"
-        [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
-
-    fi
-    if sys::__has getent; then
-
-        v="$(getent passwd "${name}" 2>/dev/null | awk -F: 'NR==1 {print $4}' | head -n 1)"
-
-        if [[ "${v}" =~ ^[0-9]+$ ]] && sys::__has getent; then
-            v="$(getent group "${v}" 2>/dev/null | awk -F: 'NR==1 {print $1}' | head -n 1)"
-            [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
-        fi
-
-    fi
-    if sys::is_macos && sys::__has dscl; then
-
-        dscl_v="$(dscl . -read "/Users/${name}" PrimaryGroupID 2>/dev/null | awk 'NR==1 {print $2}' | head -n 1)"
-
-        if [[ "${dscl_v}" =~ ^[0-9]+$ ]]; then
-            v="$(dscl . -search /Groups PrimaryGroupID "${dscl_v}" 2>/dev/null | awk 'NR==1 {print $1}' | head -n 1)"
-            [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
-        fi
-
+    if [[ -z "${want}" ]] && sys::__has id; then
+        want="$(id -un 2>/dev/null || true)"
     fi
 
-    return 1
+    [[ -n "${want}" ]] || return 1
+
+    line="$(sys::__passwd_line "${want}" 2>/dev/null || true)"
+    [[ -n "${line}" ]] || return 1
+
+    gid="$(printf '%s\n' "${line}" | awk -F: 'NR == 1 { print $4; exit }')"
+    [[ "${gid}" =~ ^[0-9]+$ ]] || return 1
+
+    sys::gname "${gid}"
 
 }
-sys::ugroups () {
+sys::gid () {
 
-    local name="${1:-}" v="" primary="" out="" current=""
+    local want="${1:-}" line="" v=""
 
-    [[ -n "${name}" ]] || name="$(sys::uname 2>/dev/null || true)"
-    [[ -n "${name}" ]] || return 1
-
-    current="$(sys::uname 2>/dev/null || true)"
-
-    if sys::__has id; then
-
-        v="$(id -Gn "${name}" 2>/dev/null || true)"
-        [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
-
-    fi
-    if sys::__has getent; then
-
-        primary="$(sys::ugroup "${name}" 2>/dev/null || true)"
-
-        v="$(getent group 2>/dev/null | awk -F: -v user="${name}" '
-            {
-                n = split($4, a, ",")
-                for (i = 1; i <= n; i++) {
-                    if (a[i] == user) {
-                        print $1
-                    }
-                }
-            }
-        ' | paste -sd' ' - 2>/dev/null || true)"
-
-        if [[ -n "${primary}" && -n "${v}" ]]; then
-
-            case " ${v} " in
-                *" ${primary} "*) printf '%s\n' "${v}" ;;
-                *) printf '%s\n' "${primary} ${v}" ;;
-            esac
-
-            return 0
-
-        fi
-
-        [[ -n "${primary}" ]] && { printf '%s\n' "${primary}"; return 0; }
-        [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
-
-    fi
-    if sys::is_macos && sys::__has dscl; then
-
-        primary="$(sys::ugroup "${name}" 2>/dev/null || true)"
-        v="$(dscl . -search /Groups GroupMembership "${name}" 2>/dev/null | awk '{print $1}' | paste -sd' ' - 2>/dev/null || true)"
-
-        if [[ -n "${primary}" && -n "${v}" ]]; then
-
-            case " ${v} " in
-                *" ${primary} "*) printf '%s\n' "${v}" ;;
-                *) printf '%s\n' "${primary} ${v}" ;;
-            esac
-
-            return 0
-
-        fi
-
-        [[ -n "${primary}" ]] && { printf '%s\n' "${primary}"; return 0; }
-        [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
-
-    fi
-    if sys::is_windows; then
-
-        if [[ -z "${current}" || "${name}" == "${current}" ]]; then
-
-            if sys::__has whoami.exe; then
-
-                out="$(
-                    whoami.exe /groups 2>/dev/null | tr -d '\r' | awk '
-                        BEGIN { started = 0 }
-                        /^[[:space:]]*GROUP INFORMATION[[:space:]]*$/ { started = 1; next }
-                        started && /^[= -]+$/ { next }
-                        started && NF {
-                            line = $0
-                            sub(/^[[:space:]]+/, "", line)
-                            sub(/[[:space:]]+Mandatory group.*$/, "", line)
-                            sub(/[[:space:]]+Enabled group.*$/, "", line)
-                            sub(/[[:space:]]+Group used for deny only.*$/, "", line)
-                            sub(/[[:space:]]+Deny only.*$/, "", line)
-                            sub(/[[:space:]]+Well-known group.*$/, "", line)
-                            sub(/[[:space:]]+Owner group.*$/, "", line)
-                            if (line != "") print line
-                        }
-                    ' | paste -sd' ' - 2>/dev/null || true
-                )"
-
-                [[ -n "${out}" ]] && { printf '%s\n' "${out}"; return 0; }
-
-            fi
-            if sys::__has net.exe; then
-
-                primary="$(sys::ugroup "${name}" 2>/dev/null || true)"
-                [[ -n "${primary}" ]] && { printf '%s\n' "${primary}"; return 0; }
-
-            fi
-
-        fi
-
+    if [[ -z "${want}" ]] && sys::__has id; then
+        v="$(id -g 2>/dev/null || true)"
+        [[ "${v}" =~ ^[0-9]+$ ]] && { printf '%s\n' "${v}"; return 0; }
     fi
 
-    return 1
+    line="$(sys::__group_line "${want}" 2>/dev/null || true)"
+    [[ -n "${line}" ]] || return 1
+
+    v="$(printf '%s\n' "${line}" | awk -F: 'NR == 1 { print $3; exit }')"
+    [[ "${v}" =~ ^[0-9]+$ ]] || return 1
+
+    printf '%s\n' "${v}"
 
 }
+sys::gname () {
 
-sys::groups () {
+    local want="${1:-}" line="" v=""
 
-    local v=""
+    if [[ -z "${want}" ]] && sys::__has id; then
+        v="$(id -gn 2>/dev/null || true)"
+        [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
+    fi
 
-    if sys::is_windows; then
+    line="$(sys::__group_line "${want}" 2>/dev/null || true)"
+    [[ -n "${line}" ]] || return 1
 
-        if sys::__has powershell.exe; then
+    v="$(printf '%s\n' "${line}" | awk -F: 'NR == 1 { print $1; exit }')"
+    [[ -n "${v}" ]] || return 1
 
-            # shellcheck disable=SC2016
-            v="$(
-                powershell.exe -NoProfile -NonInteractive -Command '$ErrorActionPreference = "Stop"; if (Get-Command Get-LocalGroup -ErrorAction SilentlyContinue) { Get-LocalGroup | ForEach-Object { $_.Name }; exit 0 }; exit 1'
-                exit "${PIPESTATUS[0]:-1}"
-            )" && { [[ -n "${v}" ]] && printf '%s\n' "${v}"; return 0; }
+    printf '%s\n' "${v}"
 
+}
+sys::gexists () {
+
+    [[ -n "${1:-}" ]] || return 1
+    sys::__group_line "${1}" >/dev/null 2>&1
+
+}
+sys::gusers () {
+
+    local want="${1:-}" line="" group="" gid="" members=""
+
+    [[ -n "${want}" ]] || return 1
+
+    line="$(sys::__group_line "${want}" 2>/dev/null || true)"
+    [[ -n "${line}" ]] || return 1
+
+    group="$(printf '%s\n' "${line}" | awk -F: 'NR == 1 { print $1; exit }')"
+    gid="$(printf '%s\n' "${line}" | awk -F: 'NR == 1 { print $3; exit }')"
+    members="$(printf '%s\n' "${line}" | awk -F: 'NR == 1 { print $4; exit }')"
+
+    [[ -n "${group}" ]] || return 1
+    [[ "${gid}" =~ ^[0-9]+$ ]] || return 1
+
+    {
+        if sys::is_macos && sys::__has dscl; then
+            dscl . -list /Users PrimaryGroupID 2>/dev/null | awk -v gid="${gid}" '$2 == gid { print $1 }'
+        elif sys::__has getent; then
+            getent passwd 2>/dev/null | awk -F: -v gid="${gid}" '$4 == gid { print $1 }'
+        elif [[ -r /etc/passwd ]]; then
+            awk -F: -v gid="${gid}" '$4 == gid { print $1 }' /etc/passwd
         fi
-        if sys::__has net.exe; then
 
-            v="$(
-                net.exe localgroup 2>/dev/null | tr -d '\r' | awk '
-                    BEGIN { in_items = 0 }
-                    /^-+$/ {
-                        if (!in_items) { in_items = 1; next }
-                        else { exit }
-                    }
-                    in_items {
-                        line = $0
-                        sub(/^\*/, "", line)
-                        sub(/^[[:space:]]+/, "", line)
-                        sub(/[[:space:]]+$/, "", line)
-                        if (line != "") {
-                            print line
-                        }
-                    }
-                ' | awk 'NF && !seen[$0]++'
-                exit "${PIPESTATUS[0]:-1}"
-            )" && { [[ -n "${v}" ]] && printf '%s\n' "${v}"; return 0; }
-
+        if [[ -n "${members}" ]]; then
+            printf '%s\n' "${members}" | tr ',' '\n'
         fi
-
-        return 1
-
-    fi
-    if sys::__has getent; then
-
-        v="$(getent group 2>/dev/null | awk -F: 'NF { print $1 }' || true)"
-        [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
-
-    fi
-    if sys::is_macos && sys::__has dscl; then
-
-        v="$(dscl . -list /Groups 2>/dev/null || true)"
-        [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
-
-    fi
-    if [[ -r /etc/group ]]; then
-
-        v="$(awk -F: 'NF { print $1 }' /etc/group 2>/dev/null || true)"
-        [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
-
-    fi
-
-    return 1
+    } | awk 'NF && !seen[$0]++'
 
 }
 sys::users () {
 
-    local gname="${1:-}" v="" gid="" members="" line=""
-
-    if sys::is_windows; then
-
-        if [[ -n "${gname}" ]]; then
-
-            if sys::__has powershell.exe; then
-
-                # shellcheck disable=SC2016
-                v="$(
-                    SYS_USERS_GROUP_NAME="${gname}" powershell.exe -NoProfile -NonInteractive -Command '$ErrorActionPreference = "Stop"; $group = [Environment]::GetEnvironmentVariable("SYS_USERS_GROUP_NAME"); if ([string]::IsNullOrWhiteSpace($group)) { exit 1 }; if (-not (Get-Command Get-LocalGroupMember -ErrorAction SilentlyContinue)) { exit 1 }; Get-LocalGroupMember -Group $group -ErrorAction Stop | Where-Object { -not $_.PSObject.Properties["ObjectClass"] -or $_.ObjectClass -eq "User" } | ForEach-Object { $name = [string]$_.Name; if ($name -match "\\\\") { $name = $name.Split("\\")[-1] }; if (-not [string]::IsNullOrWhiteSpace($name)) { $name } } | Select-Object -Unique'
-                    exit "${PIPESTATUS[0]:-1}"
-                )" && { [[ -n "${v}" ]] && printf '%s\n' "${v}"; return 0; }
-
-            fi
-            if sys::__has net.exe; then
-
-                v="$(
-                    net.exe localgroup "${gname}" 2>/dev/null | tr -d '\r' | awk '
-                        BEGIN { in_members = 0 }
-                        /^-+$/ { if (!in_members) { in_members = 1; next } else { exit } }
-                        in_members {
-                            if ($0 !~ /The command completed successfully\./ && $0 !~ /^[[:space:]]*$/) {
-                                sub(/^[[:space:]]+/, "", $0)
-                                print
-                            }
-                        }
-                    ' | awk 'NF && !seen[$0]++'
-                    exit "${PIPESTATUS[0]:-1}"
-                )" && { [[ -n "${v}" ]] && printf '%s\n' "${v}"; return 0; }
-
-            fi
-
-            return 1
-
-        fi
-        if sys::__has powershell.exe; then
-
-            # shellcheck disable=SC2016
-            v="$(
-                powershell.exe -NoProfile -NonInteractive -Command '$ErrorActionPreference = "Stop"; if (Get-Command Get-LocalUser -ErrorAction SilentlyContinue) { Get-LocalUser | ForEach-Object { $_.Name }; exit 0 }; exit 1'
-                exit "${PIPESTATUS[0]:-1}"
-            )" && { [[ -n "${v}" ]] && printf '%s\n' "${v}"; return 0; }
-
-
-        fi
-        if sys::__has net.exe; then
-
-            v="$(
-                net.exe user 2>/dev/null | tr -d '\r' | awk '
-                    BEGIN { in_items = 0 }
-                    /^-+$/ {
-                        if (!in_items) { in_items = 1; next }
-                        else { exit }
-                    }
-                    in_items {
-                        for (i = 1; i <= NF; i++) {
-                            print $i
-                        }
-                    }
-                ' | awk 'NF && !seen[$0]++'
-                exit "${PIPESTATUS[0]:-1}"
-            )" && { [[ -n "${v}" ]] && printf '%s\n' "${v}"; return 0; }
-
-        fi
-
-        return 1
-
-    fi
-    if [[ -n "${gname}" ]]; then
-
-        if sys::__has getent; then
-
-            line="$(getent group "${gname}" 2>/dev/null | head -n 1 || true)"
-
-            if [[ -n "${line}" ]]; then
-
-                gid="$(printf '%s\n' "${line}" | awk -F: 'NR==1 { print $3 }')"
-                members="$(printf '%s\n' "${line}" | awk -F: 'NR==1 { print $4 }')"
-
-                v="$(
-                    {
-                        [[ "${gid}" =~ ^[0-9]+$ ]] && getent passwd 2>/dev/null | awk -F: -v gid="${gid}" '$4 == gid { print $1 }'
-                        printf '%s\n' "${members}" | tr ',' '\n'
-                    } | awk 'NF && !seen[$0]++'
-                )"
-
-                [[ -n "${v}" ]] && printf '%s\n' "${v}"
-                return 0
-
-            fi
-
-        fi
-        if sys::is_macos && sys::__has dscl; then
-
-            gid="$(dscl . -read "/Groups/${gname}" PrimaryGroupID 2>/dev/null | awk 'NR==1 { print $2 }' | head -n 1)"
-            members="$(dscl . -read "/Groups/${gname}" GroupMembership 2>/dev/null | sed -n 's/^GroupMembership:[[:space:]]*//p' | head -n 1)"
-
-            if [[ -n "${gid}" || -n "${members}" ]]; then
-
-                v="$(
-                    {
-                        [[ "${gid}" =~ ^[0-9]+$ ]] && dscl . -list /Users PrimaryGroupID 2>/dev/null | awk -v gid="${gid}" '$2 == gid { print $1 }'
-                        printf '%s\n' "${members}" | tr ' ' '\n'
-                    } | awk 'NF && !seen[$0]++'
-                )"
-
-                [[ -n "${v}" ]] && printf '%s\n' "${v}"
-                return 0
-
-            fi
-
-        fi
-        if [[ -r /etc/group && -r /etc/passwd ]]; then
-
-            line="$(awk -F: -v name="${gname}" '$1 == name { print; exit }' /etc/group 2>/dev/null || true)"
-
-            if [[ -n "${line}" ]]; then
-
-                gid="$(printf '%s\n' "${line}" | awk -F: 'NR==1 { print $3 }')"
-                members="$(printf '%s\n' "${line}" | awk -F: 'NR==1 { print $4 }')"
-
-                v="$(
-                    {
-                        [[ "${gid}" =~ ^[0-9]+$ ]] && awk -F: -v gid="${gid}" '$4 == gid { print $1 }' /etc/passwd 2>/dev/null
-                        printf '%s\n' "${members}" | tr ',' '\n'
-                    } | awk 'NF && !seen[$0]++'
-                )"
-
-                [[ -n "${v}" ]] && printf '%s\n' "${v}"
-                return 0
-
-            fi
-
-        fi
-
-        return 1
-
+    if sys::is_macos && sys::__has dscl; then
+        dscl . -list /Users UniqueID 2>/dev/null | awk '$2 ~ /^[0-9]+$/ { print $1 }'
+        return
     fi
     if sys::__has getent; then
-
-        v="$(getent passwd 2>/dev/null | awk -F: 'NF { print $1 }' || true)"
-        [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
-
+        getent passwd 2>/dev/null | awk -F: 'NF { print $1 }'
+        return
     fi
+
+    [[ -r /etc/passwd ]] || return 1
+    awk -F: 'NF { print $1 }' /etc/passwd
+
+}
+sys::groups () {
+
+    local want="${1:-}" v=""
+
+    if [[ -n "${want}" ]] && sys::__uint "${want}"; then
+        want="$(sys::uname "${want}" 2>/dev/null || true)"
+    fi
+
+    if [[ -n "${want}" ]]; then
+        v="$(id -Gn "${want}" 2>/dev/null || true)"
+    else
+        v="$(id -Gn 2>/dev/null || true)"
+    fi
+
+    [[ -n "${v}" ]] || return 1
+
+    printf '%s\n' "${v}" | tr ' ' '\n' | awk 'NF && !seen[$0]++'
+
+}
+
+
+sys::__uint () {
+
+    [[ "${1:-}" =~ ^[0-9]+$ ]]
+
+}
+sys::__require_root () {
+
+    sys::is_root
+
+}
+sys::__default_shell () {
+
+    if sys::is_macos && [[ -x /bin/zsh ]]; then
+        printf '%s\n' "/bin/zsh"
+        return 0
+    fi
+    if [[ -x /bin/bash ]]; then
+        printf '%s\n' "/bin/bash"
+        return 0
+    fi
+    if [[ -x /bin/sh ]]; then
+        printf '%s\n' "/bin/sh"
+        return 0
+    fi
+
+    return 1
+
+}
+sys::__next_uid () {
+
+    if sys::is_macos && sys::__has dscl; then
+        dscl . -list /Users UniqueID 2>/dev/null \
+        | awk '$2 ~ /^[0-9]+$/ && $2 >= 500 { if ( $2 > max ) max = $2 } END { if ( max < 500 ) max = 500; print max + 1 }'
+        return
+    fi
+
+    return 1
+
+}
+sys::__next_gid () {
+
+    if sys::is_macos && sys::__has dscl; then
+        dscl . -list /Groups PrimaryGroupID 2>/dev/null \
+        | awk '$2 ~ /^[0-9]+$/ && $2 >= 500 { if ( $2 > max ) max = $2 } END { if ( max < 500 ) max = 500; print max + 1 }'
+        return
+    fi
+
+    return 1
+
+}
+sys::__passwd_line () {
+
+    local want="${1:-}" name="" uid="" gid="" line=""
+
+    if [[ -z "${want}" ]] && sys::__has id; then
+        want="$(id -un 2>/dev/null || true)"
+    fi
+
+    [[ -n "${want}" ]] || return 1
+
     if sys::is_macos && sys::__has dscl; then
 
-        v="$(dscl . -list /Users 2>/dev/null || true)"
-        [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
+        if sys::__uint "${want}"; then
+            name="$(dscl . -search /Users UniqueID "${want}" 2>/dev/null | awk 'NR == 1 { print $1; exit }')"
+        else
+            name="${want}"
+        fi
+
+        [[ -n "${name}" ]] || return 1
+
+        uid="$(dscl . -read "/Users/${name}" UniqueID 2>/dev/null | awk '$1 == "UniqueID:" { print $2; exit }')"
+        gid="$(dscl . -read "/Users/${name}" PrimaryGroupID 2>/dev/null | awk '$1 == "PrimaryGroupID:" { print $2; exit }')"
+
+        [[ "${uid}" =~ ^[0-9]+$ ]] || return 1
+        [[ "${gid}" =~ ^[0-9]+$ ]] || return 1
+
+        printf '%s:x:%s:%s:::\n' "${name}" "${uid}" "${gid}"
+        return 0
 
     fi
-    if [[ -r /etc/passwd ]]; then
 
-        v="$(awk -F: 'NF { print $1 }' /etc/passwd 2>/dev/null || true)"
-        [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
-
+    if sys::__has getent; then
+        line="$(getent passwd "${want}" 2>/dev/null | awk 'NR == 1 { print; exit }')"
+        [[ -n "${line}" ]] && { printf '%s\n' "${line}"; return 0; }
     fi
 
-    return 1
+    [[ -r /etc/passwd ]] || return 1
+
+    if sys::__uint "${want}"; then
+        awk -F: -v want="${want}" '$3 == want { print; exit }' /etc/passwd
+        return
+    fi
+
+    awk -F: -v want="${want}" '$1 == want { print; exit }' /etc/passwd
 
 }
-sys::ingroup () {
+sys::__group_line () {
 
-    local group="${1:-}" user="${2:-}" line="" current=""
+    local want="${1:-}" name="" gid="" members="" line=""
+
+    if [[ -z "${want}" ]] && sys::__has id; then
+        want="$(id -gn 2>/dev/null || true)"
+    fi
+
+    [[ -n "${want}" ]] || return 1
+
+    if sys::is_macos && sys::__has dscl; then
+
+        if sys::__uint "${want}"; then
+            name="$(dscl . -search /Groups PrimaryGroupID "${want}" 2>/dev/null | awk 'NR == 1 { print $1; exit }')"
+        else
+            name="${want}"
+        fi
+
+        [[ -n "${name}" ]] || return 1
+
+        gid="$(dscl . -read "/Groups/${name}" PrimaryGroupID 2>/dev/null | awk '$1 == "PrimaryGroupID:" { print $2; exit }')"
+        [[ "${gid}" =~ ^[0-9]+$ ]] || return 1
+
+        members="$(
+            dscl . -read "/Groups/${name}" GroupMembership 2>/dev/null \
+            | sed -n 's/^GroupMembership:[[:space:]]*//p' \
+            | awk 'NR == 1 { print; exit }'
+        )"
+
+        members="${members// /,}"
+
+        printf '%s:*:%s:%s\n' "${name}" "${gid}" "${members}"
+        return 0
+
+    fi
+
+    if sys::__has getent; then
+        line="$(getent group "${want}" 2>/dev/null | awk 'NR == 1 { print; exit }')"
+        [[ -n "${line}" ]] && { printf '%s\n' "${line}"; return 0; }
+    fi
+
+    [[ -r /etc/group ]] || return 1
+
+    if sys::__uint "${want}"; then
+        awk -F: -v want="${want}" '$3 == want { print; exit }' /etc/group
+        return
+    fi
+
+    awk -F: -v want="${want}" '$1 == want { print; exit }' /etc/group
+
+}
+sys::__passwd_field () {
+
+    local want="${1:-}" idx="${2:-}" line="" v=""
+
+    [[ "${idx}" =~ ^[1-7]$ ]] || return 1
+
+    line="$(sys::__passwd_line "${want}" 2>/dev/null || true)"
+    [[ -n "${line}" ]] || return 1
+
+    v="$(printf '%s\n' "${line}" | awk -F: -v idx="${idx}" 'NR == 1 { print $idx; exit }')"
+    [[ -n "${v}" ]] || return 1
+
+    printf '%s\n' "${v}"
+
+}
+sys::__user_name () {
+
+    local want="${1:-}" v=""
+
+    if [[ -z "${want}" ]] && sys::__has id; then
+        want="$(id -un 2>/dev/null || true)"
+    fi
+
+    [[ -n "${want}" ]] || return 1
+
+    if sys::__uint "${want}"; then
+        v="$(sys::__passwd_field "${want}" 1 2>/dev/null || true)"
+        [[ -n "${v}" ]] || return 1
+        printf '%s\n' "${v}"
+        return 0
+    fi
+
+    printf '%s\n' "${want}"
+
+}
+sys::__group_name () {
+
+    local want="${1:-}" line="" v=""
+
+    if [[ -z "${want}" ]] && sys::__has id; then
+        want="$(id -gn 2>/dev/null || true)"
+    fi
+
+    [[ -n "${want}" ]] || return 1
+
+    if sys::__uint "${want}"; then
+        line="$(sys::__group_line "${want}" 2>/dev/null || true)"
+        [[ -n "${line}" ]] || return 1
+        v="$(printf '%s\n' "${line}" | awk -F: 'NR == 1 { print $1; exit }')"
+        [[ -n "${v}" ]] || return 1
+        printf '%s\n' "${v}"
+        return 0
+    fi
+
+    printf '%s\n' "${want}"
+
+}
+
+sys::add_group () {
+
+    local group="${1:-}" gid="${2:-}" path=""
 
     [[ -n "${group}" ]] || return 1
-    [[ -n "${user}"  ]] || user="$(sys::uname 2>/dev/null || true)"
-    [[ -n "${user}"  ]] || return 1
+    sys::__require_root || return 1
 
-    while IFS= read -r line || [[ -n "${line}" ]]; do
-        [[ "${line}" == "${user}" ]] && return 0
-    done < <(sys::users "${group}" 2>/dev/null || true)
+    sys::__group_line "${group}" >/dev/null 2>&1 && return 0
+
+    if sys::is_macos; then
+
+        [[ -n "${gid}" ]] || gid="$(sys::__next_gid 2>/dev/null || true)"
+        [[ "${gid}" =~ ^[0-9]+$ ]] || return 1
+
+        path="/Groups/${group}"
+
+        dscl . -create "${path}" >/dev/null 2>&1                                    || return 1
+        dscl . -create "${path}" PrimaryGroupID "${gid}" >/dev/null 2>&1           || { dscl . -delete "${path}" >/dev/null 2>&1 || true; return 1; }
+        dscl . -create "${path}" Password "*" >/dev/null 2>&1                       || { dscl . -delete "${path}" >/dev/null 2>&1 || true; return 1; }
+
+        return 0
+
+    fi
+
+    if sys::__has groupadd; then
+
+        if [[ -n "${gid}" ]]; then
+            groupadd -g "${gid}" "${group}"
+            return
+        fi
+
+        groupadd "${group}"
+        return
+
+    fi
+    if sys::__has addgroup; then
+
+        if [[ -n "${gid}" ]]; then
+            addgroup -g "${gid}" "${group}"
+            return
+        fi
+
+        addgroup "${group}"
+        return
+
+    fi
 
     return 1
 
 }
-sys::addgroup () {
+sys::del_group () {
 
-    local name="${1:-}"
+    local group="${1:-}" name=""
 
-    [[ -n "${name}" ]] || return 1
-    sys::gexists "${name}" && return 0
+    [[ -n "${group}" ]] || return 1
+    sys::__require_root || return 1
 
-    if sys::is_linux; then
+    name="$(sys::__group_name "${group}" 2>/dev/null || true)"
+    [[ -n "${name}" ]] || return 0
 
-        if sys::__has groupadd; then
-            groupadd "${name}" >/dev/null 2>&1
-            return
-        fi
-
-        return 1
-
-    fi
     if sys::is_macos; then
 
         if sys::__has dseditgroup; then
-            dseditgroup -o create "${name}" >/dev/null 2>&1
+            dseditgroup -o delete "${name}" >/dev/null 2>&1
             return
         fi
 
-        return 1
+        dscl . -delete "/Groups/${name}" >/dev/null 2>&1
+        return
 
     fi
-    if sys::is_windows; then
 
-        if sys::__has net.exe; then
-            net.exe localgroup "${name}" /add >/dev/null 2>&1
-            return
-        fi
-
-        return 1
-
+    if sys::__has groupdel; then
+        groupdel "${name}"
+        return
+    fi
+    if sys::__has delgroup; then
+        delgroup "${name}"
+        return
     fi
 
     return 1
 
 }
-sys::adduser () {
+sys::add_user () {
 
-    local name="${1:-}" group="${2:-}"
+    local user="${1:-}" group="${2:-}" uid="" gid="" shell="" home="" path=""
 
-    [[ -n "${name}" ]] || return 1
+    [[ -n "${user}" ]] || return 1
+    sys::__require_root || return 1
 
-    if ! sys::uexists "${name}"; then
+    sys::__passwd_line "${user}" >/dev/null 2>&1 && return 0
 
-        if sys::is_linux; then
+    [[ -n "${group}" ]] || group="${user}"
+    sys::__group_line "${group}" >/dev/null 2>&1 || sys::add_group "${group}" || return 1
 
-            if sys::__has useradd; then
+    shell="$(sys::__default_shell 2>/dev/null || true)"
+    [[ -n "${shell}" ]] || return 1
 
-                if [[ -n "${group}" ]]; then
-                    sys::gexists "${group}" || sys::addgroup "${group}" || return 1
-                    useradd -m -g "${group}" "${name}" >/dev/null 2>&1 || return 1
-                else
-                    useradd -m "${name}" >/dev/null 2>&1 || return 1
-                fi
+    if sys::is_macos; then
 
-                return 0
+        uid="$(sys::__next_uid 2>/dev/null || true)"
+        gid="$(printf '%s\n' "$(sys::__group_line "${group}" 2>/dev/null || true)" | awk -F: 'NR == 1 { print $3; exit }')"
+        home="/Users/${user}"
+        path="/Users/${user}"
 
-            fi
+        [[ "${uid}" =~ ^[0-9]+$ ]] || return 1
+        [[ "${gid}" =~ ^[0-9]+$ ]] || return 1
 
-        elif sys::is_macos; then
+        dscl . -create "${path}" >/dev/null 2>&1                                   || return 1
+        dscl . -create "${path}" UniqueID "${uid}" >/dev/null 2>&1                 || { dscl . -delete "${path}" >/dev/null 2>&1 || true; return 1; }
+        dscl . -create "${path}" PrimaryGroupID "${gid}" >/dev/null 2>&1           || { dscl . -delete "${path}" >/dev/null 2>&1 || true; return 1; }
+        dscl . -create "${path}" NFSHomeDirectory "${home}" >/dev/null 2>&1        || { dscl . -delete "${path}" >/dev/null 2>&1 || true; return 1; }
+        dscl . -create "${path}" UserShell "${shell}" >/dev/null 2>&1              || { dscl . -delete "${path}" >/dev/null 2>&1 || true; return 1; }
+        dscl . -create "${path}" RealName "${user}" >/dev/null 2>&1                || { dscl . -delete "${path}" >/dev/null 2>&1 || true; return 1; }
 
-            if sys::__has sysadminctl; then sysadminctl -addUser "${name}" >/dev/null 2>&1 || return 1
-            else return 1
-            fi
-
-        elif sys::is_windows; then
-
-            if sys::__has net.exe; then net.exe user "${name}" /add >/dev/null 2>&1 || return 1
-            else return 1
-            fi
-
+        if sys::__has createhomedir; then
+            createhomedir -c -u "${user}" >/dev/null 2>&1 || true
         else
-
-            return 1
-
+            mkdir -p "${home}" >/dev/null 2>&1 || true
         fi
+
+        return 0
 
     fi
 
-    [[ -n "${group}" ]] || return 0
-
-    sys::gexists "${group}" || sys::addgroup "${group}" || return 1
-    sys::ingroup "${group}" "${name}" && return 0
-
-    if sys::is_linux; then
-
-        if sys::__has usermod; then
-            usermod -aG "${group}" "${name}" >/dev/null 2>&1
-            return
-        fi
-
-        return 1
-
+    if sys::__has useradd; then
+        useradd -m -g "${group}" -s "${shell}" "${user}"
+        return
     fi
-    if sys::is_macos; then
-
-        if sys::__has dseditgroup; then
-            dseditgroup -o edit -a "${name}" -t user "${group}" >/dev/null 2>&1
-            return
-        fi
-
-        return 1
-
-    fi
-    if sys::is_windows; then
-
-        if sys::__has net.exe; then
-            net.exe localgroup "${group}" "${name}" /add >/dev/null 2>&1
-            return
-        fi
-
-        return 1
-
+    if sys::__has adduser; then
+        adduser -D -G "${group}" -s "${shell}" "${user}"
+        return
     fi
 
     return 1
+
+}
+sys::del_user () {
+
+    local user="${1:-}" name=""
+
+    [[ -n "${user}" ]] || return 1
+    sys::__require_root || return 1
+
+    name="$(sys::__user_name "${user}" 2>/dev/null || true)"
+    [[ -n "${name}" ]] || return 0
+
+    if sys::is_macos; then
+
+        if sys::__has sysadminctl; then
+            sysadminctl -deleteUser "${name}" >/dev/null 2>&1
+            return
+        fi
+
+        dscl . -delete "/Users/${name}" >/dev/null 2>&1
+        return
+
+    fi
+
+    if sys::__has userdel; then
+        userdel -r "${name}"
+        return
+    fi
+    if sys::__has deluser; then
+        deluser --remove-home "${name}" 2>/dev/null || deluser "${name}"
+        return
+    fi
+
+    return 1
+
+}
+sys::user_home () {
+
+    local want="${1:-}" user="" v=""
+
+    user="$(sys::__user_name "${want}" 2>/dev/null || true)"
+    [[ -n "${user}" ]] || return 1
+
+    if sys::is_macos && sys::__has dscl; then
+        v="$(dscl . -read "/Users/${user}" NFSHomeDirectory 2>/dev/null | awk '$1 == "NFSHomeDirectory:" { print $2; exit }')"
+        [[ -n "${v}" ]] || return 1
+        printf '%s\n' "${v}"
+        return 0
+    fi
+
+    sys::__passwd_field "${user}" 6
+
+}
+sys::user_shell () {
+
+    local want="${1:-}" user="" v=""
+
+    user="$(sys::__user_name "${want}" 2>/dev/null || true)"
+    [[ -n "${user}" ]] || return 1
+
+    if sys::is_macos && sys::__has dscl; then
+        v="$(dscl . -read "/Users/${user}" UserShell 2>/dev/null | awk '$1 == "UserShell:" { print $2; exit }')"
+        [[ -n "${v}" ]] || return 1
+        printf '%s\n' "${v}"
+        return 0
+    fi
+
+    sys::__passwd_field "${user}" 7
+
+}
+sys::user_gecos () {
+
+    local want="${1:-}" user="" v=""
+
+    user="$(sys::__user_name "${want}" 2>/dev/null || true)"
+    [[ -n "${user}" ]] || return 1
+
+    if sys::is_macos && sys::__has dscl; then
+        v="$(dscl . -read "/Users/${user}" RealName 2>/dev/null | sed -n 's/^RealName:[[:space:]]*//p' | head -n 1)"
+        [[ -n "${v}" ]] || return 1
+        printf '%s\n' "${v}"
+        return 0
+    fi
+
+    sys::__passwd_field "${user}" 5
 
 }

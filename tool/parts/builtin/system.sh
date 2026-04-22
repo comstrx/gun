@@ -1,56 +1,14 @@
 
-sys::__has () {
+sys::has () {
 
     command -v "${1:-}" >/dev/null 2>&1
 
 }
-sys::__lower () {
-
-    printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]'
-
-}
-sys::__open () {
-
-    local target="${1:-}" kind="${2:-auto}" v=""
-
-    [[ -n "${target}" ]] || return 1
-
-    if sys::is_macos && sys::__has open; then
-        open "${target}" >/dev/null 2>&1
-        return
-    fi
-    if sys::is_windows; then
-
-        if [[ "${kind}" == "path" ]] && sys::__has cygpath; then
-            v="$(cygpath -aw "${target}" 2>/dev/null || true)"
-            [[ -n "${v}" ]] && target="${v}"
-        fi
-        if sys::__has explorer.exe; then
-            explorer.exe "${target}" >/dev/null 2>&1
-            return
-        fi
-        if sys::__has cmd.exe; then
-            cmd.exe /C start "" "${target}" >/dev/null 2>&1
-            return
-        fi
-
-        return 1
-
-    fi
-    if sys::__has xdg-open; then
-        xdg-open "${target}" >/dev/null 2>&1
-        return
-    fi
-
-    return 1
-
-}
-
 sys::is_linux () {
 
     local s=""
 
-    if sys::__has uname; then
+    if sys::has uname; then
         s="$(uname -s 2>/dev/null || true)"
     fi
 
@@ -62,7 +20,7 @@ sys::is_macos () {
 
     local s=""
 
-    if sys::__has uname; then
+    if sys::has uname; then
         s="$(uname -s 2>/dev/null || true)"
     fi
 
@@ -80,7 +38,7 @@ sys::is_wsl () {
     if [[ -r /proc/sys/kernel/osrelease ]]; then
 
         IFS= read -r r < /proc/sys/kernel/osrelease || true
-        lower="$(sys::__lower "${r}")"
+        lower="$(printf '%s' "${r}" | tr '[:upper:]' '[:lower:]')"
 
         [[ "${lower}" == *microsoft* ]] && return 0
 
@@ -88,7 +46,7 @@ sys::is_wsl () {
     if [[ -r /proc/version ]]; then
 
         IFS= read -r r < /proc/version || true
-        lower="$(sys::__lower "${r}")"
+        lower="$(printf '%s' "${r}" | tr '[:upper:]' '[:lower:]')"
 
         [[ "${lower}" == *microsoft* ]] && return 0
 
@@ -109,7 +67,7 @@ sys::is_cygwin () {
 
     [[ "${OSTYPE:-}" == cygwin* ]] && return 0
 
-    if sys::__has uname; then
+    if sys::has uname; then
         s="$(uname -s 2>/dev/null || true)"
     fi
 
@@ -122,7 +80,7 @@ sys::is_msys () {
 
     [[ "${OSTYPE:-}" == msys* ]] && return 0
 
-    if sys::__has uname; then
+    if sys::has uname; then
         s="$(uname -s 2>/dev/null || true)"
         [[ "${s}" == MSYS* || "${s}" == MINGW* ]] && return 0
     fi
@@ -138,13 +96,13 @@ sys::is_gitbash () {
     sys::is_msys || return 1
 
     [[ -n "${GitInstallRoot:-}" ]] && return 0
-    [[ -n "${MSYSTEM:-}" && -z "${MSYS2_PATH_TYPE:-}" ]] && return 0
 
     case "${TERM_PROGRAM:-}" in
-        mintty) return 0 ;;
+        mintty)
+            [[ "${MSYSTEM:-}" == MINGW* && -z "${MSYS2_PATH_TYPE:-}" ]]
+            return
+        ;;
     esac
-
-    [[ -n "${MINGW_PREFIX:-}" && -z "${MSYS2_PATH_TYPE:-}" ]] && return 0
 
     return 1
 
@@ -239,12 +197,22 @@ sys::is_gui () {
         return
     fi
     if sys::is_macos; then
-        [[ -z "${SSH_CONNECTION:-}" && -z "${SSH_CLIENT:-}" && -z "${SSH_TTY:-}" ]]
+        [[ -z "${SSH_CONNECTION:-}" && -z "${SSH_CLIENT:-}" && -z "${SSH_TTY:-}" && -z "${CI:-}" ]]
         return
     fi
     if sys::is_windows; then
+
         sys::is_ci && return 1
-        return 0
+        [[ -n "${SSH_CONNECTION:-}" || -n "${SSH_CLIENT:-}" || -n "${SSH_TTY:-}" ]] && return 1
+
+        if sys::has powershell.exe; then
+            powershell.exe -NoProfile -NonInteractive -Command "[Environment]::UserInteractive" 2>/dev/null | tr -d '\r' | grep -qi '^True$'
+            return
+        fi
+
+        [[ -n "${WINDIR:-}" || -n "${SystemRoot:-}" ]]
+        return
+
     fi
 
     return 1
@@ -263,17 +231,7 @@ sys::is_interactive () {
 sys::is_headless () {
 
     sys::is_gui && return 1
-
-    if sys::is_linux; then
-        [[ -z "${DISPLAY:-}" && -z "${WAYLAND_DISPLAY:-}" ]]
-        return
-    fi
-    if sys::is_macos || sys::is_windows; then
-        [[ -n "${SSH_CONNECTION:-}" || -n "${SSH_CLIENT:-}" || -n "${SSH_TTY:-}" || -n "${CI:-}" ]]
-        return
-    fi
-
-    return 1
+    return 0
 
 }
 sys::is_container () {
@@ -293,7 +251,7 @@ sys::is_container () {
 
         while IFS= read -r r || [[ -n "${r}" ]]; do
 
-            lower="$(sys::__lower "${r}")"
+            lower="$(printf '%s' "${r}" | tr '[:upper:]' '[:lower:]')"
 
             [[ "${lower}" == *docker* ]]     && return 0
             [[ "${lower}" == *kubepods* ]]   && return 0
@@ -322,11 +280,10 @@ sys::is_root () {
 
     if sys::is_windows; then
 
-        if sys::__has net.exe; then
-            net.exe session >/dev/null 2>&1
-            return
+        if sys::has net.exe && net.exe session >/dev/null 2>&1; then
+            return 0
         fi
-        if sys::__has powershell.exe; then
+        if sys::has powershell.exe; then
 
             cmd="[bool](([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))"
             powershell.exe -NoProfile -NonInteractive -Command "${cmd}" 2>/dev/null | tr -d '\r' | grep -qi '^True$'
@@ -337,7 +294,7 @@ sys::is_root () {
         return 1
 
     fi
-    if sys::__has id; then
+    if sys::has id; then
 
         v="$(id -u 2>/dev/null || true)"
         [[ "${v}" == "0" ]]
@@ -348,14 +305,14 @@ sys::is_root () {
     return 1
 
 }
-sys::is_admin () {
+sys::has_sudo () {
 
     local v="" x=""
 
-    sys::is_root && return 0
     sys::is_windows && return 1
+    sys::is_root    && return 0
 
-    if sys::__has id; then
+    if sys::has id; then
 
         v="$(id -Gn 2>/dev/null || true)"
 
@@ -366,7 +323,7 @@ sys::is_admin () {
         done
 
     fi
-    if sys::__has groups; then
+    if sys::has groups; then
 
         v="$(groups 2>/dev/null || true)"
 
@@ -394,21 +351,6 @@ sys::name () {
     fi
     if sys::is_windows; then
         printf '%s\n' "windows"
-        return 0
-    fi
-
-    printf '%s\n' "unknown"
-    return 1
-
-}
-sys::family () {
-
-    if sys::is_windows || sys::is_msys || sys::is_cygwin; then
-        printf '%s\n' "windows"
-        return 0
-    fi
-    if sys::is_linux || sys::is_macos || sys::is_wsl; then
-        printf '%s\n' "unix"
         return 0
     fi
 
@@ -515,14 +457,14 @@ sys::manager () {
 
     if sys::is_linux; then
 
-        sys::__has apt-get      && { printf '%s\n' "apt";     return 0; }
-        sys::__has apk          && { printf '%s\n' "apk";     return 0; }
-        sys::__has dnf          && { printf '%s\n' "dnf";     return 0; }
-        sys::__has yum          && { printf '%s\n' "yum";     return 0; }
-        sys::__has pacman       && { printf '%s\n' "pacman";  return 0; }
-        sys::__has zypper       && { printf '%s\n' "zypper";  return 0; }
-        sys::__has xbps-install && { printf '%s\n' "xbps";    return 0; }
-        sys::__has nix          && { printf '%s\n' "nix";     return 0; }
+        sys::has apt-get      && { printf '%s\n' "apt";     return 0; }
+        sys::has apk          && { printf '%s\n' "apk";     return 0; }
+        sys::has dnf          && { printf '%s\n' "dnf";     return 0; }
+        sys::has yum          && { printf '%s\n' "yum";     return 0; }
+        sys::has pacman       && { printf '%s\n' "pacman";  return 0; }
+        sys::has zypper       && { printf '%s\n' "zypper";  return 0; }
+        sys::has xbps-install && { printf '%s\n' "xbps";    return 0; }
+        sys::has nix          && { printf '%s\n' "nix";     return 0; }
 
         printf '%s\n' "unknown"
         return 1
@@ -530,8 +472,8 @@ sys::manager () {
     fi
     if sys::is_macos; then
 
-        sys::__has brew && { printf '%s\n' "brew"; return 0; }
-        sys::__has port && { printf '%s\n' "port"; return 0; }
+        sys::has brew && { printf '%s\n' "brew"; return 0; }
+        sys::has port && { printf '%s\n' "port"; return 0; }
 
         printf '%s\n' "unknown"
         return 1
@@ -539,15 +481,15 @@ sys::manager () {
     fi
     if sys::is_windows; then
 
-        if ( sys::is_msys || sys::is_gitbash ) && sys::__has pacman; then
+        if ( sys::is_msys || sys::is_gitbash ) && sys::has pacman; then
             printf '%s\n' "pacman"
             return 0
         fi
 
-        sys::__has winget && { printf '%s\n' "winget"; return 0; }
-        sys::__has choco  && { printf '%s\n' "choco";  return 0; }
-        sys::__has scoop  && { printf '%s\n' "scoop";  return 0; }
-        sys::__has pacman && { printf '%s\n' "pacman"; return 0; }
+        sys::has winget && { printf '%s\n' "winget"; return 0; }
+        sys::has choco  && { printf '%s\n' "choco";  return 0; }
+        sys::has scoop  && { printf '%s\n' "scoop";  return 0; }
+        sys::has pacman && { printf '%s\n' "pacman"; return 0; }
 
         printf '%s\n' "unknown"
         return 1
@@ -562,12 +504,12 @@ sys::arch () {
 
     local v="" lower=""
 
-    sys::__has uname && v="$(uname -m 2>/dev/null || true)"
+    sys::has uname && v="$(uname -m 2>/dev/null || true)"
 
     [[ -n "${v}" ]] || v="${PROCESSOR_ARCHITECTURE:-${HOSTTYPE:-}}"
     [[ -n "${v}" ]] || v="unknown"
 
-    lower="$(sys::__lower "${v}")"
+    lower="$(printf '%s' "${v}" | tr '[:upper:]' '[:lower:]')"
 
     case "${lower}" in
         x86_64|amd64)             printf '%s\n' "x64" ;;
@@ -586,41 +528,99 @@ sys::arch () {
 }
 sys::open () {
 
-    local target="${1:-}" normalized=""
-    shift || true
+    local target="${1:-}" type="${2:-auto}" v=""
 
     [[ -n "${target}" ]] || return 1
     [[ "${target}" == *$'\n'* || "${target}" == *$'\r'* ]] && return 1
 
-    if [[ -e "${target}" ]]; then
-        sys::__open "${target}" "path"
+    if [[ "${type}" == "app" ]]; then
+
+        shift 2 || true
+
+        if sys::has "${target}"; then
+            "${target}" "$@" >/dev/null 2>&1 &
+            command -v disown >/dev/null 2>&1 && disown || true
+            return 0
+        fi
+        if sys::has "${target}.exe"; then
+            "${target}.exe" "$@" >/dev/null 2>&1 &
+            command -v disown >/dev/null 2>&1 && disown || true
+            return 0
+        fi
+
+        return 1
+
+    fi
+    if [[ "${type}" == "auto" && -e "${target}" ]]; then
+
+        type="path"
+
+    fi
+
+    if [[ "${type}" == "auto" || "${type}" == "url" ]]; then
+
+        case "${target}" in
+            www.*) target="https://${target}" ;;
+            http://*|https://*|ftp://*|ftps://*|file://*|mailto:*|ssh://*) ;;
+            localhost|localhost:*|localhost/*) target="http://${target}" ;;
+            *)
+                if [[ "${target}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(:[0-9]+)?([/?#].*)?$ ]]; then target="http://${target}"
+                elif [[ "${target}" =~ ^[A-Za-z0-9._-]+\.[A-Za-z0-9._-]+(:[0-9]+)?([/?#].*)?$ ]]; then target="https://${target}"
+                else return 1
+                fi
+            ;;
+        esac
+
+        type="url"
+
+    elif [[ "${type}" == "path" ]]; then
+
+        [[ -e "${target}" ]] || return 1
+
+    else
+
+        return 1
+
+    fi
+
+    if sys::is_macos && sys::has open; then
+
+        open "${target}" >/dev/null 2>&1
         return
+
     fi
-    if sys::__has "${target}"; then
-        "${target}" "$@" >/dev/null 2>&1 &
-        disown || true
-        return 0
+    if sys::is_windows; then
+
+        if [[ "${type}" == "path" ]] && sys::has cygpath; then
+
+            v="$(cygpath -aw "${target}" 2>/dev/null || true)"
+            [[ -n "${v}" ]] && target="${v}"
+
+        fi
+        if sys::has explorer.exe; then
+
+            explorer.exe "${target}" >/dev/null 2>&1
+            return
+
+        fi
+        if sys::has cmd.exe; then
+
+            cmd.exe /C start "" "${target}" >/dev/null 2>&1
+            return
+
+        fi
+
+        return 1
+
+    fi
+    if sys::has xdg-open; then
+
+        xdg-open "${target}" >/dev/null 2>&1
+        return
+
     fi
 
-    case "${target}" in
-        www.*)
-            normalized="https://${target}" ;;
-        http://*|https://*|ftp://*|ftps://*|file://*|mailto:*|ssh://*)
-            normalized="${target}" ;;
-        localhost|localhost:*|localhost/*)
-            normalized="http://${target}" ;;
-        *)
-            if [[ "${target}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(:[0-9]+)?([/?#].*)?$ ]]; then
-                normalized="http://${target}"
-            elif [[ "${target}" =~ ^[A-Za-z0-9._-]+\.[A-Za-z0-9._-]+(:[0-9]+)?([/?#].*)?$ ]]; then
-                normalized="https://${target}"
-            fi
-        ;;
-    esac
-
-    [[ -n "${normalized}" ]] || return 1
-
-    sys::__open "${normalized}" "uri"
+    return 1
 
 }
 
@@ -631,7 +631,7 @@ sys::disk_total () {
     [[ -n "${path}" ]] || path='.'
     [[ -e "${path}" ]] || return 1
 
-    if sys::__has df; then
+    if sys::has df; then
         v="$(df -Pk "${path}" 2>/dev/null | awk 'NR==2 {print $2}' | head -n 1)"
         [[ "${v}" =~ ^[0-9]+$ ]] && { printf '%s\n' "$(( v * 1024 ))"; return 0; }
     fi
@@ -646,7 +646,7 @@ sys::disk_free () {
     [[ -n "${path}" ]] || path='.'
     [[ -e "${path}" ]] || return 1
 
-    if sys::__has df; then
+    if sys::has df; then
         v="$(df -Pk "${path}" 2>/dev/null | awk 'NR==2 {print $4}' | head -n 1)"
         [[ "${v}" =~ ^[0-9]+$ ]] && { printf '%s\n' "$(( v * 1024 ))"; return 0; }
     fi
@@ -689,7 +689,7 @@ sys::disk_size () {
     [[ -n "${path}" ]] || return 1
     [[ -e "${path}" ]] || return 1
 
-    if sys::__has du; then
+    if sys::has du; then
         v="$(du -sk "${path}" 2>/dev/null | awk 'NR==1 {print $1}' | head -n 1)"
         [[ "${v}" =~ ^[0-9]+$ ]] && { printf '%s\n' "$(( v * 1024 ))"; return 0; }
     fi
@@ -733,7 +733,7 @@ sys::mem_total () {
     fi
     if sys::is_windows; then
 
-        if sys::__has powershell.exe; then
+        if sys::has powershell.exe; then
             v="$(powershell.exe -NoProfile -Command "[int64](Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory" 2>/dev/null | tr -d '\r')"
             [[ "${v}" =~ ^[0-9]+$ ]] && { printf '%s\n' "${v}"; return 0; }
         fi
@@ -770,7 +770,7 @@ sys::mem_free () {
     fi
     if sys::is_macos; then
 
-        if sys::__has vm_stat && sys::__has sysctl; then
+        if sys::has vm_stat && sys::has sysctl; then
 
             local page_size="" free_pages="" inactive_pages="" speculative_pages=""
 
@@ -792,7 +792,7 @@ sys::mem_free () {
     fi
     if sys::is_windows; then
 
-        if sys::__has powershell.exe; then
+        if sys::has powershell.exe; then
             v="$(powershell.exe -NoProfile -Command "[int64]((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory * 1024)" 2>/dev/null | tr -d '\r')"
             [[ "${v}" =~ ^[0-9]+$ ]] && { printf '%s\n' "${v}"; return 0; }
         fi
@@ -839,10 +839,10 @@ sys::mem_info () {
     used="$(sys::mem_used 2>/dev/null || true)"
     percent="$(sys::mem_percent 2>/dev/null || true)"
 
-    [[ -n "${total}" ]] || return 1
-    [[ -n "${free}" ]] || return 1
-    [[ -n "${used}" ]] || return 1
-    [[ -n "${percent}" ]] || return 1
+    [[ "${total}" =~ ^[0-9]+$ ]] || return 1
+    [[ "${free}" =~ ^[0-9]+$ ]] || return 1
+    [[ "${used}" =~ ^[0-9]+$ ]] || return 1
+    [[ "${percent}" =~ ^[0-9]+$ ]] || return 1
 
     printf '%s\n' "total=${total}" "free=${free}" "used=${used}" "percent=${percent}"
 
