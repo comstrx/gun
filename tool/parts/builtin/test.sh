@@ -51,6 +51,8 @@ print_value sys::is_terminal
 print_value sys::is_interactive
 print_value sys::is_headless
 print_value sys::is_container
+print_value sys::is_root
+print_value sys::is_admin
 print_value sys::name
 print_value sys::family
 print_value sys::runtime
@@ -68,12 +70,3 @@ print_value sys::mem_free
 print_value sys::mem_used
 print_value sys::mem_percent
 print_value sys::mem_info
-
-print_value sys::open github.com
-print_value sys::open google.com
-print_value sys::open /var/www/projects/gun/tool/src
-print_value sys::open /invalid/path
-print_value sys::open localhost:3000
-print_value sys::open 127.0.0.1:8000
-print_value sys::open 127.0.0.1
-print_value sys::open chrome.exe

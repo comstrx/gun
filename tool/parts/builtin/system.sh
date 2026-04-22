@@ -97,6 +97,12 @@ sys::is_wsl () {
     return 1
 
 }
+sys::is_unix () {
+
+    sys::is_linux || sys::is_macos
+
+}
+
 sys::is_cygwin () {
 
     local s=""
@@ -143,16 +149,6 @@ sys::is_gitbash () {
     return 1
 
 }
-sys::is_unix () {
-
-    sys::is_linux || sys::is_macos
-
-}
-sys::is_posix () {
-
-    sys::is_linux || sys::is_macos || sys::is_wsl || sys::is_msys || sys::is_cygwin
-
-}
 sys::is_windows () {
 
     sys::is_wsl && return 1
@@ -167,6 +163,11 @@ sys::is_windows () {
     sys::is_macos && return 1
 
     return 0
+
+}
+sys::is_posix () {
+
+    sys::is_linux || sys::is_macos || sys::is_wsl || sys::is_msys || sys::is_cygwin
 
 }
 
@@ -230,6 +231,7 @@ sys::is_ci_tag () {
     return 1
 
 }
+
 sys::is_gui () {
 
     if sys::is_linux; then
@@ -307,6 +309,72 @@ sys::is_container () {
         while IFS= read -r -d '' r; do
             [[ "${r}" == container=* ]] && return 0
         done < /proc/1/environ
+
+    fi
+
+    return 1
+
+}
+
+sys::is_root () {
+
+    local v="" cmd=""
+
+    if sys::is_windows; then
+
+        if sys::__has net.exe; then
+            net.exe session >/dev/null 2>&1
+            return
+        fi
+        if sys::__has powershell.exe; then
+
+            cmd="[bool](([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))"
+            powershell.exe -NoProfile -NonInteractive -Command "${cmd}" 2>/dev/null | tr -d '\r' | grep -qi '^True$'
+            return
+
+        fi
+
+        return 1
+
+    fi
+    if sys::__has id; then
+
+        v="$(id -u 2>/dev/null || true)"
+        [[ "${v}" == "0" ]]
+        return
+
+    fi
+
+    return 1
+
+}
+sys::is_admin () {
+
+    local v="" x=""
+
+    sys::is_root && return 0
+    sys::is_windows && return 1
+
+    if sys::__has id; then
+
+        v="$(id -Gn 2>/dev/null || true)"
+
+        for x in ${v}; do
+            [[ "${x}" == "sudo"  ]] && return 0
+            [[ "${x}" == "wheel" ]] && return 0
+            [[ "${x}" == "admin" ]] && return 0
+        done
+
+    fi
+    if sys::__has groups; then
+
+        v="$(groups 2>/dev/null || true)"
+
+        for x in ${v}; do
+            [[ "${x}" == "sudo"  ]] && return 0
+            [[ "${x}" == "wheel" ]] && return 0
+            [[ "${x}" == "admin" ]] && return 0
+        done
 
     fi
 
@@ -654,26 +722,20 @@ sys::mem_total () {
     if sys::is_linux; then
 
         if [[ -r /proc/meminfo ]]; then
-
             v="$(sed -n 's/^MemTotal:[[:space:]]*\([0-9][0-9]*\)[[:space:]]*kB$/\1/p' /proc/meminfo | head -n 1)"
             [[ -n "${v}" ]] && { printf '%s\n' "$(( v * 1024 ))"; return 0; }
-
         fi
 
     fi
     if sys::is_macos; then
-
         v="$(sysctl -n hw.memsize 2>/dev/null || true)"
         [[ "${v}" =~ ^[0-9]+$ ]] && { printf '%s\n' "${v}"; return 0; }
-
     fi
     if sys::is_windows; then
 
         if sys::__has powershell.exe; then
-
             v="$(powershell.exe -NoProfile -Command "[int64](Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory" 2>/dev/null | tr -d '\r')"
             [[ "${v}" =~ ^[0-9]+$ ]] && { printf '%s\n' "${v}"; return 0; }
-
         fi
 
     fi
@@ -731,10 +793,8 @@ sys::mem_free () {
     if sys::is_windows; then
 
         if sys::__has powershell.exe; then
-
             v="$(powershell.exe -NoProfile -Command "[int64]((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory * 1024)" 2>/dev/null | tr -d '\r')"
             [[ "${v}" =~ ^[0-9]+$ ]] && { printf '%s\n' "${v}"; return 0; }
-
         fi
 
     fi
