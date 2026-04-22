@@ -539,12 +539,12 @@ sys::open () {
 
         if sys::has "${target}"; then
             "${target}" "$@" >/dev/null 2>&1 &
-            command -v disown >/dev/null 2>&1 && disown || true
+            sys::has disown && disown
             return 0
         fi
         if sys::has "${target}.exe"; then
             "${target}.exe" "$@" >/dev/null 2>&1 &
-            command -v disown >/dev/null 2>&1 && disown || true
+            sys::has disown && disown
             return 0
         fi
 
