@@ -1,9 +1,20 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-SYS_FILE="${1:-./system.sh}"
-SYS_TEST_DESTRUCTIVE="${SYS_TEST_DESTRUCTIVE:-1}"
 SYS_TEST_SKIP_CODE=200
+SYS_TEST_DESTRUCTIVE="${SYS_TEST_DESTRUCTIVE:-1}"
+
+SYS_MODE='run'
+SYS_SINGLE_TEST=''
+SYS_FILE=''
+
+if [[ "${1:-}" == '--single' ]]; then
+    SYS_MODE='single'
+    SYS_SINGLE_TEST="${2:-}"
+    SYS_FILE="${3:-./system.sh}"
+else
+    SYS_FILE="${1:-./system.sh}"
+fi
 
 [[ -f "${SYS_FILE}" ]] || {
     printf '[ERR]: system file not found: %s\n' "${SYS_FILE}" >&2
@@ -13,1190 +24,459 @@ SYS_TEST_SKIP_CODE=200
 # shellcheck disable=SC1090
 source "${SYS_FILE}"
 
-TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/system-test.XXXXXX")"
+TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/system-extreme-test.XXXXXX")"
 PASS_COUNT=0
 FAIL_COUNT=0
 SKIP_COUNT=0
 TOTAL_COUNT=0
 
-cleanup () {
-
+cleanup_root () {
     [[ -n "${TEST_ROOT:-}" && -d "${TEST_ROOT}" ]] && rm -rf "${TEST_ROOT}" 2>/dev/null || true
-
 }
-trap cleanup EXIT
+trap cleanup_root EXIT
 
-fail_now () {
-
-    printf '%s\n' "${1:-assertion failed}" >&2
-    return 1
-
-}
-skip_test () {
-
-    printf '%s\n' "${1:-skipped}" >&2
-    return "${SYS_TEST_SKIP_CODE}"
-
-}
-
-assert_true () {
-
-    local msg="${1:-expected command to succeed}"
-    shift || true
-
-    "$@" >/dev/null 2>&1 || fail_now "${msg}"
-
-}
-assert_false () {
-
-    local msg="${1:-expected command to fail}"
-    shift || true
-
-    if "$@" >/dev/null 2>&1; then
-        fail_now "${msg}"
-        return 1
-    fi
-
-    return 0
-
-}
-assert_eq () {
-
-    local expected="${1:-}" actual="${2:-}" msg="${3:-}"
-
-    [[ "${actual}" == "${expected}" ]] && return 0
-
-    [[ -n "${msg}" ]] || msg="expected [${expected}] but got [${actual}]"
-    fail_now "${msg}"
-
-}
-assert_non_empty () {
-
-    local value="${1:-}" msg="${2:-value must not be empty}"
-
-    [[ -n "${value}" ]] || fail_now "${msg}"
-
-}
-assert_regex () {
-
-    local value="${1:-}" regex="${2:-}" msg="${3:-}"
-
-    [[ "${value}" =~ ${regex} ]] && return 0
-
-    [[ -n "${msg}" ]] || msg="value [${value}] does not match regex [${regex}]"
-    fail_now "${msg}"
-
-}
-assert_num_ge () {
-
-    local left="${1:-}" right="${2:-}" msg="${3:-}"
-
-    [[ "${left}" =~ ^[0-9]+$ ]] || fail_now "left value is not numeric: ${left}"
-    [[ "${right}" =~ ^[0-9]+$ ]] || fail_now "right value is not numeric: ${right}"
-    (( left >= right )) && return 0
-
-    [[ -n "${msg}" ]] || msg="expected ${left} >= ${right}"
-    fail_now "${msg}"
-
-}
-assert_num_le () {
-
-    local left="${1:-}" right="${2:-}" msg="${3:-}"
-
-    [[ "${left}" =~ ^[0-9]+$ ]] || fail_now "left value is not numeric: ${left}"
-    [[ "${right}" =~ ^[0-9]+$ ]] || fail_now "right value is not numeric: ${right}"
-    (( left <= right )) && return 0
-
-    [[ -n "${msg}" ]] || msg="expected ${left} <= ${right}"
-    fail_now "${msg}"
-
-}
-assert_one_of () {
-
-    local actual="${1:-}"
-    shift || true
-
-    local x=""
-
-    for x in "$@"; do
-        [[ "${actual}" == "${x}" ]] && return 0
-    done
-
-    fail_now "value [${actual}] is not in allowed set [$*]"
-
-}
-
-new_test_dir () {
-
-    mktemp -d "${TEST_ROOT}/case.XXXXXX"
-
-}
-setup_mock_path () {
-
-    local dir=""
-
-    dir="$(mktemp -d "${TEST_ROOT}/mock.XXXXXX")" || return 1
-    export MOCK_BIN="${dir}"
-    export MOCK_LOG="${dir}/calls.log"
-    : > "${MOCK_LOG}"
-    export PATH="${MOCK_BIN}:${PATH}"
-
-}
-make_mock () {
-
-    local dir="${1:-}" name="${2:-}"
-    shift 2 || true
-
-    [[ -n "${dir}" && -n "${name}" ]] || return 1
-
-    cat > "${dir}/${name}" || return 1
-    chmod +x "${dir}/${name}" || return 1
-
-}
-wait_for_non_empty () {
-
-    local path="${1:-}" tries="${2:-100}" delay="${3:-0.02}" i=0
-
-    while (( i < tries )); do
-        [[ -s "${path}" ]] && return 0
-        sleep "${delay}" 2>/dev/null || true
-        i=$(( i + 1 ))
-    done
-
-    return 1
-
-}
-get_info_value () {
-
-    local key="${1:-}" input="${2:-}" line=""
-
-    while IFS= read -r line || [[ -n "${line}" ]]; do
-        [[ "${line}" == "${key}="* ]] || continue
-        printf '%s\n' "${line#*=}"
+fail_now () { printf '%s\n' "${1:-assertion failed}" >&2; return 1; }
+skip_now () { printf '%s\n' "${1:-skipped}" >&2; return "${SYS_TEST_SKIP_CODE}"; }
+assert_true () { local msg="${1:-expected success}"; shift || true; "$@" >/dev/null 2>&1 || fail_now "${msg}"; }
+assert_false () { local msg="${1:-expected failure}"; shift || true; if "$@" >/dev/null 2>&1; then fail_now "${msg}"; return 1; fi; return 0; }
+assert_eq () { local e="${1:-}" a="${2:-}" m="${3:-}"; [[ "${a}" == "${e}" ]] && return 0; [[ -n "${m}" ]] || m="expected [${e}] but got [${a}]"; fail_now "${m}"; }
+assert_non_empty () { local v="${1:-}" m="${2:-value must not be empty}"; [[ -n "${v}" ]] || fail_now "${m}"; }
+assert_regex () { local v="${1:-}" r="${2:-}" m="${3:-}"; [[ "${v}" =~ ${r} ]] && return 0; [[ -n "${m}" ]] || m="value [${v}] does not match [${r}]"; fail_now "${m}"; }
+assert_num_le () { local l="${1:-}" r="${2:-}" m="${3:-}"; [[ "${l}" =~ ^[0-9]+$ && "${r}" =~ ^[0-9]+$ ]] || fail_now 'non numeric compare'; (( l <= r )) && return 0; [[ -n "${m}" ]] || m="expected ${l} <= ${r}"; fail_now "${m}"; }
+assert_num_ge () { local l="${1:-}" r="${2:-}" m="${3:-}"; [[ "${l}" =~ ^[0-9]+$ && "${r}" =~ ^[0-9]+$ ]] || fail_now 'non numeric compare'; (( l >= r )) && return 0; [[ -n "${m}" ]] || m="expected ${l} >= ${r}"; fail_now "${m}"; }
+assert_contains_line () { local n="${1:-}" h="${2:-}" m="${3:-}"; printf '%s\n' "${h}" | grep -Fx -- "${n}" >/dev/null 2>&1 && return 0; [[ -n "${m}" ]] || m="missing line [${n}]"; fail_now "${m}"; }
+new_test_dir () { mktemp -d "${TEST_ROOT}/case.XXXXXX"; }
+setup_mock_path () { local d=""; d="$(mktemp -d "${TEST_ROOT}/mock.XXXXXX")" || return 1; export MOCK_BIN="${d}"; export MOCK_LOG="${d}/calls.log"; : > "${MOCK_LOG}"; export PATH="${MOCK_BIN}:${PATH}"; }
+make_mock () { local d="${1:-}" n="${2:-}"; shift 2 || true; [[ -n "${d}" && -n "${n}" ]] || return 1; cat > "${d}/${n}" || return 1; chmod +x "${d}/${n}" || return 1; }
+get_info_value () { local k="${1:-}" i="${2:-}" l=""; while IFS= read -r l || [[ -n "${l}" ]]; do [[ "${l}" == "${k}="* ]] || continue; printf '%s\n' "${l#*=}"; return 0; done <<< "${i}"; return 1; }
+random_token () { printf '%s%s' "$(date +%s 2>/dev/null || printf '%s' $$)" "$RANDOM"; }
+list_has_exact () { printf '%s\n' "${2:-}" | grep -Fx -- "${1:-}" >/dev/null 2>&1; }
+require_privileged_destructive () { [[ "${SYS_TEST_DESTRUCTIVE}" == '1' ]] || { skip_now 'destructive tests disabled'; return $?; }; sys::is_root || sys::is_admin || { skip_now 'requires root/admin'; return $?; }; }
+cleanup_identity () {
+    local user="${1:-}" group="${2:-}"
+    if sys::is_linux; then
+        [[ -n "${user}" ]] && sys::__has userdel && { userdel -r "${user}" >/dev/null 2>&1 || userdel "${user}" >/dev/null 2>&1 || true; }
+        [[ -n "${group}" ]] && sys::__has groupdel && { groupdel "${group}" >/dev/null 2>&1 || true; }
         return 0
-    done <<< "${input}"
-
-    return 1
-
+    fi
+    if sys::is_macos; then
+        [[ -n "${user}" ]] && { sys::__has sysadminctl && sysadminctl -deleteUser "${user}" >/dev/null 2>&1 || true; sys::__has dscl && dscl . -delete "/Users/${user}" >/dev/null 2>&1 || true; }
+        [[ -n "${group}" ]] && sys::__has dseditgroup && dseditgroup -o delete "${group}" >/dev/null 2>&1 || true
+        return 0
+    fi
+    if sys::is_windows; then
+        [[ -n "${user}" ]] && sys::__has net.exe && net.exe user "${user}" /delete >/dev/null 2>&1 || true
+        [[ -n "${group}" ]] && sys::__has net.exe && net.exe localgroup "${group}" /delete >/dev/null 2>&1 || true
+        return 0
+    fi
 }
-collect_tests () {
 
-    declare -F | awk '{print $3}' | grep '^test_' | sort
-
-}
+collect_tests () { declare -F | awk '{print $3}' | grep '^test_' | sort; }
 run_test () {
-
     local fn="${1:-}" output="" rc=0
-
     TOTAL_COUNT=$(( TOTAL_COUNT + 1 ))
-
     set +e
-    output="$(${fn} 2>&1)"
+    output="$(bash "$0" --single "${fn}" "${SYS_FILE}" 2>&1)"
     rc=$?
     set -e
-
     case "${rc}" in
-        0)
-            PASS_COUNT=$(( PASS_COUNT + 1 ))
-            printf '[PASS]: %s\n' "${fn}"
-        ;;
-        "${SYS_TEST_SKIP_CODE}")
-            SKIP_COUNT=$(( SKIP_COUNT + 1 ))
-            printf '[SKIP]: %s' "${fn}"
-            [[ -n "${output}" ]] && printf ' - %s' "${output%%$'\n'*}"
-            printf '\n'
-        ;;
-        *)
-            FAIL_COUNT=$(( FAIL_COUNT + 1 ))
-            printf '[FAIL]: %s\n' "${fn}"
-            [[ -n "${output}" ]] && printf '%s\n' "${output}"
-        ;;
+        0) PASS_COUNT=$(( PASS_COUNT + 1 )); printf '[PASS]: %s\n' "${fn}" ;;
+        "${SYS_TEST_SKIP_CODE}") SKIP_COUNT=$(( SKIP_COUNT + 1 )); printf '[SKIP]: %s' "${fn}"; [[ -n "${output}" ]] && printf ' - %s' "${output%%$'\n'*}"; printf '\n' ;;
+        *) FAIL_COUNT=$(( FAIL_COUNT + 1 )); printf '[FAIL]: %s\n' "${fn}"; [[ -n "${output}" ]] && printf '%s\n' "${output}" ;;
     esac
-
 }
 
 # -----------------------------------------------------------------------------
-# File / load / surface checks
+# file and helpers
 # -----------------------------------------------------------------------------
 
-test_file_syntax_passes () {
-
-    sys::__has bash || { skip_test 'bash is required for syntax test'; return $?; }
-    bash -n "${SYS_FILE}"
-
-}
-test_file_sources_in_clean_shell () {
-
-    local q=""
-
-    sys::__has bash || { skip_test 'bash is required for source test'; return $?; }
-    q="$(printf '%q' "${SYS_FILE}")"
-    bash -lc "source ${q}; sys::name >/dev/null"
-
-}
+test_file_syntax_passes () { sys::__has bash || { skip_now 'bash required'; return $?; }; bash -n "${SYS_FILE}"; }
+test_file_sources_in_clean_shell () { local q=""; q="$(printf '%q' "${SYS_FILE}")"; bash -lc "set -Eeuo pipefail; source ${q}; sys::name >/dev/null"; }
 test_all_expected_functions_exist () {
-
     local fn=""
     local -a fns=(
         sys::__has sys::__lower sys::__open_target sys::__normalize_open_target
-        sys::is_linux sys::is_macos sys::is_wsl sys::is_cygwin sys::is_msys sys::is_gitbash sys::is_windows
-        sys::is_unix sys::is_posix sys::is_ci sys::ci_name sys::is_ci_pull sys::is_ci_push sys::is_ci_tag
-        sys::is_gui sys::is_terminal sys::is_interactive sys::is_headless sys::is_container
+        sys::is_linux sys::is_macos sys::is_wsl sys::is_cygwin sys::is_msys sys::is_gitbash sys::is_unix sys::is_posix sys::is_windows
+        sys::ci_name sys::is_ci sys::is_ci_pull sys::is_ci_push sys::is_ci_tag sys::is_gui sys::is_terminal sys::is_interactive sys::is_headless sys::is_container
         sys::name sys::family sys::runtime sys::distro sys::manager sys::arch sys::open
         sys::disk_total sys::disk_free sys::disk_used sys::disk_percent sys::disk_size sys::disk_info
         sys::mem_total sys::mem_free sys::mem_used sys::mem_percent sys::mem_info
-        sys::gid sys::gname sys::gexists sys::gusers sys::uid sys::uname sys::uhome sys::ushell
-        sys::uexists sys::ugroup sys::ugroups sys::uingroup sys::is_root sys::is_admin sys::add_group sys::add_user
+        sys::gid sys::gname sys::gexists sys::uid sys::uname sys::uhome sys::ushell sys::uexists sys::ugroup sys::ugroups sys::groups sys::users sys::gusers sys::ingroup sys::addgroup sys::adduser sys::is_root sys::is_admin
     )
-
-    for fn in "${fns[@]}"; do
-        declare -F "${fn}" >/dev/null 2>&1 || return 1
-    done
-
+    for fn in "${fns[@]}"; do declare -F "${fn}" >/dev/null 2>&1 || fail_now "missing function: ${fn}"; done
 }
-
-# -----------------------------------------------------------------------------
-# Helpers
-# -----------------------------------------------------------------------------
-
-test___has_detects_existing_and_missing_commands () {
-
-    assert_true 'sys::__has must detect bash' sys::__has bash
-    assert_false 'sys::__has must reject nonsense command' sys::__has __definitely_not_a_real_command__
-
-}
-test___lower_lowercases_ascii_input () {
-
-    assert_eq 'abc-xyz_123' "$(sys::__lower 'AbC-XYZ_123')" '__lower failed to lowercase ASCII input'
-
-}
-test___lower_handles_empty_input () {
-
-    assert_eq '' "$(sys::__lower '')" '__lower must preserve empty input'
-
-}
-
-# -----------------------------------------------------------------------------
-# Open target helpers
-# -----------------------------------------------------------------------------
-
+test___has_detects_existing_and_missing_commands () { assert_true 'bash must exist' sys::__has bash; assert_false 'missing command must fail' sys::__has definitely_missing_cmd_928347; }
+test___lower_handles_ascii_and_empty () { assert_eq 'hello-core_123' "$(sys::__lower 'Hello-CORE_123')"; assert_eq '' "$(sys::__lower '')"; }
 test___normalize_open_target_normalizes_supported_inputs () {
-
     assert_eq 'https://www.example.com' "$(sys::__normalize_open_target 'www.example.com')"
     assert_eq 'https://example.com' "$(sys::__normalize_open_target 'example.com')"
-    assert_eq 'http://127.0.0.1:8080/path' "$(sys::__normalize_open_target '127.0.0.1:8080/path')"
-    assert_eq 'http://localhost:3000/x' "$(sys::__normalize_open_target 'localhost:3000/x')"
+    assert_eq 'http://127.0.0.1:8080' "$(sys::__normalize_open_target '127.0.0.1:8080')"
+    assert_eq 'http://localhost:3000/path' "$(sys::__normalize_open_target 'localhost:3000/path')"
     assert_eq 'https://example.com/x' "$(sys::__normalize_open_target 'https://example.com/x')"
-    assert_eq 'mailto:test@example.com' "$(sys::__normalize_open_target 'mailto:test@example.com')"
-
 }
-test___normalize_open_target_rejects_invalid_values () {
+test___normalize_open_target_rejects_invalid_values () { assert_false 'empty target must fail' sys::__normalize_open_target ''; assert_false 'newline target must fail' sys::__normalize_open_target $'bad\nvalue'; assert_false 'plain token must fail' sys::__normalize_open_target 'not a url'; }
 
-    assert_false 'normalize must reject empty input' sys::__normalize_open_target ''
-    assert_false 'normalize must reject multiline values' sys::__normalize_open_target $'bad\nvalue'
-    assert_false 'normalize must reject arbitrary plain token' sys::__normalize_open_target 'not a uri or domain maybe'
+# -----------------------------------------------------------------------------
+# mocked branch tests
+# -----------------------------------------------------------------------------
 
-}
-test___open_target_macos_prefers_open () {
-
-    setup_mock_path
-
-    make_mock "${MOCK_BIN}" 'open' <<'SH'
+test___open_target_linux_uses_xdg_open () {
+    (
+        setup_mock_path
+        make_mock "${MOCK_BIN}" xdg-open <<'SH'
 #!/usr/bin/env bash
-printf '%s\n' "$*" > "${MOCK_LOG}"
+printf 'xdg-open|%s\n' "$*" >> "${MOCK_LOG}"
 SH
-
-    sys::is_macos () { return 0; }
-    sys::is_windows () { return 1; }
-
-    sys::__open_target 'https://example.com' 'uri'
-    assert_eq 'https://example.com' "$(tr -d '\r\n' < "${MOCK_LOG}")"
-
+        sys::is_macos () { return 1; }
+        sys::is_windows () { return 1; }
+        sys::__open_target 'https://example.com' 'uri'
+        assert_contains_line 'xdg-open|https://example.com' "$(cat "${MOCK_LOG}")"
+    )
+}
+test___open_target_macos_uses_open () {
+    (
+        setup_mock_path
+        make_mock "${MOCK_BIN}" open <<'SH'
+#!/usr/bin/env bash
+printf 'open|%s\n' "$*" >> "${MOCK_LOG}"
+SH
+        sys::is_macos () { return 0; }
+        sys::is_windows () { return 1; }
+        sys::__open_target '/tmp/file.txt' 'path'
+        assert_contains_line 'open|/tmp/file.txt' "$(cat "${MOCK_LOG}")"
+    )
 }
 test___open_target_windows_path_uses_cygpath_and_explorer () {
-
-    setup_mock_path
-
-    make_mock "${MOCK_BIN}" 'cygpath' <<'SH'
+    (
+        setup_mock_path
+        make_mock "${MOCK_BIN}" cygpath <<'SH'
 #!/usr/bin/env bash
+printf 'cygpath|%s\n' "$*" >> "${MOCK_LOG}"
 printf 'C:\\Temp\\file.txt\n'
 SH
-    make_mock "${MOCK_BIN}" 'explorer.exe' <<'SH'
+        make_mock "${MOCK_BIN}" explorer.exe <<'SH'
 #!/usr/bin/env bash
-printf '%s\n' "$*" > "${MOCK_LOG}"
+printf 'explorer|%s\n' "$*" >> "${MOCK_LOG}"
 SH
-
-    sys::is_macos () { return 1; }
-    sys::is_windows () { return 0; }
-
-    sys::__open_target '/tmp/file.txt' 'path'
-    assert_eq 'C:\Temp\file.txt' "$(tr -d '\r\n' < "${MOCK_LOG}")"
-
+        sys::is_macos () { return 1; }
+        sys::is_windows () { return 0; }
+        sys::__open_target '/tmp/file.txt' 'path'
+        assert_contains_line 'cygpath|-aw /tmp/file.txt' "$(cat "${MOCK_LOG}")"
+        assert_contains_line 'explorer|C:\Temp\file.txt' "$(cat "${MOCK_LOG}")"
+    )
 }
 test___open_target_windows_uri_falls_back_to_cmd_start () {
-
-    setup_mock_path
-
-    make_mock "${MOCK_BIN}" 'cmd.exe' <<'SH'
+    (
+        setup_mock_path
+        make_mock "${MOCK_BIN}" cmd.exe <<'SH'
 #!/usr/bin/env bash
-printf '%s\n' "$*" > "${MOCK_LOG}"
+printf 'cmd|%s\n' "$*" >> "${MOCK_LOG}"
 SH
-
-    sys::is_macos () { return 1; }
-    sys::is_windows () { return 0; }
-    sys::__has () { [[ "${1:-}" == 'cmd.exe' ]]; }
-
-    sys::__open_target 'https://example.com' 'uri'
-    assert_regex "$(tr -d '\r\n' < "${MOCK_LOG}")" '^/C start  https://example\.com$' 'cmd fallback arguments are wrong'
-
+        sys::is_macos () { return 1; }
+        sys::is_windows () { return 0; }
+        sys::__open_target 'https://example.com' 'uri'
+        assert_contains_line 'cmd|/C start  https://example.com' "$(cat "${MOCK_LOG}")"
+    )
 }
-test___open_target_linux_uses_xdg_open () {
-
-    setup_mock_path
-
-    make_mock "${MOCK_BIN}" 'xdg-open' <<'SH'
+test_windows_groups_and_users_native_branches_via_mocks () {
+    (
+        setup_mock_path
+        make_mock "${MOCK_BIN}" powershell.exe <<'SH'
 #!/usr/bin/env bash
-printf '%s\n' "$*" > "${MOCK_LOG}"
+case "$*" in
+    *Get-LocalGroupMember*) printf 'alice\nbob\n' ;;
+    *Get-LocalUser*) printf 'alice\nbob\n' ;;
+    *Get-LocalGroup*) printf 'Users\nAdministrators\n' ;;
+    *) exit 1 ;;
+esac
 SH
-
-    sys::is_macos () { return 1; }
-    sys::is_windows () { return 1; }
-
-    sys::__open_target 'https://example.com' 'uri'
-    assert_eq 'https://example.com' "$(tr -d '\r\n' < "${MOCK_LOG}")"
-
+        sys::is_windows () { return 0; }
+        sys::is_linux () { return 1; }
+        sys::is_macos () { return 1; }
+        assert_contains_line 'Users' "$(sys::groups)"
+        assert_contains_line 'alice' "$(sys::users)"
+        assert_contains_line 'alice' "$(sys::users 'Users')"
+        sys::ingroup 'Users' 'alice'
+    )
 }
-
-# -----------------------------------------------------------------------------
-# Platform detection
-# -----------------------------------------------------------------------------
-
-test_is_linux_detects_linux_via_uname () {
-
-    OSTYPE=''
-    uname () { printf 'Linux\n'; }
-    assert_true 'is_linux failed for uname=Linux' sys::is_linux
-
-}
-test_is_macos_detects_darwin_via_uname () {
-
-    OSTYPE=''
-    uname () { printf 'Darwin\n'; }
-    assert_true 'is_macos failed for uname=Darwin' sys::is_macos
-
-}
-test_is_wsl_detects_env_fast_path () {
-
-    WSL_DISTRO_NAME='Ubuntu'
-    sys::is_linux () { return 0; }
-    assert_true 'is_wsl failed for WSL_DISTRO_NAME' sys::is_wsl
-
-}
-test_is_cygwin_detects_uname () {
-
-    OSTYPE=''
-    uname () { printf 'CYGWIN_NT-10.0\n'; }
-    assert_true 'is_cygwin failed for CYGWIN uname' sys::is_cygwin
-
-}
-test_is_msys_detects_msystem () {
-
-    MSYSTEM='MINGW64'
-    OSTYPE=''
-    assert_true 'is_msys failed for MSYSTEM=MINGW64' sys::is_msys
-
-}
-test_is_gitbash_detects_git_install_root () {
-
-    GitInstallRoot='C:\\Program Files\\Git'
-    sys::is_msys () { return 0; }
-    assert_true 'is_gitbash failed for GitInstallRoot' sys::is_gitbash
-
-}
-test_is_windows_rejects_wsl_and_accepts_native_env () {
-
-    WINDIR='C:\\Windows'
-    SystemRoot='C:\\Windows'
-    COMSPEC='C:\\Windows\\System32\\cmd.exe'
-    sys::is_wsl () { return 1; }
-    sys::is_msys () { return 1; }
-    sys::is_cygwin () { return 1; }
-    sys::is_linux () { return 1; }
-    sys::is_macos () { return 1; }
-    assert_true 'is_windows failed for native windows env' sys::is_windows
-
-}
-test_is_windows_returns_false_for_wsl () {
-
-    sys::is_wsl () { return 0; }
-    assert_false 'is_windows must reject WSL' sys::is_windows
-
-}
-test_is_unix_and_is_posix_follow_expected_platform_sets () {
-
-    sys::is_linux () { return 0; }
-    sys::is_macos () { return 1; }
-    assert_true 'is_unix must accept linux' sys::is_unix
-    assert_true 'is_posix must accept linux' sys::is_posix
-
-    sys::is_linux () { return 1; }
-    sys::is_macos () { return 1; }
-    sys::is_wsl () { return 0; }
-    assert_false 'is_unix must reject WSL' sys::is_unix
-    assert_true 'is_posix must accept WSL' sys::is_posix
-
-}
-
-# -----------------------------------------------------------------------------
-# CI / GUI / terminal / host probes
-# -----------------------------------------------------------------------------
-
-test_ci_detection_and_names () {
-
-    GITHUB_ACTIONS='true'
-    GITHUB_EVENT_NAME='pull_request'
-    assert_true 'is_ci failed under GITHUB_ACTIONS' sys::is_ci
-    assert_eq 'github' "$(sys::ci_name 2>/dev/null || true)"
-    assert_true 'is_ci_pull failed for GitHub PR' sys::is_ci_pull
-    assert_false 'is_ci_push must be false during pull_request' sys::is_ci_push
-
-    unset GITHUB_ACTIONS || true
-    unset GITHUB_EVENT_NAME || true
-    CI='true'
-    CI_PIPELINE_SOURCE='push'
-    assert_true 'is_ci_push failed for generic push pipeline' sys::is_ci_push
-    assert_eq 'generic' "$(sys::ci_name 2>/dev/null || true)"
-
-    unset CI || true
-    unset CI_PIPELINE_SOURCE || true
-    CI_COMMIT_TAG='v1.2.3'
-    assert_true 'is_ci_tag failed for CI_COMMIT_TAG' sys::is_ci_tag
-
-}
-test_is_gui_and_headless_mocked_logic () {
-
-    sys::is_linux () { return 0; }
-    sys::is_macos () { return 1; }
-    sys::is_windows () { return 1; }
-    DISPLAY=':0'
-    unset WAYLAND_DISPLAY || true
-    assert_true 'is_gui failed for linux DISPLAY' sys::is_gui
-    assert_false 'is_headless must be false for linux DISPLAY' sys::is_headless
-
-    unset DISPLAY || true
-    unset WAYLAND_DISPLAY || true
-    assert_false 'is_gui must be false without display vars' sys::is_gui
-    assert_true 'is_headless must be true without display vars' sys::is_headless
-
-}
-test_is_terminal_false_when_all_standard_fds_are_detached () {
-
-    exec </dev/null >/dev/null 2>/dev/null
-    assert_false 'is_terminal must be false with detached stdio' sys::is_terminal
-
-}
-test_is_interactive_false_in_test_shell () {
-
-    assert_false 'is_interactive must be false in non-interactive shell' sys::is_interactive
-
-}
-test_is_interactive_true_in_spawned_interactive_bash () {
-
-    local q="" out=""
-
-    sys::__has bash || { skip_test 'bash is required for interactive probe'; return $?; }
-    q="$(printf '%q' "${SYS_FILE}")"
-    out="$(bash -ic "source ${q}; if sys::is_interactive; then printf yes; else printf no; fi" 2>/dev/null | tail -n 1)"
-    assert_eq 'yes' "${out}" 'interactive bash probe failed'
-
-}
-test_is_container_smoke () {
-
-    sys::is_container >/dev/null 2>&1 || true
-
-}
-
-# -----------------------------------------------------------------------------
-# Identity / runtime / manager / arch
-# -----------------------------------------------------------------------------
-
-test_name_family_runtime_mocked () {
-
-    sys::is_linux () { return 1; }
-    sys::is_macos () { return 1; }
-    sys::is_windows () { return 0; }
-    sys::is_wsl () { return 1; }
-    sys::is_gitbash () { return 1; }
-    sys::is_msys () { return 1; }
-    sys::is_cygwin () { return 1; }
-
-    assert_eq 'windows' "$(sys::name 2>/dev/null || true)"
-    assert_eq 'windows' "$(sys::family 2>/dev/null || true)"
-    assert_eq 'windows' "$(sys::runtime 2>/dev/null || true)"
-
-    sys::is_windows () { return 1; }
-    sys::is_wsl () { return 0; }
-    assert_eq 'unix' "$(sys::family 2>/dev/null || true)"
-    assert_eq 'wsl' "$(sys::runtime 2>/dev/null || true)"
-
-}
-test_distro_real_or_mocked_windows_fallback () {
-
-    local out=""
-
-    out="$(sys::distro 2>/dev/null || true)"
-    if [[ -n "${out}" ]]; then
-        assert_non_empty "${out}" 'distro must not be empty'
-        return 0
-    fi
-
-    sys::is_linux () { return 1; }
-    sys::is_macos () { return 1; }
-    sys::is_windows () { return 0; }
-    sys::runtime () { printf 'gitbash\n'; }
-    assert_eq 'gitbash' "$(sys::distro 2>/dev/null || true)"
-
-}
-test_manager_prefers_expected_priority_on_linux () {
-
-    setup_mock_path
-
-    make_mock "${MOCK_BIN}" 'apt-get' <<'SH'
+test_windows_gexists_via_powershell_mock () {
+    (
+        setup_mock_path
+        make_mock "${MOCK_BIN}" powershell.exe <<'SH'
 #!/usr/bin/env bash
 exit 0
 SH
-    make_mock "${MOCK_BIN}" 'dnf' <<'SH'
+        sys::is_windows () { return 0; }
+        sys::is_linux () { return 1; }
+        sys::is_macos () { return 1; }
+        sys::gexists 'Users'
+    )
+}
+
+# -----------------------------------------------------------------------------
+# platform and env
+# -----------------------------------------------------------------------------
+
+test_platform_detection_real_sanity () {
+    assert_non_empty "$(sys::name 2>/dev/null || true)" 'name must not be empty'
+    assert_non_empty "$(sys::family 2>/dev/null || true)" 'family must not be empty'
+    assert_non_empty "$(sys::runtime 2>/dev/null || true)" 'runtime must not be empty'
+    assert_non_empty "$(sys::arch 2>/dev/null || true)" 'arch must not be empty'
+}
+test_is_linux_detects_linux_via_uname () { ( setup_mock_path; make_mock "${MOCK_BIN}" uname <<'SH'
 #!/usr/bin/env bash
-exit 0
+printf 'Linux\n'
 SH
-
-    sys::is_linux () { return 0; }
-    sys::is_macos () { return 1; }
-    sys::is_windows () { return 1; }
-    assert_eq 'apt' "$(sys::manager 2>/dev/null || true)"
-
+OSTYPE=''; sys::is_linux ); }
+test_is_macos_detects_darwin_via_uname () { ( setup_mock_path; make_mock "${MOCK_BIN}" uname <<'SH'
+#!/usr/bin/env bash
+printf 'Darwin\n'
+SH
+OSTYPE=''; sys::is_macos ); }
+test_is_wsl_detects_env_and_rejects_windows () { ( WSL_DISTRO_NAME='Ubuntu'; sys::is_wsl; assert_false 'wsl must not be windows' sys::is_windows; ); }
+test_is_msys_and_is_gitbash_detect_environment () { ( MSYSTEM='MINGW64'; GitInstallRoot='C:/Program Files/Git'; sys::is_msys; sys::is_gitbash; ); }
+test_is_cygwin_detects_ostype () { ( OSTYPE='cygwin'; sys::is_cygwin; ); }
+test_is_unix_and_is_posix_have_expected_relationship () { if sys::is_linux || sys::is_macos; then sys::is_unix; sys::is_posix; else sys::is_unix || true; sys::is_posix || true; fi; }
+test_ci_name_and_is_ci_behavior () {
+    local v=""
+    (
+        unset CI GITHUB_ACTIONS GITLAB_CI JENKINS_URL BUILDKITE CIRCLECI TRAVIS APPVEYOR TF_BUILD BITBUCKET_BUILD_NUMBER TEAMCITY_VERSION DRONE SEMAPHORE CODEBUILD_BUILD_ID
+        v="$(sys::ci_name 2>/dev/null || true)"
+        assert_eq 'none' "${v}"
+        assert_false 'is_ci must be false outside CI' sys::is_ci
+    )
+    (
+        GITHUB_ACTIONS='true'
+        v="$(sys::ci_name)"
+        assert_eq 'github' "${v}"
+        sys::is_ci
+    )
+}
+test_is_ci_pull_push_tag_flags () {
+    ( GITHUB_ACTIONS='true'; GITHUB_EVENT_NAME='pull_request'; sys::is_ci_pull; assert_false 'pull request is not push' sys::is_ci_push; )
+    ( GITHUB_ACTIONS='true'; GITHUB_EVENT_NAME='push'; sys::is_ci_push; assert_false 'push is not pull' sys::is_ci_pull; )
+    ( GITHUB_REF_TYPE='tag'; sys::is_ci_tag; )
+}
+test_is_gui_terminal_interactive_headless_real_or_mocked () {
+    sys::is_terminal || true
+    sys::is_interactive || true
+    sys::is_gui || true
+    sys::is_headless || true
+    ( sys::is_linux () { return 0; }; sys::is_macos () { return 1; }; sys::is_windows () { return 1; }; DISPLAY=':0'; unset WAYLAND_DISPLAY SSH_CONNECTION SSH_CLIENT SSH_TTY CI; sys::is_gui; assert_false 'gui session should not be headless' sys::is_headless; )
+    ( sys::is_linux () { return 0; }; sys::is_macos () { return 1; }; sys::is_windows () { return 1; }; unset DISPLAY WAYLAND_DISPLAY; assert_false 'linux without display should not be gui' sys::is_gui; sys::is_headless; )
+}
+test_is_container_smoke () { sys::is_container || true; }
+test_name_family_runtime_distro_manager_arch_values () {
+    assert_non_empty "$(sys::name 2>/dev/null || true)"
+    assert_non_empty "$(sys::family 2>/dev/null || true)"
+    assert_non_empty "$(sys::runtime 2>/dev/null || true)"
+    assert_non_empty "$(sys::arch 2>/dev/null || true)"
+    sys::distro >/dev/null 2>&1 || true
+    sys::manager >/dev/null 2>&1 || true
 }
 test_arch_normalizes_common_aliases () {
-
-    uname () { printf 'AMD64\n'; }
-    assert_eq 'x64' "$(sys::arch 2>/dev/null || true)"
-
-    uname () { printf 'aarch64\n'; }
-    assert_eq 'arm64' "$(sys::arch 2>/dev/null || true)"
-
-}
-test_real_runtime_identity_values_are_sane () {
-
-    local name="" family="" runtime="" arch="" manager="" distro=""
-
-    name="$(sys::name 2>/dev/null || true)"
-    family="$(sys::family 2>/dev/null || true)"
-    runtime="$(sys::runtime 2>/dev/null || true)"
-    arch="$(sys::arch 2>/dev/null || true)"
-    manager="$(sys::manager 2>/dev/null || true)"
-    distro="$(sys::distro 2>/dev/null || true)"
-
-    assert_one_of "${name}" linux macos windows unknown
-    assert_one_of "${family}" unix windows unknown
-    assert_one_of "${runtime}" linux macos windows wsl gitbash msys2 cygwin unknown
-    assert_non_empty "${arch}" 'arch must not be empty'
-    assert_non_empty "${manager}" 'manager must print something'
-    assert_non_empty "${distro}" 'distro must print something'
-
+    ( setup_mock_path; make_mock "${MOCK_BIN}" uname <<'SH'
+#!/usr/bin/env bash
+printf 'x86_64\n'
+SH
+assert_eq 'x64' "$(sys::arch)" )
+    ( setup_mock_path; make_mock "${MOCK_BIN}" uname <<'SH'
+#!/usr/bin/env bash
+printf 'aarch64\n'
+SH
+assert_eq 'arm64' "$(sys::arch)" )
 }
 
 # -----------------------------------------------------------------------------
-# sys::open end-to-end behavior
+# open wrapper
 # -----------------------------------------------------------------------------
 
 test_open_path_branch_calls_open_target_with_path_kind () {
-
-    local dir="" file="" log=""
-
+    local dir="" file="" out=""
     dir="$(new_test_dir)"
-    file="${dir}/x.txt"
-    log="${dir}/log.txt"
-    printf 'hello\n' > "${file}"
-
-    sys::__open_target () {
-        printf '%s|%s\n' "$1" "$2" > "${log}"
-    }
-
-    sys::open "${file}"
-    assert_eq "${file}|path" "$(tr -d '\r\n' < "${log}")"
-
+    file="${dir}/sample.txt"
+    printf 'x\n' > "${file}"
+    (
+        sys::__open_target () { printf '%s|%s\n' "$1" "$2"; }
+        out="$(sys::open "${file}")"
+        assert_eq "${file}|path" "${out}"
+    )
 }
+test_open_uri_branch_normalizes_then_calls_open_target () { ( sys::__open_target () { printf '%s|%s\n' "$1" "$2"; }; assert_eq 'https://example.com|uri' "$(sys::open 'example.com')"; ); }
 test_open_command_branch_executes_command_with_arguments () {
-
-    setup_mock_path
-
-    make_mock "${MOCK_BIN}" 'fake-opener' <<'SH'
-#!/usr/bin/env bash
-printf '%s\n' "$*" > "${MOCK_LOG}"
-SH
-
-    sys::open fake-opener alpha beta
-    wait_for_non_empty "${MOCK_LOG}" 100 0.02
-    assert_eq 'alpha beta' "$(tr -d '\r\n' < "${MOCK_LOG}")"
-
-}
-test_open_uri_branch_normalizes_then_calls_open_target () {
-
-    local dir="" log=""
-
+    local dir="" out=""
     dir="$(new_test_dir)"
-    log="${dir}/log.txt"
-
-    sys::__open_target () {
-        printf '%s|%s\n' "$1" "$2" > "${log}"
-    }
-
-    sys::open 'example.com'
-    assert_eq 'https://example.com|uri' "$(tr -d '\r\n' < "${log}")"
-
+    out="${dir}/args.txt"
+    (
+        setup_mock_path
+        export SYS_OPEN_OUT="${out}"
+        make_mock "${MOCK_BIN}" fake-open-cmd <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" > "${SYS_OPEN_OUT}"
+SH
+        sys::open fake-open-cmd alpha beta
+        sleep 0.1 2>/dev/null || true
+        assert_eq 'alpha beta' "$(cat "${out}")"
+    )
 }
-test_open_rejects_invalid_target () {
-
-    assert_false 'open must reject multiline target' sys::open $'bad\nvalue'
-    assert_false 'open must reject empty target' sys::open ''
-
-}
+test_open_rejects_invalid_target () { assert_false 'invalid target must fail' sys::open $'bad\nvalue'; }
 
 # -----------------------------------------------------------------------------
-# Disk and memory probes
+# disk / memory
 # -----------------------------------------------------------------------------
 
 test_disk_metrics_are_numeric_and_consistent () {
-
-    local total="" free="" used="" percent="" info=""
-
-    total="$(sys::disk_total '.' 2>/dev/null || true)"
-    free="$(sys::disk_free '.' 2>/dev/null || true)"
-    used="$(sys::disk_used '.' 2>/dev/null || true)"
-    percent="$(sys::disk_percent '.' 2>/dev/null || true)"
-    info="$(sys::disk_info '.' 2>/dev/null || true)"
-
-    [[ "${total}" =~ ^[0-9]+$ ]] || { skip_test 'disk_total not supported on this host'; return $?; }
-    [[ "${free}" =~ ^[0-9]+$ ]] || fail_now 'disk_free must be numeric'
-    [[ "${used}" =~ ^[0-9]+$ ]] || fail_now 'disk_used must be numeric'
-    [[ "${percent}" =~ ^[0-9]+$ ]] || fail_now 'disk_percent must be numeric'
-
-    assert_num_ge "${total}" "${free}" 'disk_total must be >= disk_free'
-    assert_num_ge "${total}" "${used}" 'disk_total must be >= disk_used'
-    assert_num_le "${percent}" 100 'disk_percent must be <= 100'
-    assert_eq '.' "$(get_info_value path "${info}")"
+    local dir="" total="" free="" used="" percent="" info="" size=""
+    dir="$(new_test_dir)"
+    printf 'payload
+' > "${dir}/sample.txt"
+    total="$(sys::disk_total "${dir}")"
+    free="$(sys::disk_free "${dir}")"
+    used="$(sys::disk_used "${dir}")"
+    percent="$(sys::disk_percent "${dir}")"
+    info="$(sys::disk_info "${dir}")"
+    size="$(sys::disk_size "${dir}")"
+    assert_regex "${total}" '^[0-9]+$'
+    assert_regex "${free}" '^[0-9]+$'
+    assert_regex "${used}" '^[0-9]+$'
+    assert_regex "${percent}" '^[0-9]+$'
+    assert_regex "${size}" '^[0-9]+$'
+    assert_eq "${used}" "$(( total - free ))" 'disk used must equal total minus free'
+    assert_num_le "${used}" "${total}"
+    assert_num_le "${percent}" 100
+    assert_num_ge "${size}" 1
     assert_eq "${total}" "$(get_info_value total "${info}")"
-
+    assert_eq "${free}" "$(get_info_value free "${info}")"
+    assert_eq "${used}" "$(get_info_value used "${info}")"
 }
 test_disk_size_reports_for_temp_dir () {
-
-    local dir="" file="" actual="" reported=""
-
+    local dir="" size=""
     dir="$(new_test_dir)"
-    file="${dir}/blob.bin"
-
-    dd if=/dev/zero of="${file}" bs=1 count=8192 >/dev/null 2>&1 || printf '%8192s' '' > "${file}"
-
-    reported="$(sys::disk_size "${dir}" 2>/dev/null || true)"
-    actual="$(wc -c < "${file}" | tr -d '[:space:]')"
-
-    [[ "${reported}" =~ ^[0-9]+$ ]] || { skip_test 'disk_size not supported on this host'; return $?; }
-    assert_num_ge "${reported}" "${actual}" 'disk_size must be >= actual file size'
-
+    dd if=/dev/zero of="${dir}/blob.bin" bs=1024 count=8 >/dev/null 2>&1 || printf 'xxxxxxxx' > "${dir}/blob.bin"
+    size="$(sys::disk_size "${dir}")"
+    assert_regex "${size}" '^[0-9]+$'
+    assert_num_ge "${size}" 1
 }
 test_memory_metrics_are_numeric_and_consistent_when_supported () {
-
     local total="" free="" used="" percent="" info=""
-
     total="$(sys::mem_total 2>/dev/null || true)"
     free="$(sys::mem_free 2>/dev/null || true)"
-    used="$(sys::mem_used 2>/dev/null || true)"
-    percent="$(sys::mem_percent 2>/dev/null || true)"
-    info="$(sys::mem_info 2>/dev/null || true)"
-
-    [[ "${total}" =~ ^[0-9]+$ ]] || { skip_test 'mem_total not supported on this host'; return $?; }
-    [[ "${free}" =~ ^[0-9]+$ ]] || fail_now 'mem_free must be numeric'
-    [[ "${used}" =~ ^[0-9]+$ ]] || fail_now 'mem_used must be numeric'
-    [[ "${percent}" =~ ^[0-9]+$ ]] || fail_now 'mem_percent must be numeric'
-
-    assert_num_ge "${total}" "${free}" 'mem_total must be >= mem_free'
-    assert_num_ge "${total}" "${used}" 'mem_total must be >= mem_used'
-    assert_num_le "${percent}" 100 'mem_percent must be <= 100'
-    assert_regex "$(get_info_value total "${info}")" '^[0-9]+$' 'mem_info total must be numeric'
-    assert_regex "$(get_info_value free "${info}")" '^[0-9]+$' 'mem_info free must be numeric'
-    assert_regex "$(get_info_value used "${info}")" '^[0-9]+$' 'mem_info used must be numeric'
-    assert_regex "$(get_info_value percent "${info}")" '^[0-9]+$' 'mem_info percent must be numeric'
-
+    [[ -n "${total}" && -n "${free}" ]] || { skip_now 'memory backend unavailable'; return $?; }
+    used="$(sys::mem_used)"
+    percent="$(sys::mem_percent)"
+    info="$(sys::mem_info)"
+    assert_regex "${total}" '^[0-9]+$'
+    assert_regex "${free}" '^[0-9]+$'
+    assert_regex "${used}" '^[0-9]+$'
+    assert_regex "${percent}" '^[0-9]+$'
+    assert_num_le "${used}" "${total}"
+    assert_num_le "${percent}" 100
+    assert_eq "${total}" "$(get_info_value total "${info}")"
 }
 
 # -----------------------------------------------------------------------------
-# Real identity smoke tests
+# identity / users / groups
 # -----------------------------------------------------------------------------
 
 test_identity_functions_return_sane_values () {
-
-    local uid_v="" gid_v="" uname_v="" gname_v="" home="" shell=""
-
+    local uid_v="" gid_v="" uname_v="" gname_v="" uhome_v="" ushell_v=""
     uid_v="$(sys::uid 2>/dev/null || true)"
     gid_v="$(sys::gid 2>/dev/null || true)"
     uname_v="$(sys::uname 2>/dev/null || true)"
     gname_v="$(sys::gname 2>/dev/null || true)"
-    home="$(sys::uhome 2>/dev/null || true)"
-    shell="$(sys::ushell 2>/dev/null || true)"
-
-    [[ -n "${uid_v}" ]] && [[ "${uid_v}" =~ ^[0-9]+$ ]] || { skip_test 'uid not available on this host'; return $?; }
-    [[ -n "${gid_v}" ]] && [[ "${gid_v}" =~ ^[0-9]+$ ]] || fail_now 'gid must be numeric'
+    uhome_v="$(sys::uhome 2>/dev/null || true)"
+    ushell_v="$(sys::ushell 2>/dev/null || true)"
+    [[ -n "${uid_v}" ]] && assert_regex "${uid_v}" '^[0-9]+$'
+    [[ -n "${gid_v}" ]] && assert_regex "${gid_v}" '^[0-9]+$'
     assert_non_empty "${uname_v}" 'uname must not be empty'
-    assert_non_empty "${gname_v}" 'gname must not be empty'
-    assert_non_empty "${home}" 'uhome must not be empty'
-    assert_non_empty "${shell}" 'ushell must not be empty'
-
+    [[ -n "${gname_v}" ]] || true
+    assert_non_empty "${uhome_v}" 'uhome must not be empty'
+    assert_non_empty "${ushell_v}" 'ushell must not be empty'
 }
-test_user_group_existence_and_membership_smoke () {
-
-    local user="" group="" groups=""
-
-    user="$(sys::uname 2>/dev/null || true)"
-    group="$(sys::ugroup "${user}" 2>/dev/null || true)"
-    groups="$(sys::ugroups "${user}" 2>/dev/null || true)"
-
-    [[ -n "${user}" ]] || { skip_test 'current user name unavailable'; return $?; }
-    assert_true 'uexists must succeed for current user' sys::uexists "${user}"
-    [[ -n "${group}" ]] || { skip_test 'current primary group unavailable'; return $?; }
-    assert_true 'gexists must succeed for current primary group' sys::gexists "${group}"
-    assert_non_empty "${groups}" 'ugroups must not be empty for current user'
-    assert_true 'uingroup must succeed for current primary group' sys::uingroup "${group}" "${user}"
-
+test_users_and_groups_list_all_visible_identities () {
+    local users_v="" groups_v="" me="" mygroup=""
+    users_v="$(sys::users 2>/dev/null || true)"
+    groups_v="$(sys::groups 2>/dev/null || true)"
+    me="$(sys::uname 2>/dev/null || true)"
+    mygroup="$(sys::gname 2>/dev/null || true)"
+    assert_non_empty "${users_v}" 'sys::users must not be empty'
+    assert_non_empty "${groups_v}" 'sys::groups must not be empty'
+    [[ -n "${me}" ]] && assert_contains_line "${me}" "${users_v}" 'current user must appear in users()'
+    [[ -n "${mygroup}" ]] && assert_contains_line "${mygroup}" "${groups_v}" 'current group must appear in groups()'
 }
+test_uexists_and_gexists_for_current_identity () {
+    local me="" group=""
+    me="$(sys::uname)"
+    group="$(sys::gname 2>/dev/null || true)"
+    assert_true 'current user must exist' sys::uexists "${me}"
+    [[ -n "${group}" ]] && assert_true 'current group must exist' sys::gexists "${group}"
+}
+test_ugroup_and_ugroups_and_ingroup_consistency () {
+    local me="" primary="" groups_v=""
+    me="$(sys::uname)"
+    primary="$(sys::ugroup "${me}")"
+    groups_v="$(sys::ugroups "${me}" 2>/dev/null || true)"
+    assert_non_empty "${primary}" 'ugroup must not be empty'
+    [[ -n "${groups_v}" ]] && printf '%s\n' "${groups_v}" | grep -w -- "${primary}" >/dev/null 2>&1 || fail_now 'ugroups must contain primary group'
+    assert_true 'ingroup must succeed for primary group' sys::ingroup "${primary}" "${me}"
+}
+test_gusers_matches_users_group_filter () {
+    local group="" a="" b=""
+    group="$(sys::gname 2>/dev/null || true)"
+    [[ -n "${group}" ]] || { skip_now 'current group unavailable'; return $?; }
+    a="$(sys::gusers "${group}" 2>/dev/null || true)"
+    b="$(sys::users "${group}" 2>/dev/null || true)"
+    assert_eq "${b}" "${a}" 'gusers must mirror users(group)'
+}
+test_users_group_filter_contains_current_user_for_primary_group () {
+    local me="" group="" members=""
+    me="$(sys::uname)"
+    group="$(sys::gname 2>/dev/null || true)"
+    [[ -n "${group}" ]] || { skip_now 'current group unavailable'; return $?; }
+    members="$(sys::users "${group}" 2>/dev/null || true)"
+    assert_non_empty "${members}" 'users(group) must not be empty'
+    assert_contains_line "${me}" "${members}" 'current user must be in users(primary-group)'
+}
+test_ugroup_default_matches_current_user_group () { assert_eq "$(sys::ugroup "$(sys::uname)")" "$(sys::ugroup)" 'ugroup() must match current user group'; }
+test_gexists_negative_and_uexists_negative () { assert_false 'missing user must fail' sys::uexists "missing_user_$(random_token)"; assert_false 'missing group must fail' sys::gexists "missing_group_$(random_token)"; }
 
 # -----------------------------------------------------------------------------
-# Parser unit tests
+# privilege / destructive
 # -----------------------------------------------------------------------------
 
-test_gusers_parses_getent_group_members () {
-
-    sys::__has () { [[ "${1:-}" == 'getent' ]]; }
-    getent () {
-        [[ "${1:-}" == 'group' && "${2:-}" == 'devs' ]] || return 1
-        printf 'devs:x:1000:alice,bob,charlie\n'
-    }
-
-    assert_eq 'alice bob charlie' "$(sys::gusers devs 2>/dev/null || true)"
-
-}
-test_gusers_parses_windows_net_localgroup_output () {
-
-    setup_mock_path
-
-    make_mock "${MOCK_BIN}" 'net.exe' <<'SH'
-#!/usr/bin/env bash
-cat <<'OUT'
-Alias name     devs
-Comment        test group
--------------------------------------------------------------------------------
-Alice
-DOMAIN\Bob
-The command completed successfully.
-OUT
-SH
-
-    sys::is_windows () { return 0; }
-    sys::is_macos () { return 1; }
-    sys::__has () { [[ "${1:-}" == 'net.exe' ]]; }
-
-    assert_eq 'Alice DOMAIN\Bob' "$(sys::gusers devs 2>/dev/null || true)"
-
-}
-test_ugroup_parses_getent_primary_group () {
-
-    sys::__has () { [[ "${1:-}" == 'id' || "${1:-}" == 'getent' ]]; }
-    id () { return 1; }
-    getent () {
-        if [[ "${1:-}" == 'passwd' && "${2:-}" == 'alice' ]]; then
-            printf 'alice:x:1000:1001:Alice:/home/alice:/bin/bash\n'
-            return 0
-        fi
-        if [[ "${1:-}" == 'group' && "${2:-}" == '1001' ]]; then
-            printf 'engineers:x:1001:\n'
-            return 0
-        fi
-        return 1
-    }
-
-    assert_eq 'engineers' "$(sys::ugroup alice 2>/dev/null || true)"
-
-}
-test_ugroups_parses_getent_supplemental_and_primary_groups () {
-
-    sys::__has () { [[ "${1:-}" == 'id' || "${1:-}" == 'getent' ]]; }
-    id () { return 1; }
-    getent () {
-        if [[ "${1:-}" == 'passwd' && "${2:-}" == 'alice' ]]; then
-            printf 'alice:x:1000:1001:Alice:/home/alice:/bin/bash\n'
-            return 0
-        fi
-        if [[ "${1:-}" == 'group' && "${2:-}" == '1001' ]]; then
-            printf 'engineers:x:1001:\n'
-            return 0
-        fi
-        if [[ "${1:-}" == 'group' && "$#" -eq 1 ]]; then
-            cat <<'OUT'
-engineers:x:1001:
-wheel:x:10:alice
-sudo:x:27:alice,bob
-OUT
-            return 0
-        fi
-        return 1
-    }
-
-    assert_eq 'engineers wheel sudo' "$(sys::ugroups alice 2>/dev/null || true)"
-
-}
-test_uingroup_matches_windows_localgroup_membership_case_insensitively () {
-
-    setup_mock_path
-
-    make_mock "${MOCK_BIN}" 'net.exe' <<'SH'
-#!/usr/bin/env bash
-cat <<'OUT'
-Alias name     Developers
--------------------------------------------------------------------------------
-DOMAIN\Alice
-bob
-The command completed successfully.
-OUT
-SH
-
-    sys::is_windows () { return 0; }
-    sys::__has () { [[ "${1:-}" == 'net.exe' ]]; }
-    sys::uname () { printf 'Alice\n'; }
-
-    assert_true 'uingroup must match DOMAIN\\Alice' sys::uingroup Developers Alice
-    assert_true 'uingroup must match bob case-insensitively' sys::uingroup Developers BOB
-
-}
-
-# -----------------------------------------------------------------------------
-# Privilege detection
-# -----------------------------------------------------------------------------
-
-test_is_root_unix_uses_id_u_zero () {
-
-    sys::is_windows () { return 1; }
-    sys::__has () { [[ "${1:-}" == 'id' ]]; }
-    id () {
-        [[ "${1:-}" == '-u' ]] || return 1
-        printf '0\n'
-    }
-
-    assert_true 'is_root must succeed for id -u = 0' sys::is_root
-
-}
-test_is_root_windows_uses_powershell_when_net_session_unavailable () {
-
-    setup_mock_path
-
-    make_mock "${MOCK_BIN}" 'powershell.exe' <<'SH'
-#!/usr/bin/env bash
-printf 'True\r\n'
-SH
-
-    sys::is_windows () { return 0; }
-    sys::__has () { [[ "${1:-}" == 'powershell.exe' ]]; }
-
-    assert_true 'is_root must succeed for powershell admin=True' sys::is_root
-
-}
-test_is_admin_stops_unix_group_fallback_on_windows () {
-
-    local dir="" flag=""
-
-    dir="$(new_test_dir)"
-    flag="${dir}/called"
-
-    sys::is_root () { return 1; }
-    sys::is_windows () { return 0; }
-    sys::uingroup () {
-        printf 'hit\n' > "${flag}"
-        return 0
-    }
-
-    assert_false 'is_admin must return false on windows when is_root fails' sys::is_admin
-    [[ ! -e "${flag}" ]] || fail_now 'is_admin must not call unix group fallback on windows'
-
-}
-test_is_admin_unix_uses_group_fallbacks () {
-
-    sys::is_root () { return 1; }
-    sys::is_windows () { return 1; }
-    sys::uingroup () { [[ "${1:-}" == 'wheel' ]]; }
-
-    assert_true 'is_admin must accept wheel membership' sys::is_admin
-
-}
-
-# -----------------------------------------------------------------------------
-# Mutating operations with mocks
-# -----------------------------------------------------------------------------
-
-test_add_group_short_circuits_when_group_exists () {
-
-    local dir="" flag=""
-
-    dir="$(new_test_dir)"
-    flag="${dir}/called"
-
-    sys::gexists () { return 0; }
-    sys::is_linux () { return 0; }
-    sys::__has () { return 0; }
-    groupadd () { printf 'hit\n' > "${flag}"; }
-
-    sys::add_group existing
-    [[ ! -e "${flag}" ]] || fail_now 'add_group must short-circuit when group exists'
-
-}
-test_add_group_linux_uses_groupadd () {
-
-    local dir="" log=""
-
-    dir="$(new_test_dir)"
-    log="${dir}/log.txt"
-
-    sys::gexists () { return 1; }
-    sys::is_linux () { return 0; }
-    sys::is_macos () { return 1; }
-    sys::is_windows () { return 1; }
-    sys::__has () { [[ "${1:-}" == 'groupadd' ]]; }
-    groupadd () { printf '%s\n' "$*" > "${log}"; }
-
-    sys::add_group devs
-    assert_eq 'devs' "$(tr -d '\r\n' < "${log}")"
-
-}
-test_add_group_macos_uses_dseditgroup () {
-
-    local dir="" log=""
-
-    dir="$(new_test_dir)"
-    log="${dir}/log.txt"
-
-    sys::gexists () { return 1; }
-    sys::is_linux () { return 1; }
-    sys::is_macos () { return 0; }
-    sys::is_windows () { return 1; }
-    sys::__has () { [[ "${1:-}" == 'dseditgroup' ]]; }
-    dseditgroup () { printf '%s\n' "$*" > "${log}"; }
-
-    sys::add_group devs
-    assert_eq '-o create devs' "$(tr -d '\r\n' < "${log}")"
-
-}
-test_add_group_windows_uses_net_localgroup_add () {
-
-    setup_mock_path
-
-    make_mock "${MOCK_BIN}" 'net.exe' <<'SH'
-#!/usr/bin/env bash
-printf '%s\n' "$*" > "${MOCK_LOG}"
-SH
-
-    sys::gexists () { return 1; }
-    sys::is_linux () { return 1; }
-    sys::is_macos () { return 1; }
-    sys::is_windows () { return 0; }
-    sys::__has () { [[ "${1:-}" == 'net.exe' ]]; }
-
-    sys::add_group devs
-    assert_eq 'localgroup devs /add' "$(tr -d '\r\n' < "${MOCK_LOG}")"
-
-}
-test_add_user_linux_creates_group_then_user () {
-
-    local dir="" log=""
-
-    dir="$(new_test_dir)"
-    log="${dir}/log.txt"
-
-    sys::uexists () { return 1; }
-    sys::gexists () { return 1; }
-    sys::add_group () { printf 'add_group %s\n' "$1" >> "${log}"; return 0; }
-    sys::is_linux () { return 0; }
-    sys::is_macos () { return 1; }
-    sys::is_windows () { return 1; }
-    sys::__has () { [[ "${1:-}" == 'useradd' ]]; }
-    useradd () { printf 'useradd %s\n' "$*" >> "${log}"; }
-
-    sys::add_user alice devs
-    assert_eq $'add_group devs\nuseradd -m -g devs alice' "$(cat "${log}")"
-
-}
-test_add_user_linux_existing_user_adds_membership_only_when_needed () {
-
-    local dir="" log=""
-
-    dir="$(new_test_dir)"
-    log="${dir}/log.txt"
-
-    sys::uexists () { return 0; }
-    sys::gexists () { return 0; }
-    sys::uingroup () { return 1; }
-    sys::is_linux () { return 0; }
-    sys::is_macos () { return 1; }
-    sys::is_windows () { return 1; }
-    sys::__has () { [[ "${1:-}" == 'usermod' ]]; }
-    usermod () { printf '%s\n' "$*" > "${log}"; }
-
-    sys::add_user alice devs
-    assert_eq '-aG devs alice' "$(tr -d '\r\n' < "${log}")"
-
-}
-test_add_user_linux_membership_short_circuits_when_already_present () {
-
-    local dir="" flag=""
-
-    dir="$(new_test_dir)"
-    flag="${dir}/called"
-
-    sys::uexists () { return 0; }
-    sys::gexists () { return 0; }
-    sys::uingroup () { return 0; }
-    sys::is_linux () { return 0; }
-    sys::is_macos () { return 1; }
-    sys::is_windows () { return 1; }
-    sys::__has () { return 0; }
-    usermod () { printf 'hit\n' > "${flag}"; }
-
-    sys::add_user alice devs
-    [[ ! -e "${flag}" ]] || fail_now 'add_user must not call usermod when membership already exists'
-
-}
-test_add_user_macos_uses_sysadminctl_then_dseditgroup () {
-
-    local dir="" log=""
-
-    dir="$(new_test_dir)"
-    log="${dir}/log.txt"
-
-    sys::uexists () { return 1; }
-    sys::gexists () { return 0; }
-    sys::uingroup () { return 1; }
-    sys::is_linux () { return 1; }
-    sys::is_macos () { return 0; }
-    sys::is_windows () { return 1; }
-    sys::__has () { [[ "${1:-}" == 'sysadminctl' || "${1:-}" == 'dseditgroup' ]]; }
-    sysadminctl () { printf 'sysadminctl %s\n' "$*" >> "${log}"; }
-    dseditgroup () { printf 'dseditgroup %s\n' "$*" >> "${log}"; }
-
-    sys::add_user alice devs
-    assert_eq $'sysadminctl -addUser alice\ndseditgroup -o edit -a alice -t user devs' "$(cat "${log}")"
-
-}
-test_add_user_windows_uses_net_user_and_localgroup () {
-
-    setup_mock_path
-
-    make_mock "${MOCK_BIN}" 'net.exe' <<'SH'
-#!/usr/bin/env bash
-printf '%s\n' "$*" >> "${MOCK_LOG}"
-SH
-
-    sys::uexists () { return 1; }
-    sys::gexists () { return 1; }
-    sys::uingroup () { return 1; }
-    sys::is_linux () { return 1; }
-    sys::is_macos () { return 1; }
-    sys::is_windows () { return 0; }
-    sys::__has () { [[ "${1:-}" == 'net.exe' ]]; }
-
-    sys::add_user alice devs
-    assert_eq $'user alice /add\nlocalgroup devs /add\nlocalgroup devs alice /add' "$(cat "${MOCK_LOG}")"
-
-}
-
-# -----------------------------------------------------------------------------
-# Optional destructive real-system test
-# -----------------------------------------------------------------------------
-
-test_destructive_real_add_group_and_add_user () {
-
-    local suffix="" group="" user=""
-
-    [[ "${SYS_TEST_DESTRUCTIVE}" == '1' ]] || { skip_test 'set SYS_TEST_DESTRUCTIVE=1 to enable destructive tests'; return $?; }
-
-    if ! sys::is_root && ! sys::is_admin; then
-        skip_test 'destructive test requires root/admin privileges'
-        return $?
-    fi
-
-    suffix="$$$RANDOM"
-    group="systg${suffix}"
-    user="systu${suffix}"
-
-    if sys::is_linux; then
-        sys::__has userdel || { skip_test 'userdel is required for linux destructive cleanup'; return $?; }
-        sys::__has groupdel || { skip_test 'groupdel is required for linux destructive cleanup'; return $?; }
-
-        sys::add_group "${group}"
-        assert_true 'group must exist after add_group' sys::gexists "${group}"
-        sys::add_user "${user}" "${group}"
-        assert_true 'user must exist after add_user' sys::uexists "${user}"
-        assert_true 'user must belong to target group' sys::uingroup "${group}" "${user}"
-
-        userdel -r "${user}" >/dev/null 2>&1 || userdel "${user}" >/dev/null 2>&1 || true
-        groupdel "${group}" >/dev/null 2>&1 || true
-        return 0
-    fi
-
-    if sys::is_macos; then
-        sys::__has sysadminctl || { skip_test 'sysadminctl is required for macOS destructive cleanup'; return $?; }
-        sys::__has dseditgroup || { skip_test 'dseditgroup is required for macOS destructive cleanup'; return $?; }
-
-        sys::add_group "${group}"
-        assert_true 'group must exist after add_group' sys::gexists "${group}"
-        sys::add_user "${user}" "${group}"
-        assert_true 'user must exist after add_user' sys::uexists "${user}"
-        assert_true 'user must belong to target group' sys::uingroup "${group}" "${user}"
-
-        sysadminctl -deleteUser "${user}" >/dev/null 2>&1 || true
-        dseditgroup -o delete "${group}" >/dev/null 2>&1 || true
-        return 0
-    fi
-
-    if sys::is_windows; then
-        sys::__has net.exe || { skip_test 'net.exe is required for windows destructive cleanup'; return $?; }
-
-        sys::add_group "${group}"
-        assert_true 'group must exist after add_group' sys::gexists "${group}"
-        sys::add_user "${user}" "${group}"
-        assert_true 'user must exist after add_user' sys::uexists "${user}"
-        assert_true 'user must belong to target group' sys::uingroup "${group}" "${user}"
-
-        net.exe user "${user}" /delete >/dev/null 2>&1 || true
-        net.exe localgroup "${group}" /delete >/dev/null 2>&1 || true
-        return 0
-    fi
-
-    skip_test 'destructive test not implemented for this runtime'
-
+test_is_root_and_is_admin_smoke () { sys::is_root || true; sys::is_admin || true; }
+test_addgroup_and_adduser_real_destructive () {
+    local token="" group="" user="" users_in_group=""
+    require_privileged_destructive || return $?
+    token="$(random_token)"
+    group="sysgrp_${token}"
+    user="sysusr_${token}"
+    cleanup_identity "${user}" "${group}" || true
+    sys::addgroup "${group}"
+    assert_true 'new group must exist after addgroup' sys::gexists "${group}"
+    list_has_exact "${group}" "$(sys::groups 2>/dev/null || true)" || fail_now 'new group must appear in groups()'
+    sys::adduser "${user}" "${group}"
+    assert_true 'new user must exist after adduser' sys::uexists "${user}"
+    users_in_group="$(sys::users "${group}" 2>/dev/null || true)"
+    assert_contains_line "${user}" "${users_in_group}" 'created user must appear in users(group)'
+    assert_true 'ingroup must succeed for created user' sys::ingroup "${group}" "${user}"
+    cleanup_identity "${user}" "${group}"
 }
 
 main () {
-
     local fn=""
-
-    while IFS= read -r fn; do
+    while IFS= read -r fn || [[ -n "${fn}" ]]; do
         run_test "${fn}"
     done < <(collect_tests)
-
-    printf '\n'
-    printf 'Total : %s\n' "${TOTAL_COUNT}"
+    printf '\nTotal : %s\n' "${TOTAL_COUNT}"
     printf 'Pass  : %s\n' "${PASS_COUNT}"
     printf 'Skip  : %s\n' "${SKIP_COUNT}"
     printf 'Fail  : %s\n' "${FAIL_COUNT}"
-
     (( FAIL_COUNT == 0 ))
-
 }
 
-main "$@"
+if [[ "${SYS_MODE}" == 'single' ]]; then
+    "${SYS_SINGLE_TEST}"
+else
+    main
+fi

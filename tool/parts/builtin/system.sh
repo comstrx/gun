@@ -61,7 +61,7 @@ sys::__normalize_open_target () {
             printf '%s\n' "${target}"
             return 0
         ;;
-        localhost|localhost:*|localhost/*|localhost:*/*)
+        localhost|localhost:*|localhost/*)
             printf 'http://%s\n' "${target}"
             return 0
         ;;
@@ -109,13 +109,13 @@ sys::is_wsl () {
     local r="" lower=""
 
     sys::is_linux || return 1
-
     [[ -n "${WSL_DISTRO_NAME:-}" || -n "${WSL_INTEROP:-}" ]] && return 0
 
     if [[ -r /proc/sys/kernel/osrelease ]]; then
 
         IFS= read -r r < /proc/sys/kernel/osrelease || true
         lower="$(sys::__lower "${r}")"
+
         [[ "${lower}" == *microsoft* ]] && return 0
 
     fi
@@ -123,6 +123,7 @@ sys::is_wsl () {
 
         IFS= read -r r < /proc/version || true
         lower="$(sys::__lower "${r}")"
+
         [[ "${lower}" == *microsoft* ]] && return 0
 
     fi
@@ -176,6 +177,16 @@ sys::is_gitbash () {
     return 1
 
 }
+sys::is_unix () {
+
+    sys::is_linux || sys::is_macos
+
+}
+sys::is_posix () {
+
+    sys::is_linux || sys::is_macos || sys::is_wsl || sys::is_msys || sys::is_cygwin
+
+}
 sys::is_windows () {
 
     sys::is_wsl && return 1
@@ -192,37 +203,7 @@ sys::is_windows () {
     return 0
 
 }
-sys::is_unix () {
 
-    sys::is_linux || sys::is_macos
-
-}
-sys::is_posix () {
-
-    sys::is_linux || sys::is_macos || sys::is_wsl || sys::is_msys || sys::is_cygwin
-
-}
-
-sys::is_ci () {
-
-    [[ -n "${CI:-}" ]]                       && return 0
-    [[ -n "${GITHUB_ACTIONS:-}" ]]           && return 0
-    [[ -n "${GITLAB_CI:-}" ]]                && return 0
-    [[ -n "${JENKINS_URL:-}" ]]              && return 0
-    [[ -n "${BUILDKITE:-}" ]]                && return 0
-    [[ -n "${CIRCLECI:-}" ]]                 && return 0
-    [[ -n "${TRAVIS:-}" ]]                   && return 0
-    [[ -n "${APPVEYOR:-}" ]]                 && return 0
-    [[ -n "${TF_BUILD:-}" ]]                 && return 0
-    [[ -n "${BITBUCKET_BUILD_NUMBER:-}" ]]   && return 0
-    [[ -n "${TEAMCITY_VERSION:-}" ]]         && return 0
-    [[ -n "${DRONE:-}" ]]                    && return 0
-    [[ -n "${SEMAPHORE:-}" ]]                && return 0
-    [[ -n "${CODEBUILD_BUILD_ID:-}" ]]       && return 0
-
-    return 1
-
-}
 sys::ci_name () {
 
     [[ -n "${GITHUB_ACTIONS:-}" ]]         && { printf '%s\n' "github";    return 0; }
@@ -242,6 +223,11 @@ sys::ci_name () {
 
     printf '%s\n' "none"
     return 1
+
+}
+sys::is_ci () {
+
+    sys::ci_name >/dev/null 2>&1
 
 }
 sys::is_ci_pull () {
@@ -278,7 +264,6 @@ sys::is_ci_tag () {
     return 1
 
 }
-
 sys::is_gui () {
 
     if sys::is_linux; then
@@ -865,9 +850,14 @@ sys::gexists () {
     if sys::is_windows; then
 
         if sys::__has powershell.exe; then
+
+            # shellcheck disable=SC2016
             cmd='param([string]$GroupName); $ErrorActionPreference = "Stop"; if (Get-Command Get-LocalGroup -ErrorAction SilentlyContinue) { Get-LocalGroup -Name $GroupName | Out-Null; exit 0 }; exit 1'
-            powershell.exe -NoProfile -NonInteractive -Command "${cmd}" "${name}" >/dev/null 2>&1
-            [[ "$?" == "0" ]] && return 0
+
+            if powershell.exe -NoProfile -NonInteractive -Command "${cmd}" "${name}" >/dev/null 2>&1; then
+                return 0
+            fi
+
         fi
         if sys::__has net.exe; then
             net.exe localgroup "${name}" >/dev/null 2>&1
@@ -889,49 +879,6 @@ sys::gexists () {
     return 1
 
 }
-sys::gusers () {
-
-    local name="${1:-}" v=""
-
-    [[ -n "${name}" ]] || return 1
-
-    if sys::__has getent; then
-
-        v="$(getent group "${name}" 2>/dev/null | awk -F: 'NR==1 {print $4}' | head -n 1 | tr ',' ' ')"
-        v="$(printf '%s\n' "${v}" | awk '{$1=$1; print}' | head -n 1)"
-
-        [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
-
-    fi
-    if sys::is_macos && sys::__has dscl; then
-
-        v="$(dscl . -read "/Groups/${name}" GroupMembership 2>/dev/null | sed -n 's/^GroupMembership:[[:space:]]*//p' | head -n 1)"
-        [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
-
-    fi
-    if sys::is_windows && sys::__has net.exe; then
-
-        v="$(
-            net.exe localgroup "${name}" 2>/dev/null | tr -d '\r' | awk '
-                BEGIN { in_members = 0 }
-                /^-+$/ { if (!in_members) { in_members = 1; next } else { exit } }
-                in_members {
-                    if ($0 !~ /The command completed successfully\./ && $0 !~ /^[[:space:]]*$/) {
-                        sub(/^[[:space:]]+/, "", $0)
-                        print
-                    }
-                }
-            ' | paste -sd' ' - 2>/dev/null || true
-        )"
-
-        [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
-
-    fi
-
-    return 1
-
-}
-
 sys::uid () {
 
     local v=""
@@ -968,7 +915,8 @@ sys::uname () {
 
     if sys::is_windows && sys::__has whoami.exe; then
 
-        v="$(whoami.exe 2>/dev/null | tr -d '\r' | awk -F'\\' 'NR==1 {print $NF}' | head -n 1)"
+        v="$(whoami.exe 2>/dev/null | tr -d '\r' | head -n 1 || true)"
+        v="${v##*\\}"
         [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
 
     fi
@@ -1100,9 +1048,11 @@ sys::ugroup () {
         name="$(sys::uname 2>/dev/null || true)"
 
     fi
+    if [[ -z "${name}" ]]; then
 
-    [[ -n "${name}" ]] || return 1
+        return 1
 
+    fi
     if sys::__has id; then
 
         v="$(id -gn "${name}" 2>/dev/null || true)"
@@ -1240,143 +1190,254 @@ sys::ugroups () {
     return 1
 
 }
-sys::uingroup () {
 
-    local group="${1:-}" user="${2:-}" x="" groups="" current="" lower_user="" line="" probe=""
+sys::groups () {
 
-    [[ -n "${group}" ]] || return 1
-    [[ -n "${user}" ]] || user="$(sys::uname 2>/dev/null || true)"
-    [[ -n "${user}" ]] || return 1
+    local v=""
 
     if sys::is_windows; then
 
-        lower_user="$(sys::__lower "${user}")"
-        current="$(sys::uname 2>/dev/null || true)"
+        if sys::__has powershell.exe; then
 
-        if sys::__has net.exe; then
-
-            while IFS= read -r line || [[ -n "${line}" ]]; do
-
-                line="${line%$'\r'}"
-                [[ -n "${line}" ]] || continue
-
-                probe="$(sys::__lower "${line}")"
-                [[ "${probe}" == "${lower_user}" ]] && return 0
-                [[ "${probe##*\\}" == "${lower_user}" ]] && return 0
-
-            done < <(
-                net.exe localgroup "${group}" 2>/dev/null | tr -d '\r' | awk '
-                    BEGIN { in_members = 0 }
-                    /^-+$/ { if (!in_members) { in_members = 1; next } else { exit } }
-                    in_members {
-                        if ($0 !~ /The command completed successfully\./ && $0 !~ /^[[:space:]]*$/) {
-                            sub(/^[[:space:]]+/, "", $0)
-                            print
-                        }
-                    }
-                '
-            )
+            # shellcheck disable=SC2016
+            v="$(
+                powershell.exe -NoProfile -NonInteractive -Command '$ErrorActionPreference = "Stop"; if (Get-Command Get-LocalGroup -ErrorAction SilentlyContinue) { Get-LocalGroup | ForEach-Object { $_.Name }; exit 0 }; exit 1'
+                exit "${PIPESTATUS[0]:-1}"
+            )" && { [[ -n "${v}" ]] && printf '%s\n' "${v}"; return 0; }
 
         fi
-        if [[ -n "${current}" && "${user}" == "${current}" ]] && sys::__has whoami.exe; then
+        if sys::__has net.exe; then
 
-            probe="$(sys::__lower "${group}")"
-
-            while IFS= read -r line || [[ -n "${line}" ]]; do
-
-                line="${line%$'\r'}"
-                [[ -n "${line}" ]] || continue
-                [[ "$(sys::__lower "${line}")" == "${probe}" ]] && return 0
-
-            done < <(
-                whoami.exe /groups 2>/dev/null | tr -d '\r' | awk '
-                    BEGIN { started = 0 }
-                    /^[[:space:]]*GROUP INFORMATION[[:space:]]*$/ { started = 1; next }
-                    started && /^[= -]+$/ { next }
-                    started && NF {
-                        line = $0
-                        sub(/^[[:space:]]+/, "", line)
-                        sub(/[[:space:]]+Mandatory group.*$/, "", line)
-                        sub(/[[:space:]]+Enabled group.*$/, "", line)
-                        sub(/[[:space:]]+Group used for deny only.*$/, "", line)
-                        sub(/[[:space:]]+Deny only.*$/, "", line)
-                        sub(/[[:space:]]+Well-known group.*$/, "", line)
-                        sub(/[[:space:]]+Owner group.*$/, "", line)
-                        if (line != "") print line
+            v="$(
+                net.exe localgroup 2>/dev/null | tr -d '\r' | awk '
+                    BEGIN { in_items = 0 }
+                    /^-+$/ {
+                        if (!in_items) { in_items = 1; next }
+                        else { exit }
                     }
-                '
-            )
+                    in_items {
+                        line = $0
+                        sub(/^\*/, "", line)
+                        sub(/^[[:space:]]+/, "", line)
+                        sub(/[[:space:]]+$/, "", line)
+                        if (line != "") {
+                            print line
+                        }
+                    }
+                ' | awk 'NF && !seen[$0]++'
+                exit "${PIPESTATUS[0]:-1}"
+            )" && { [[ -n "${v}" ]] && printf '%s\n' "${v}"; return 0; }
 
         fi
 
         return 1
 
     fi
+    if sys::__has getent; then
 
-    groups="$(sys::ugroups "${user}" 2>/dev/null || true)"
-    [[ -n "${groups}" ]] || return 1
+        v="$(getent group 2>/dev/null | awk -F: 'NF { print $1 }' || true)"
+        [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
 
-    for x in ${groups}; do
-        [[ "${x}" == "${group}" ]] && return 0
-    done
+    fi
+    if sys::is_macos && sys::__has dscl; then
+
+        v="$(dscl . -list /Groups 2>/dev/null || true)"
+        [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
+
+    fi
+    if [[ -r /etc/group ]]; then
+
+        v="$(awk -F: 'NF { print $1 }' /etc/group 2>/dev/null || true)"
+        [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
+
+    fi
 
     return 1
 
 }
+sys::users () {
 
-sys::is_root () {
-
-    local v="" cmd=""
+    local gname="${1:-}" v="" gid="" members="" line=""
 
     if sys::is_windows; then
 
-        if sys::__has net.exe; then
+        if [[ -n "${gname}" ]]; then
 
-            net.exe session >/dev/null 2>&1
-            return
+            if sys::__has powershell.exe; then
+
+                # shellcheck disable=SC2016
+                v="$(
+                    SYS_USERS_GROUP_NAME="${gname}" powershell.exe -NoProfile -NonInteractive -Command '$ErrorActionPreference = "Stop"; $group = [Environment]::GetEnvironmentVariable("SYS_USERS_GROUP_NAME"); if ([string]::IsNullOrWhiteSpace($group)) { exit 1 }; if (-not (Get-Command Get-LocalGroupMember -ErrorAction SilentlyContinue)) { exit 1 }; Get-LocalGroupMember -Group $group -ErrorAction Stop | Where-Object { -not $_.PSObject.Properties["ObjectClass"] -or $_.ObjectClass -eq "User" } | ForEach-Object { $name = [string]$_.Name; if ($name -match "\\\\") { $name = $name.Split("\\")[-1] }; if (-not [string]::IsNullOrWhiteSpace($name)) { $name } } | Select-Object -Unique'
+                    exit "${PIPESTATUS[0]:-1}"
+                )" && { [[ -n "${v}" ]] && printf '%s\n' "${v}"; return 0; }
+
+            fi
+            if sys::__has net.exe; then
+
+                v="$(
+                    net.exe localgroup "${gname}" 2>/dev/null | tr -d '\r' | awk '
+                        BEGIN { in_members = 0 }
+                        /^-+$/ { if (!in_members) { in_members = 1; next } else { exit } }
+                        in_members {
+                            if ($0 !~ /The command completed successfully\./ && $0 !~ /^[[:space:]]*$/) {
+                                sub(/^[[:space:]]+/, "", $0)
+                                print
+                            }
+                        }
+                    ' | awk 'NF && !seen[$0]++'
+                    exit "${PIPESTATUS[0]:-1}"
+                )" && { [[ -n "${v}" ]] && printf '%s\n' "${v}"; return 0; }
+
+            fi
+
+            return 1
 
         fi
         if sys::__has powershell.exe; then
 
-            cmd="[bool](([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))"
-            powershell.exe -NoProfile -NonInteractive -Command "${cmd}" 2>/dev/null | tr -d '\r' | grep -qi '^True$'
+            # shellcheck disable=SC2016
+            v="$(
+                powershell.exe -NoProfile -NonInteractive -Command '$ErrorActionPreference = "Stop"; if (Get-Command Get-LocalUser -ErrorAction SilentlyContinue) { Get-LocalUser | ForEach-Object { $_.Name }; exit 0 }; exit 1'
+                exit "${PIPESTATUS[0]:-1}"
+            )" && { [[ -n "${v}" ]] && printf '%s\n' "${v}"; return 0; }
 
-            return
+
+        fi
+        if sys::__has net.exe; then
+
+            v="$(
+                net.exe user 2>/dev/null | tr -d '\r' | awk '
+                    BEGIN { in_items = 0 }
+                    /^-+$/ {
+                        if (!in_items) { in_items = 1; next }
+                        else { exit }
+                    }
+                    in_items {
+                        for (i = 1; i <= NF; i++) {
+                            print $i
+                        }
+                    }
+                ' | awk 'NF && !seen[$0]++'
+                exit "${PIPESTATUS[0]:-1}"
+            )" && { [[ -n "${v}" ]] && printf '%s\n' "${v}"; return 0; }
 
         fi
 
         return 1
 
     fi
-    if sys::__has id; then
+    if [[ -n "${gname}" ]]; then
 
-        v="$(id -u 2>/dev/null || true)"
-        [[ "${v}" == "0" ]]
+        if sys::__has getent; then
 
-        return
+            line="$(getent group "${gname}" 2>/dev/null | head -n 1 || true)"
+
+            if [[ -n "${line}" ]]; then
+
+                gid="$(printf '%s\n' "${line}" | awk -F: 'NR==1 { print $3 }')"
+                members="$(printf '%s\n' "${line}" | awk -F: 'NR==1 { print $4 }')"
+
+                v="$(
+                    {
+                        [[ "${gid}" =~ ^[0-9]+$ ]] && getent passwd 2>/dev/null | awk -F: -v gid="${gid}" '$4 == gid { print $1 }'
+                        printf '%s\n' "${members}" | tr ',' '\n'
+                    } | awk 'NF && !seen[$0]++'
+                )"
+
+                [[ -n "${v}" ]] && printf '%s\n' "${v}"
+                return 0
+
+            fi
+
+        fi
+        if sys::is_macos && sys::__has dscl; then
+
+            gid="$(dscl . -read "/Groups/${gname}" PrimaryGroupID 2>/dev/null | awk 'NR==1 { print $2 }' | head -n 1)"
+            members="$(dscl . -read "/Groups/${gname}" GroupMembership 2>/dev/null | sed -n 's/^GroupMembership:[[:space:]]*//p' | head -n 1)"
+
+            if [[ -n "${gid}" || -n "${members}" ]]; then
+
+                v="$(
+                    {
+                        [[ "${gid}" =~ ^[0-9]+$ ]] && dscl . -list /Users PrimaryGroupID 2>/dev/null | awk -v gid="${gid}" '$2 == gid { print $1 }'
+                        printf '%s\n' "${members}" | tr ' ' '\n'
+                    } | awk 'NF && !seen[$0]++'
+                )"
+
+                [[ -n "${v}" ]] && printf '%s\n' "${v}"
+                return 0
+
+            fi
+
+        fi
+        if [[ -r /etc/group && -r /etc/passwd ]]; then
+
+            line="$(awk -F: -v name="${gname}" '$1 == name { print; exit }' /etc/group 2>/dev/null || true)"
+
+            if [[ -n "${line}" ]]; then
+
+                gid="$(printf '%s\n' "${line}" | awk -F: 'NR==1 { print $3 }')"
+                members="$(printf '%s\n' "${line}" | awk -F: 'NR==1 { print $4 }')"
+
+                v="$(
+                    {
+                        [[ "${gid}" =~ ^[0-9]+$ ]] && awk -F: -v gid="${gid}" '$4 == gid { print $1 }' /etc/passwd 2>/dev/null
+                        printf '%s\n' "${members}" | tr ',' '\n'
+                    } | awk 'NF && !seen[$0]++'
+                )"
+
+                [[ -n "${v}" ]] && printf '%s\n' "${v}"
+                return 0
+
+            fi
+
+        fi
+
+        return 1
+
+    fi
+    if sys::__has getent; then
+
+        v="$(getent passwd 2>/dev/null | awk -F: 'NF { print $1 }' || true)"
+        [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
+
+    fi
+    if sys::is_macos && sys::__has dscl; then
+
+        v="$(dscl . -list /Users 2>/dev/null || true)"
+        [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
+
+    fi
+    if [[ -r /etc/passwd ]]; then
+
+        v="$(awk -F: 'NF { print $1 }' /etc/passwd 2>/dev/null || true)"
+        [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
 
     fi
 
     return 1
 
 }
-sys::is_admin () {
+sys::ingroup () {
 
-    sys::is_root && return 0
-    sys::is_windows && return 1
+    local group="${1:-}" user="${2:-}" line="" current=""
 
-    sys::uingroup sudo && return 0
-    sys::uingroup wheel && return 0
+    [[ -n "${group}" ]] || return 1
+    [[ -n "${user}"  ]] || user="$(sys::uname 2>/dev/null || true)"
+    [[ -n "${user}"  ]] || return 1
 
-    sys::uingroup admin
+    while IFS= read -r line || [[ -n "${line}" ]]; do
+        [[ "${line}" == "${user}" ]] && return 0
+    done < <(sys::users "${group}" 2>/dev/null || true)
+
+    return 1
 
 }
-sys::add_group () {
+sys::addgroup () {
 
     local name="${1:-}"
 
     [[ -n "${name}" ]] || return 1
-
     sys::gexists "${name}" && return 0
 
     if sys::is_linux; then
@@ -1413,7 +1474,7 @@ sys::add_group () {
     return 1
 
 }
-sys::add_user () {
+sys::adduser () {
 
     local name="${1:-}" group="${2:-}"
 
@@ -1426,7 +1487,7 @@ sys::add_user () {
             if sys::__has useradd; then
 
                 if [[ -n "${group}" ]]; then
-                    sys::gexists "${group}" || sys::add_group "${group}" || return 1
+                    sys::gexists "${group}" || sys::addgroup "${group}" || return 1
                     useradd -m -g "${group}" "${name}" >/dev/null 2>&1 || return 1
                 else
                     useradd -m "${name}" >/dev/null 2>&1 || return 1
@@ -1438,18 +1499,14 @@ sys::add_user () {
 
         elif sys::is_macos; then
 
-            if sys::__has sysadminctl; then
-                sysadminctl -addUser "${name}" >/dev/null 2>&1 || return 1
-            else
-                return 1
+            if sys::__has sysadminctl; then sysadminctl -addUser "${name}" >/dev/null 2>&1 || return 1
+            else return 1
             fi
 
         elif sys::is_windows; then
 
-            if sys::__has net.exe; then
-                net.exe user "${name}" /add >/dev/null 2>&1 || return 1
-            else
-                return 1
+            if sys::__has net.exe; then net.exe user "${name}" /add >/dev/null 2>&1 || return 1
+            else return 1
             fi
 
         else
@@ -1462,8 +1519,8 @@ sys::add_user () {
 
     [[ -n "${group}" ]] || return 0
 
-    sys::gexists "${group}" || sys::add_group "${group}" || return 1
-    sys::uingroup "${group}" "${name}" && return 0
+    sys::gexists "${group}" || sys::addgroup "${group}" || return 1
+    sys::ingroup "${group}" "${name}" && return 0
 
     if sys::is_linux; then
 
@@ -1499,222 +1556,44 @@ sys::add_user () {
     return 1
 
 }
+sys::is_root () {
 
-
-
-sys::ugroup () {
-
-    local name="${1:-}" v="" dscl_v="" current="" cmd=""
-
-    if [[ -z "${name}" ]]; then
-
-        if ! sys::is_windows && sys::__has id; then
-
-            v="$(id -gn 2>/dev/null || true)"
-            [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
-
-        fi
-
-        name="$(sys::uname 2>/dev/null || true)"
-
-    fi
-
-    [[ -n "${name}" ]] || return 1
+    local v="" cmd=""
 
     if sys::is_windows; then
-
-        if sys::__has powershell.exe; then
-
-            cmd='
-param([string]$UserName)
-$ErrorActionPreference = "Stop"
-
-if (-not (Get-Command Get-LocalGroup -ErrorAction SilentlyContinue)) {
-    exit 1
-}
-if (-not (Get-Command Get-LocalGroupMember -ErrorAction SilentlyContinue)) {
-    exit 1
-}
-
-$target = $UserName.ToLowerInvariant()
-
-foreach ($group in Get-LocalGroup) {
-    try {
-        foreach ($member in Get-LocalGroupMember -Group $group.Name -ErrorAction Stop) {
-            $memberName = [string]$member.Name
-            if ($memberName -match "\\\\") {
-                $memberName = $memberName.Split("\\")[-1]
-            }
-            if ($memberName.ToLowerInvariant() -eq $target) {
-                [Console]::Out.WriteLine($group.Name)
-                exit 0
-            }
-        }
-    } catch {}
-}
-
-exit 1
-'
-            v="$(powershell.exe -NoProfile -NonInteractive -Command "${cmd}" "${name}" 2>/dev/null | tr -d '\r' | head -n 1)"
-            [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
-
-        fi
-
-        current="$(sys::uname 2>/dev/null || true)"
-
-        if [[ -n "${current}" && "${name}" == "${current}" ]] && sys::__has whoami.exe; then
-
-            v="$(
-                whoami.exe /groups /fo csv /nh 2>/dev/null | tr -d '\r' | awk -F'","' '
-                    NR == 1 {
-                        gsub(/^"/, "", $1)
-                        gsub(/"$/, "", $1)
-                        sub(/^[^\\]+\\/, "", $1)
-                        if ($1 != "") print $1
-                    }
-                ' | head -n 1
-            )"
-
-            [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
-
-        fi
-
-        return 1
-
-    fi
-
-    if sys::__has id; then
-
-        v="$(id -gn "${name}" 2>/dev/null || true)"
-        [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
-
-    fi
-    if sys::__has getent; then
-
-        v="$(getent passwd "${name}" 2>/dev/null | awk -F: 'NR==1 {print $4}' | head -n 1)"
-
-        if [[ "${v}" =~ ^[0-9]+$ ]] && sys::__has getent; then
-            v="$(getent group "${v}" 2>/dev/null | awk -F: 'NR==1 {print $1}' | head -n 1)"
-            [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
-        fi
-
-    fi
-    if sys::is_macos && sys::__has dscl; then
-
-        dscl_v="$(dscl . -read "/Users/${name}" PrimaryGroupID 2>/dev/null | awk 'NR==1 {print $2}' | head -n 1)"
-
-        if [[ "${dscl_v}" =~ ^[0-9]+$ ]]; then
-            v="$(dscl . -search /Groups PrimaryGroupID "${dscl_v}" 2>/dev/null | awk 'NR==1 {print $1}' | head -n 1)"
-            [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
-        fi
-
-    fi
-
-    return 1
-
-}
-sys::uingroup () {
-
-    local group="${1:-}" user="${2:-}" x="" groups="" current="" lower_user="" line="" probe="" cmd=""
-
-    [[ -n "${group}" ]] || return 1
-    [[ -n "${user}" ]] || user="$(sys::uname 2>/dev/null || true)"
-    [[ -n "${user}" ]] || return 1
-
-    if sys::is_windows; then
-
-        if sys::__has powershell.exe; then
-
-            cmd='
-param([string]$GroupName, [string]$UserName)
-$ErrorActionPreference = "Stop"
-
-if (-not (Get-Command Get-LocalGroupMember -ErrorAction SilentlyContinue)) {
-    exit 1
-}
-
-$target = $UserName.ToLowerInvariant()
-
-foreach ($member in Get-LocalGroupMember -Group $GroupName -ErrorAction Stop) {
-    $memberName = [string]$member.Name
-    if ($memberName -match "\\\\") {
-        $memberName = $memberName.Split("\\")[-1]
-    }
-    if ($memberName.ToLowerInvariant() -eq $target) {
-        exit 0
-    }
-}
-
-exit 1
-'
-            powershell.exe -NoProfile -NonInteractive -Command "${cmd}" "${group}" "${user}" >/dev/null 2>&1
-            [[ "$?" == "0" ]] && return 0
-
-        fi
-
-        lower_user="$(sys::__lower "${user}")"
-        current="$(sys::uname 2>/dev/null || true)"
 
         if sys::__has net.exe; then
-
-            while IFS= read -r line || [[ -n "${line}" ]]; do
-
-                line="${line%$'\r'}"
-                [[ -n "${line}" ]] || continue
-
-                probe="$(sys::__lower "${line}")"
-                [[ "${probe}" == "${lower_user}" ]] && return 0
-                [[ "${probe##*\\}" == "${lower_user}" ]] && return 0
-
-            done < <(
-                net.exe localgroup "${group}" 2>/dev/null | tr -d '\r' | awk '
-                    BEGIN { in_members = 0 }
-                    /^-+$/ { if (!in_members) { in_members = 1; next } else { exit } }
-                    in_members {
-                        if ($0 !~ /The command completed successfully\./ && $0 !~ /^[[:space:]]*$/) {
-                            sub(/^[[:space:]]+/, "", $0)
-                            print
-                        }
-                    }
-                '
-            )
-
+            net.exe session >/dev/null 2>&1
+            return
         fi
-        if [[ -n "${current}" && "${user}" == "${current}" ]] && sys::__has whoami.exe; then
-
-            probe="$(sys::__lower "${group}")"
-
-            while IFS= read -r line || [[ -n "${line}" ]]; do
-
-                line="${line%$'\r'}"
-                [[ -n "${line}" ]] || continue
-
-                line="${line##*\\}"
-                [[ "$(sys::__lower "${line}")" == "${probe}" ]] && return 0
-
-            done < <(
-                whoami.exe /groups /fo csv /nh 2>/dev/null | tr -d '\r' | awk -F'","' '
-                    {
-                        gsub(/^"/, "", $1)
-                        gsub(/"$/, "", $1)
-                        if ($1 != "") print $1
-                    }
-                '
-            )
-
+        if sys::__has powershell.exe; then
+            cmd="[bool](([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))"
+            powershell.exe -NoProfile -NonInteractive -Command "${cmd}" 2>/dev/null | tr -d '\r' | grep -qi '^True$'
+            return
         fi
 
         return 1
 
     fi
+    if sys::__has id; then
 
-    groups="$(sys::ugroups "${user}" 2>/dev/null || true)"
-    [[ -n "${groups}" ]] || return 1
+        v="$(id -u 2>/dev/null || true)"
+        [[ "${v}" == "0" ]]
+        return
 
-    for x in ${groups}; do
-        [[ "${x}" == "${group}" ]] && return 0
-    done
+    fi
 
     return 1
+
+}
+sys::is_admin () {
+
+    sys::is_root && return 0
+    sys::is_windows && return 1
+
+    sys::ingroup sudo && return 0
+    sys::ingroup wheel && return 0
+
+    sys::ingroup admin
 
 }
