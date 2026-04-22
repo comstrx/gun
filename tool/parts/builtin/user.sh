@@ -513,10 +513,24 @@ sys::groups () {
     if sys::is_windows; then
 
         if sys::has powershell.exe; then
-            powershell.exe -NoProfile -NonInteractive -Command "Get-LocalGroup | Select-Object -ExpandProperty Name" 2>/dev/null | tr -d '\r' | awk 'NF && !seen[$0]++ { print }'
-            return
-        fi
 
+            v="$(SYS_USER_QUERY="${user}" powershell.exe -NoProfile -NonInteractive -Command '
+                $u = $env:SYS_USER_QUERY
+                Get-LocalGroup | ForEach-Object {
+                    try {
+                        $name = $_.Name
+                        $hit  = Get-LocalGroupMember -Group $name -ErrorAction Stop | Where-Object { $_.Name -match "\\$u$" }
+                        if ( $hit ) { $name }
+                    } catch {}
+                }
+            ' 2>/dev/null | tr -d '\r' | awk 'NF && !seen[$0]++ { print }' || true)"
+
+            [[ -n "${v}" ]] || return 1
+            printf '%s\n' "${v}"
+
+            return 0
+
+        fi
         if sys::has net.exe; then
             net.exe localgroup 2>/dev/null | tr -d '\r' | awk '
                 BEGIN { cap = 0 }
