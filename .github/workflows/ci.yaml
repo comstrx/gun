@@ -56,14 +56,50 @@ jobs:
           git config --global core.eol lf || true
         shell: bash
 
+      - name: Debug loaded files
+        run: |
+          pwd
+          ls -la tool/parts/builtin || true
+          echo '--- user.sh definitions ---'
+          grep -n '^sys::ugroup ()' tool/parts/builtin/user.sh || true
+          grep -n '^sys::groups ()' tool/parts/builtin/user.sh || true
+          grep -n '^sys::uexists ()' tool/parts/builtin/user.sh || true
+          echo '--- test.sh source lines ---'
+          sed -n '1,40p' tool/parts/builtin/test.sh || true
+        shell: bash
+
+      - name: Debug duplicate functions
+        run: |
+          echo '--- duplicate check ---'
+          grep -n '^sys::ugroup ()' tool/parts/builtin/user.sh || true
+          grep -n '^sys::groups ()' tool/parts/builtin/user.sh || true
+          grep -n '^sys::uexists ()' tool/parts/builtin/user.sh || true
+          grep -n '^sys::gname ()' tool/parts/builtin/user.sh || true
+        shell: bash
+
       - name: Make scripts executable
         if: runner.os != 'Windows'
         run: |
           chmod +x tool/parts/builtin/test.sh || true
         shell: bash
 
-      - name: Run builtin tests
+      - name: Debug builtin files
         run: |
+          pwd
+          ls -la tool/parts/builtin || true
+
+          echo '--- user.sh duplicate check ---'
+          grep -n '^sys::ugroup ()' tool/parts/builtin/user.sh || true
+          grep -n '^sys::groups ()' tool/parts/builtin/user.sh || true
+          grep -n '^sys::uexists ()' tool/parts/builtin/user.sh || true
+          grep -n '^sys::gname ()' tool/parts/builtin/user.sh || true
+
+          echo '--- user.sh snippets ---'
+          sed -n '/^sys::ugroup (),/^}/p' tool/parts/builtin/user.sh || true
+          sed -n '/^sys::groups (),/^}/p' tool/parts/builtin/user.sh || true
+          sed -n '/^sys::uexists (),/^}/p' tool/parts/builtin/user.sh || true
+          sed -n '/^sys::gname (),/^}/p' tool/parts/builtin/user.sh || true
+
+          echo '--- run test ---'
           "${{ matrix.bash_path }}" tool/parts/builtin/test.sh
         shell: bash
-

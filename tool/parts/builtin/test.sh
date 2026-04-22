@@ -4,6 +4,11 @@ set -Eeuo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P)/system.sh"
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P)/user.sh"
 
+declare -f sys::ugroup
+declare -f sys::groups
+declare -f sys::uexists
+declare -f sys::gname
+
 print_line () {
 
     printf '%s\n' "------------------------------------------------------------"
