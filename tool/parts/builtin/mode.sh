@@ -180,34 +180,33 @@ mode::del () {
 
 mode::read () {
 
-    local path="${1:-}" who="${2:-u}" winpath="" user="" domain_user=""
+    local path="${1:-}" who="${2:-u}" winpath="" user="" ok=1
 
     [[ -n "${path}" && -n "${who}" ]] || return 1
     [[ -e "${path}" || -L "${path}" ]] || return 1
     [[ "${who}" != *$'\n'* && "${who}" != *$'\r'* ]] || return 1
 
-    if sys::is_windows && sys::has icacls.exe; then
+    if sys::is_windows; then
 
-        winpath="${path}"
-        sys::has cygpath && winpath="$(cygpath -aw "${path}" 2>/dev/null || printf '%s' "${path}")"
+        if sys::has icacls.exe; then
 
-        user="${USERNAME:-}"
-        [[ -n "${user}" ]] || user="$(sys::uname 2>/dev/null || true)"
-        [[ -n "${user}" ]] || return 1
+            winpath="${path}"
+            sys::has cygpath && winpath="$(cygpath -aw "${path}" 2>/dev/null || printf '%s' "${path}")"
 
-        domain_user=""
-        [[ -n "${USERDOMAIN:-}" && -n "${USERNAME:-}" ]] && domain_user="${USERDOMAIN}\\${USERNAME}"
+            user="${USERNAME:-}"
+            [[ -n "${user}" ]] || user="$(sys::uname 2>/dev/null || true)"
 
-        case "${who}" in
-            *a*|*g*|*o*) icacls.exe "${winpath}" /grant "*S-1-5-32-545:(R)" >/dev/null 2>&1 || return 1 ;;
-            *)           icacls.exe "${winpath}" /grant "${user}:(R)" >/dev/null 2>&1 || {
-                             [[ -n "${domain_user}" ]] || return 1
-                             icacls.exe "${winpath}" /grant "${domain_user}:(R)" >/dev/null 2>&1 || return 1
-                         } ;;
-        esac
+            if [[ -n "${user}" ]]; then
+                case "${who}" in
+                    *a*|*g*|*o*) icacls.exe "${winpath}" /grant "*S-1-5-32-545:(R)" >/dev/null 2>&1 && ok=0 ;;
+                    *)           icacls.exe "${winpath}" /grant "${user}:(R)" >/dev/null 2>&1 && ok=0 ;;
+                esac
+            fi
 
-        sys::has chmod && chmod "${who}+r" "${path}" >/dev/null 2>&1 || true
-        return 0
+        fi
+
+        sys::has chmod && chmod "${who}+r" "${path}" >/dev/null 2>&1 && ok=0
+        return "${ok}"
 
     fi
 
@@ -217,34 +216,33 @@ mode::read () {
 }
 mode::write () {
 
-    local path="${1:-}" who="${2:-u}" winpath="" user="" domain_user=""
+    local path="${1:-}" who="${2:-u}" winpath="" user="" ok=1
 
     [[ -n "${path}" && -n "${who}" ]] || return 1
     [[ -e "${path}" || -L "${path}" ]] || return 1
     [[ "${who}" != *$'\n'* && "${who}" != *$'\r'* ]] || return 1
 
-    if sys::is_windows && sys::has icacls.exe; then
+    if sys::is_windows; then
 
-        winpath="${path}"
-        sys::has cygpath && winpath="$(cygpath -aw "${path}" 2>/dev/null || printf '%s' "${path}")"
+        if sys::has icacls.exe; then
 
-        user="${USERNAME:-}"
-        [[ -n "${user}" ]] || user="$(sys::uname 2>/dev/null || true)"
-        [[ -n "${user}" ]] || return 1
+            winpath="${path}"
+            sys::has cygpath && winpath="$(cygpath -aw "${path}" 2>/dev/null || printf '%s' "${path}")"
 
-        domain_user=""
-        [[ -n "${USERDOMAIN:-}" && -n "${USERNAME:-}" ]] && domain_user="${USERDOMAIN}\\${USERNAME}"
+            user="${USERNAME:-}"
+            [[ -n "${user}" ]] || user="$(sys::uname 2>/dev/null || true)"
 
-        case "${who}" in
-            *a*|*g*|*o*) icacls.exe "${winpath}" /grant "*S-1-5-32-545:(W)" >/dev/null 2>&1 || return 1 ;;
-            *)           icacls.exe "${winpath}" /grant "${user}:(W)" >/dev/null 2>&1 || {
-                             [[ -n "${domain_user}" ]] || return 1
-                             icacls.exe "${winpath}" /grant "${domain_user}:(W)" >/dev/null 2>&1 || return 1
-                         } ;;
-        esac
+            if [[ -n "${user}" ]]; then
+                case "${who}" in
+                    *a*|*g*|*o*) icacls.exe "${winpath}" /grant "*S-1-5-32-545:(W)" >/dev/null 2>&1 && ok=0 ;;
+                    *)           icacls.exe "${winpath}" /grant "${user}:(W)" >/dev/null 2>&1 && ok=0 ;;
+                esac
+            fi
 
-        sys::has chmod && chmod "${who}+w" "${path}" >/dev/null 2>&1 || true
-        return 0
+        fi
+
+        sys::has chmod && chmod "${who}+w" "${path}" >/dev/null 2>&1 && ok=0
+        return "${ok}"
 
     fi
 
@@ -254,34 +252,33 @@ mode::write () {
 }
 mode::exec () {
 
-    local path="${1:-}" who="${2:-u}" winpath="" user="" domain_user=""
+    local path="${1:-}" who="${2:-u}" winpath="" user="" ok=1
 
     [[ -n "${path}" && -n "${who}" ]] || return 1
     [[ -e "${path}" || -L "${path}" ]] || return 1
     [[ "${who}" != *$'\n'* && "${who}" != *$'\r'* ]] || return 1
 
-    if sys::is_windows && sys::has icacls.exe; then
+    if sys::is_windows; then
 
-        winpath="${path}"
-        sys::has cygpath && winpath="$(cygpath -aw "${path}" 2>/dev/null || printf '%s' "${path}")"
+        if sys::has icacls.exe; then
 
-        user="${USERNAME:-}"
-        [[ -n "${user}" ]] || user="$(sys::uname 2>/dev/null || true)"
-        [[ -n "${user}" ]] || return 1
+            winpath="${path}"
+            sys::has cygpath && winpath="$(cygpath -aw "${path}" 2>/dev/null || printf '%s' "${path}")"
 
-        domain_user=""
-        [[ -n "${USERDOMAIN:-}" && -n "${USERNAME:-}" ]] && domain_user="${USERDOMAIN}\\${USERNAME}"
+            user="${USERNAME:-}"
+            [[ -n "${user}" ]] || user="$(sys::uname 2>/dev/null || true)"
 
-        case "${who}" in
-            *a*|*g*|*o*) icacls.exe "${winpath}" /grant "*S-1-5-32-545:(RX)" >/dev/null 2>&1 || return 1 ;;
-            *)           icacls.exe "${winpath}" /grant "${user}:(RX)" >/dev/null 2>&1 || {
-                             [[ -n "${domain_user}" ]] || return 1
-                             icacls.exe "${winpath}" /grant "${domain_user}:(RX)" >/dev/null 2>&1 || return 1
-                         } ;;
-        esac
+            if [[ -n "${user}" ]]; then
+                case "${who}" in
+                    *a*|*g*|*o*) icacls.exe "${winpath}" /grant "*S-1-5-32-545:(RX)" >/dev/null 2>&1 && ok=0 ;;
+                    *)           icacls.exe "${winpath}" /grant "${user}:(RX)" >/dev/null 2>&1 && ok=0 ;;
+                esac
+            fi
 
-        sys::has chmod && chmod "${who}+x" "${path}" >/dev/null 2>&1 || true
-        return 0
+        fi
+
+        sys::has chmod && chmod "${who}+x" "${path}" >/dev/null 2>&1 && ok=0
+        return "${ok}"
 
     fi
 
@@ -403,34 +400,33 @@ mode::public () {
 }
 mode::lock () {
 
-    local path="${1:-}" who="${2:-u}" winpath="" user="" domain_user=""
+    local path="${1:-}" who="${2:-u}" winpath="" user="" ok=1
 
     [[ -n "${path}" && -n "${who}" ]] || return 1
     [[ -e "${path}" || -L "${path}" ]] || return 1
     [[ "${who}" != *$'\n'* && "${who}" != *$'\r'* ]] || return 1
 
-    if sys::is_windows && sys::has icacls.exe; then
+    if sys::is_windows; then
 
-        winpath="${path}"
-        sys::has cygpath && winpath="$(cygpath -aw "${path}" 2>/dev/null || printf '%s' "${path}")"
+        if sys::has icacls.exe; then
 
-        user="${USERNAME:-}"
-        [[ -n "${user}" ]] || user="$(sys::uname 2>/dev/null || true)"
-        [[ -n "${user}" ]] || return 1
+            winpath="${path}"
+            sys::has cygpath && winpath="$(cygpath -aw "${path}" 2>/dev/null || printf '%s' "${path}")"
 
-        domain_user=""
-        [[ -n "${USERDOMAIN:-}" && -n "${USERNAME:-}" ]] && domain_user="${USERDOMAIN}\\${USERNAME}"
+            user="${USERNAME:-}"
+            [[ -n "${user}" ]] || user="$(sys::uname 2>/dev/null || true)"
 
-        case "${who}" in
-            *a*|*g*|*o*) icacls.exe "${winpath}" /deny "*S-1-5-32-545:(W)" >/dev/null 2>&1 || return 1 ;;
-            *)           icacls.exe "${winpath}" /deny "${user}:(W)" >/dev/null 2>&1 || {
-                             [[ -n "${domain_user}" ]] || return 1
-                             icacls.exe "${winpath}" /deny "${domain_user}:(W)" >/dev/null 2>&1 || return 1
-                         } ;;
-        esac
+            if [[ -n "${user}" ]]; then
+                case "${who}" in
+                    *a*|*g*|*o*) icacls.exe "${winpath}" /deny "*S-1-5-32-545:(W)" >/dev/null 2>&1 && ok=0 ;;
+                    *)           icacls.exe "${winpath}" /deny "${user}:(W)" >/dev/null 2>&1 && ok=0 ;;
+                esac
+            fi
 
-        sys::has chmod && chmod "${who}-w" "${path}" >/dev/null 2>&1 || true
-        return 0
+        fi
+
+        sys::has chmod && chmod "${who}-w" "${path}" >/dev/null 2>&1 && ok=0
+        return "${ok}"
 
     fi
 
@@ -440,41 +436,39 @@ mode::lock () {
 }
 mode::unlock () {
 
-    local path="${1:-}" who="${2:-u}" winpath="" user="" domain_user=""
+    local path="${1:-}" who="${2:-u}" winpath="" user="" ok=1
 
     [[ -n "${path}" && -n "${who}" ]] || return 1
     [[ -e "${path}" || -L "${path}" ]] || return 1
     [[ "${who}" != *$'\n'* && "${who}" != *$'\r'* ]] || return 1
 
-    if sys::is_windows && sys::has icacls.exe; then
+    if sys::is_windows; then
 
-        winpath="${path}"
-        sys::has cygpath && winpath="$(cygpath -aw "${path}" 2>/dev/null || printf '%s' "${path}")"
+        if sys::has icacls.exe; then
 
-        user="${USERNAME:-}"
-        [[ -n "${user}" ]] || user="$(sys::uname 2>/dev/null || true)"
-        [[ -n "${user}" ]] || return 1
+            winpath="${path}"
+            sys::has cygpath && winpath="$(cygpath -aw "${path}" 2>/dev/null || printf '%s' "${path}")"
 
-        domain_user=""
-        [[ -n "${USERDOMAIN:-}" && -n "${USERNAME:-}" ]] && domain_user="${USERDOMAIN}\\${USERNAME}"
+            user="${USERNAME:-}"
+            [[ -n "${user}" ]] || user="$(sys::uname 2>/dev/null || true)"
 
-        case "${who}" in
-            *a*|*g*|*o*)
-                icacls.exe "${winpath}" /remove:d "*S-1-5-32-545" >/dev/null 2>&1 || true
-                icacls.exe "${winpath}" /grant "*S-1-5-32-545:(W)" >/dev/null 2>&1 || return 1
-            ;;
-            *)
-                icacls.exe "${winpath}" /remove:d "${user}" >/dev/null 2>&1 || true
-                [[ -n "${domain_user}" ]] && icacls.exe "${winpath}" /remove:d "${domain_user}" >/dev/null 2>&1 || true
-                icacls.exe "${winpath}" /grant "${user}:(W)" >/dev/null 2>&1 || {
-                    [[ -n "${domain_user}" ]] || return 1
-                    icacls.exe "${winpath}" /grant "${domain_user}:(W)" >/dev/null 2>&1 || return 1
-                }
-            ;;
-        esac
+            if [[ -n "${user}" ]]; then
+                case "${who}" in
+                    *a*|*g*|*o*)
+                        icacls.exe "${winpath}" /remove:d "*S-1-5-32-545" >/dev/null 2>&1 || true
+                        icacls.exe "${winpath}" /grant "*S-1-5-32-545:(W)" >/dev/null 2>&1 && ok=0
+                    ;;
+                    *)
+                        icacls.exe "${winpath}" /remove:d "${user}" >/dev/null 2>&1 || true
+                        icacls.exe "${winpath}" /grant "${user}:(W)" >/dev/null 2>&1 && ok=0
+                    ;;
+                esac
+            fi
 
-        sys::has chmod && chmod "${who}+w" "${path}" >/dev/null 2>&1 || true
-        return 0
+        fi
+
+        sys::has chmod && chmod "${who}+w" "${path}" >/dev/null 2>&1 && ok=0
+        return "${ok}"
 
     fi
 
