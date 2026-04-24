@@ -1,7 +1,7 @@
 
 mode::get () {
 
-    local path="${1:-}" winpath="" out="" user="" owner="" other="" v=""
+    local path="${1:-}" winpath="" out="" user="" domain_user="" owner="" other="" v=""
 
     [[ -n "${path}" ]] || return 1
     [[ -e "${path}" || -L "${path}" ]] || return 1
@@ -14,6 +14,9 @@ mode::get () {
         user="${USERNAME:-}"
         [[ -n "${user}" ]] || user="$(sys::uname 2>/dev/null || true)"
 
+        domain_user=""
+        [[ -n "${USERDOMAIN:-}" && -n "${USERNAME:-}" ]] && domain_user="${USERDOMAIN}\\${USERNAME}"
+
         out="$(icacls.exe "${winpath}" 2>/dev/null | tr -d '\r' || true)"
 
         if [[ -n "${out}" && -n "${user}" ]]; then
@@ -21,16 +24,16 @@ mode::get () {
             owner=0
             other=0
 
-            if printf '%s\n' "${out}" | grep -Ei "\\\\?${user}:.*\(F\)" >/dev/null 2>&1; then owner=7
-            elif printf '%s\n' "${out}" | grep -Ei "\\\\?${user}:.*\(RX\)" >/dev/null 2>&1; then owner=5
-            elif printf '%s\n' "${out}" | grep -Ei "\\\\?${user}:.*\(R,W\)|\\\\?${user}:.*\(W,R\)|\\\\?${user}:.*\(M\)" >/dev/null 2>&1; then owner=6
-            elif printf '%s\n' "${out}" | grep -Ei "\\\\?${user}:.*\(R\)" >/dev/null 2>&1; then owner=4
+            if printf '%s\n' "${out}" | grep -Ei "(\\\\?${user}|${domain_user}):.*\(F\)" >/dev/null 2>&1; then owner=7
+            elif printf '%s\n' "${out}" | grep -Ei "(\\\\?${user}|${domain_user}):.*\(RX\)" >/dev/null 2>&1; then owner=5
+            elif printf '%s\n' "${out}" | grep -Ei "(\\\\?${user}|${domain_user}):.*\(R,W\)|(\\\\?${user}|${domain_user}):.*\(W,R\)|(\\\\?${user}|${domain_user}):.*\(M\)" >/dev/null 2>&1; then owner=6
+            elif printf '%s\n' "${out}" | grep -Ei "(\\\\?${user}|${domain_user}):.*\(R\)" >/dev/null 2>&1; then owner=4
             fi
 
-            if printf '%s\n' "${out}" | grep -Ei "(Users|Everyone|Authenticated Users):.*\(F\)" >/dev/null 2>&1; then other=7
-            elif printf '%s\n' "${out}" | grep -Ei "(Users|Everyone|Authenticated Users):.*\(RX\)" >/dev/null 2>&1; then other=5
-            elif printf '%s\n' "${out}" | grep -Ei "(Users|Everyone|Authenticated Users):.*\(R,W\)|(Users|Everyone|Authenticated Users):.*\(W,R\)|(Users|Everyone|Authenticated Users):.*\(M\)" >/dev/null 2>&1; then other=6
-            elif printf '%s\n' "${out}" | grep -Ei "(Users|Everyone|Authenticated Users):.*\(R\)" >/dev/null 2>&1; then other=4
+            if printf '%s\n' "${out}" | grep -Ei "(Users|Everyone|Authenticated Users|S-1-5-32-545):.*\(F\)" >/dev/null 2>&1; then other=7
+            elif printf '%s\n' "${out}" | grep -Ei "(Users|Everyone|Authenticated Users|S-1-5-32-545):.*\(RX\)" >/dev/null 2>&1; then other=5
+            elif printf '%s\n' "${out}" | grep -Ei "(Users|Everyone|Authenticated Users|S-1-5-32-545):.*\(R,W\)|(Users|Everyone|Authenticated Users|S-1-5-32-545):.*\(W,R\)|(Users|Everyone|Authenticated Users|S-1-5-32-545):.*\(M\)" >/dev/null 2>&1; then other=6
+            elif printf '%s\n' "${out}" | grep -Ei "(Users|Everyone|Authenticated Users|S-1-5-32-545):.*\(R\)" >/dev/null 2>&1; then other=4
             fi
 
             if (( owner > 0 )); then
@@ -55,7 +58,7 @@ mode::get () {
 }
 mode::set () {
 
-    local path="${1:-}" mode="${2:-}" winpath="" user=""
+    local path="${1:-}" mode="${2:-}" winpath="" user="" domain_user=""
 
     [[ -n "${path}" && -n "${mode}" ]] || return 1
     [[ -e "${path}" || -L "${path}" ]] || return 1
@@ -70,19 +73,28 @@ mode::set () {
         [[ -n "${user}" ]] || user="$(sys::uname 2>/dev/null || true)"
         [[ -n "${user}" ]] || return 1
 
+        domain_user=""
+        [[ -n "${USERDOMAIN:-}" && -n "${USERNAME:-}" ]] && domain_user="${USERDOMAIN}\\${USERNAME}"
+
         case "${mode}" in
 
             600)
                 icacls.exe "${winpath}" /inheritance:r >/dev/null 2>&1 || return 1
                 icacls.exe "${winpath}" /remove:g "*S-1-1-0" "*S-1-5-11" "*S-1-5-32-545" >/dev/null 2>&1 || true
-                icacls.exe "${winpath}" /grant:r "${user}:(R,W)" "*S-1-5-18:(F)" "*S-1-5-32-544:(F)" >/dev/null 2>&1 || return 1
+                icacls.exe "${winpath}" /grant:r "${user}:(R,W)" "*S-1-5-18:(F)" "*S-1-5-32-544:(F)" >/dev/null 2>&1 || {
+                    [[ -n "${domain_user}" ]] || return 1
+                    icacls.exe "${winpath}" /grant:r "${domain_user}:(R,W)" "*S-1-5-18:(F)" "*S-1-5-32-544:(F)" >/dev/null 2>&1 || return 1
+                }
                 sys::has chmod && chmod 600 "${path}" >/dev/null 2>&1 || true
                 return 0
             ;;
 
             644)
                 icacls.exe "${winpath}" /inheritance:e >/dev/null 2>&1 || true
-                icacls.exe "${winpath}" /grant:r "${user}:(R,W)" "*S-1-5-32-545:(R)" >/dev/null 2>&1 || return 1
+                icacls.exe "${winpath}" /grant:r "${user}:(R,W)" "*S-1-5-32-545:(R)" >/dev/null 2>&1 || {
+                    [[ -n "${domain_user}" ]] || return 1
+                    icacls.exe "${winpath}" /grant:r "${domain_user}:(R,W)" "*S-1-5-32-545:(R)" >/dev/null 2>&1 || return 1
+                }
                 sys::has chmod && chmod 644 "${path}" >/dev/null 2>&1 || true
                 return 0
             ;;
@@ -90,14 +102,20 @@ mode::set () {
             700)
                 icacls.exe "${winpath}" /inheritance:r >/dev/null 2>&1 || return 1
                 icacls.exe "${winpath}" /remove:g "*S-1-1-0" "*S-1-5-11" "*S-1-5-32-545" >/dev/null 2>&1 || true
-                icacls.exe "${winpath}" /grant:r "${user}:(F)" "*S-1-5-18:(F)" "*S-1-5-32-544:(F)" >/dev/null 2>&1 || return 1
+                icacls.exe "${winpath}" /grant:r "${user}:(F)" "*S-1-5-18:(F)" "*S-1-5-32-544:(F)" >/dev/null 2>&1 || {
+                    [[ -n "${domain_user}" ]] || return 1
+                    icacls.exe "${winpath}" /grant:r "${domain_user}:(F)" "*S-1-5-18:(F)" "*S-1-5-32-544:(F)" >/dev/null 2>&1 || return 1
+                }
                 sys::has chmod && chmod 700 "${path}" >/dev/null 2>&1 || true
                 return 0
             ;;
 
             755)
                 icacls.exe "${winpath}" /inheritance:e >/dev/null 2>&1 || true
-                icacls.exe "${winpath}" /grant:r "${user}:(F)" "*S-1-5-32-545:(RX)" >/dev/null 2>&1 || return 1
+                icacls.exe "${winpath}" /grant:r "${user}:(F)" "*S-1-5-32-545:(RX)" >/dev/null 2>&1 || {
+                    [[ -n "${domain_user}" ]] || return 1
+                    icacls.exe "${winpath}" /grant:r "${domain_user}:(F)" "*S-1-5-32-545:(RX)" >/dev/null 2>&1 || return 1
+                }
                 sys::has chmod && chmod 755 "${path}" >/dev/null 2>&1 || true
                 return 0
             ;;
@@ -123,6 +141,14 @@ mode::add () {
         [[ "${mode}" == *r* ]] && mode::read  "${path}" u
         [[ "${mode}" == *w* ]] && mode::write "${path}" u
         [[ "${mode}" == *x* ]] && mode::exec  "${path}" u
+
+        sys::has chmod && {
+            case "${mode}" in
+                +*) chmod "${mode}" "${path}" >/dev/null 2>&1 || true ;;
+                *)  chmod "+${mode}" "${path}" >/dev/null 2>&1 || true ;;
+            esac
+        }
+
         return 0
 
     fi
@@ -154,7 +180,7 @@ mode::del () {
 
 mode::read () {
 
-    local path="${1:-}" who="${2:-u}" winpath="" user=""
+    local path="${1:-}" who="${2:-u}" winpath="" user="" domain_user=""
 
     [[ -n "${path}" && -n "${who}" ]] || return 1
     [[ -e "${path}" || -L "${path}" ]] || return 1
@@ -165,13 +191,19 @@ mode::read () {
         winpath="${path}"
         sys::has cygpath && winpath="$(cygpath -aw "${path}" 2>/dev/null || printf '%s' "${path}")"
 
-        user="${USERDOMAIN:-}\\${USERNAME:-}"
-        [[ "${user}" != "\\" ]] || user="$(sys::uname 2>/dev/null || true)"
+        user="${USERNAME:-}"
+        [[ -n "${user}" ]] || user="$(sys::uname 2>/dev/null || true)"
         [[ -n "${user}" ]] || return 1
 
+        domain_user=""
+        [[ -n "${USERDOMAIN:-}" && -n "${USERNAME:-}" ]] && domain_user="${USERDOMAIN}\\${USERNAME}"
+
         case "${who}" in
-            *a*|*g*|*o*) icacls.exe "${winpath}" /grant "*S-1-5-32-545:R" >/dev/null 2>&1 || return 1 ;;
-            *)           icacls.exe "${winpath}" /grant "${user}:R" >/dev/null 2>&1 || return 1 ;;
+            *a*|*g*|*o*) icacls.exe "${winpath}" /grant "*S-1-5-32-545:(R)" >/dev/null 2>&1 || return 1 ;;
+            *)           icacls.exe "${winpath}" /grant "${user}:(R)" >/dev/null 2>&1 || {
+                             [[ -n "${domain_user}" ]] || return 1
+                             icacls.exe "${winpath}" /grant "${domain_user}:(R)" >/dev/null 2>&1 || return 1
+                         } ;;
         esac
 
         sys::has chmod && chmod "${who}+r" "${path}" >/dev/null 2>&1 || true
@@ -185,7 +217,7 @@ mode::read () {
 }
 mode::write () {
 
-    local path="${1:-}" who="${2:-u}" winpath="" user=""
+    local path="${1:-}" who="${2:-u}" winpath="" user="" domain_user=""
 
     [[ -n "${path}" && -n "${who}" ]] || return 1
     [[ -e "${path}" || -L "${path}" ]] || return 1
@@ -196,13 +228,19 @@ mode::write () {
         winpath="${path}"
         sys::has cygpath && winpath="$(cygpath -aw "${path}" 2>/dev/null || printf '%s' "${path}")"
 
-        user="${USERDOMAIN:-}\\${USERNAME:-}"
-        [[ "${user}" != "\\" ]] || user="$(sys::uname 2>/dev/null || true)"
+        user="${USERNAME:-}"
+        [[ -n "${user}" ]] || user="$(sys::uname 2>/dev/null || true)"
         [[ -n "${user}" ]] || return 1
 
+        domain_user=""
+        [[ -n "${USERDOMAIN:-}" && -n "${USERNAME:-}" ]] && domain_user="${USERDOMAIN}\\${USERNAME}"
+
         case "${who}" in
-            *a*|*g*|*o*) icacls.exe "${winpath}" /grant "*S-1-5-32-545:W" >/dev/null 2>&1 || return 1 ;;
-            *)           icacls.exe "${winpath}" /grant "${user}:W" >/dev/null 2>&1 || return 1 ;;
+            *a*|*g*|*o*) icacls.exe "${winpath}" /grant "*S-1-5-32-545:(W)" >/dev/null 2>&1 || return 1 ;;
+            *)           icacls.exe "${winpath}" /grant "${user}:(W)" >/dev/null 2>&1 || {
+                             [[ -n "${domain_user}" ]] || return 1
+                             icacls.exe "${winpath}" /grant "${domain_user}:(W)" >/dev/null 2>&1 || return 1
+                         } ;;
         esac
 
         sys::has chmod && chmod "${who}+w" "${path}" >/dev/null 2>&1 || true
@@ -216,7 +254,7 @@ mode::write () {
 }
 mode::exec () {
 
-    local path="${1:-}" who="${2:-u}" winpath="" user=""
+    local path="${1:-}" who="${2:-u}" winpath="" user="" domain_user=""
 
     [[ -n "${path}" && -n "${who}" ]] || return 1
     [[ -e "${path}" || -L "${path}" ]] || return 1
@@ -227,13 +265,19 @@ mode::exec () {
         winpath="${path}"
         sys::has cygpath && winpath="$(cygpath -aw "${path}" 2>/dev/null || printf '%s' "${path}")"
 
-        user="${USERDOMAIN:-}\\${USERNAME:-}"
-        [[ "${user}" != "\\" ]] || user="$(sys::uname 2>/dev/null || true)"
+        user="${USERNAME:-}"
+        [[ -n "${user}" ]] || user="$(sys::uname 2>/dev/null || true)"
         [[ -n "${user}" ]] || return 1
 
+        domain_user=""
+        [[ -n "${USERDOMAIN:-}" && -n "${USERNAME:-}" ]] && domain_user="${USERDOMAIN}\\${USERNAME}"
+
         case "${who}" in
-            *a*|*g*|*o*) icacls.exe "${winpath}" /grant "*S-1-5-32-545:RX" >/dev/null 2>&1 || return 1 ;;
-            *)           icacls.exe "${winpath}" /grant "${user}:RX" >/dev/null 2>&1 || return 1 ;;
+            *a*|*g*|*o*) icacls.exe "${winpath}" /grant "*S-1-5-32-545:(RX)" >/dev/null 2>&1 || return 1 ;;
+            *)           icacls.exe "${winpath}" /grant "${user}:(RX)" >/dev/null 2>&1 || {
+                             [[ -n "${domain_user}" ]] || return 1
+                             icacls.exe "${winpath}" /grant "${domain_user}:(RX)" >/dev/null 2>&1 || return 1
+                         } ;;
         esac
 
         sys::has chmod && chmod "${who}+x" "${path}" >/dev/null 2>&1 || true
@@ -299,7 +343,7 @@ mode::group () {
             winpath="${path}"
             sys::has cygpath && winpath="$(cygpath -aw "${path}" 2>/dev/null || printf '%s' "${path}")"
 
-            icacls.exe "${winpath}" /grant "${group}:RX" >/dev/null 2>&1 || return 1
+            icacls.exe "${winpath}" /grant "${group}:(RX)" >/dev/null 2>&1 || return 1
             return 0
 
         fi
@@ -359,7 +403,7 @@ mode::public () {
 }
 mode::lock () {
 
-    local path="${1:-}" who="${2:-u}" winpath="" user=""
+    local path="${1:-}" who="${2:-u}" winpath="" user="" domain_user=""
 
     [[ -n "${path}" && -n "${who}" ]] || return 1
     [[ -e "${path}" || -L "${path}" ]] || return 1
@@ -370,13 +414,19 @@ mode::lock () {
         winpath="${path}"
         sys::has cygpath && winpath="$(cygpath -aw "${path}" 2>/dev/null || printf '%s' "${path}")"
 
-        user="${USERDOMAIN:-}\\${USERNAME:-}"
-        [[ "${user}" != "\\" ]] || user="$(sys::uname 2>/dev/null || true)"
+        user="${USERNAME:-}"
+        [[ -n "${user}" ]] || user="$(sys::uname 2>/dev/null || true)"
         [[ -n "${user}" ]] || return 1
 
+        domain_user=""
+        [[ -n "${USERDOMAIN:-}" && -n "${USERNAME:-}" ]] && domain_user="${USERDOMAIN}\\${USERNAME}"
+
         case "${who}" in
-            *a*|*g*|*o*) icacls.exe "${winpath}" /deny "*S-1-5-32-545:W" >/dev/null 2>&1 || return 1 ;;
-            *)           icacls.exe "${winpath}" /deny "${user}:W" >/dev/null 2>&1 || return 1 ;;
+            *a*|*g*|*o*) icacls.exe "${winpath}" /deny "*S-1-5-32-545:(W)" >/dev/null 2>&1 || return 1 ;;
+            *)           icacls.exe "${winpath}" /deny "${user}:(W)" >/dev/null 2>&1 || {
+                             [[ -n "${domain_user}" ]] || return 1
+                             icacls.exe "${winpath}" /deny "${domain_user}:(W)" >/dev/null 2>&1 || return 1
+                         } ;;
         esac
 
         sys::has chmod && chmod "${who}-w" "${path}" >/dev/null 2>&1 || true
@@ -390,7 +440,7 @@ mode::lock () {
 }
 mode::unlock () {
 
-    local path="${1:-}" who="${2:-u}" winpath="" user=""
+    local path="${1:-}" who="${2:-u}" winpath="" user="" domain_user=""
 
     [[ -n "${path}" && -n "${who}" ]] || return 1
     [[ -e "${path}" || -L "${path}" ]] || return 1
@@ -401,18 +451,25 @@ mode::unlock () {
         winpath="${path}"
         sys::has cygpath && winpath="$(cygpath -aw "${path}" 2>/dev/null || printf '%s' "${path}")"
 
-        user="${USERDOMAIN:-}\\${USERNAME:-}"
-        [[ "${user}" != "\\" ]] || user="$(sys::uname 2>/dev/null || true)"
+        user="${USERNAME:-}"
+        [[ -n "${user}" ]] || user="$(sys::uname 2>/dev/null || true)"
         [[ -n "${user}" ]] || return 1
+
+        domain_user=""
+        [[ -n "${USERDOMAIN:-}" && -n "${USERNAME:-}" ]] && domain_user="${USERDOMAIN}\\${USERNAME}"
 
         case "${who}" in
             *a*|*g*|*o*)
                 icacls.exe "${winpath}" /remove:d "*S-1-5-32-545" >/dev/null 2>&1 || true
-                icacls.exe "${winpath}" /grant "*S-1-5-32-545:W" >/dev/null 2>&1 || return 1
+                icacls.exe "${winpath}" /grant "*S-1-5-32-545:(W)" >/dev/null 2>&1 || return 1
             ;;
             *)
                 icacls.exe "${winpath}" /remove:d "${user}" >/dev/null 2>&1 || true
-                icacls.exe "${winpath}" /grant "${user}:W" >/dev/null 2>&1 || return 1
+                [[ -n "${domain_user}" ]] && icacls.exe "${winpath}" /remove:d "${domain_user}" >/dev/null 2>&1 || true
+                icacls.exe "${winpath}" /grant "${user}:(W)" >/dev/null 2>&1 || {
+                    [[ -n "${domain_user}" ]] || return 1
+                    icacls.exe "${winpath}" /grant "${domain_user}:(W)" >/dev/null 2>&1 || return 1
+                }
             ;;
         esac
 
