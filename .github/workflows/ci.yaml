@@ -47,7 +47,7 @@ jobs:
           chmod +x tool/parts/builtin/test.sh || true
         shell: bash
 
-      - name: Debug builtin files
+      - name: Run builtin test
         run: |
           "${{ matrix.bash_path }}" tool/parts/builtin/test.sh
         shell: bash

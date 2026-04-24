@@ -47,7 +47,7 @@ force="0"
 refresh="1"
 
 case "${manager}" in
-    apt)     bin="sl";     package="sl" ;;
+    apt)     bin="figlet"; package="figlet" ;;
     apk)     bin="figlet"; package="figlet" ;;
     dnf)     bin="figlet"; package="figlet" ;;
     yum)     bin="figlet"; package="figlet" ;;
@@ -128,7 +128,7 @@ if ! proc::has "${bin}"; then
     fi
 
     case "${bin}" in
-        sl)     run_case "proc::run_ok ${bin}" proc::run_ok "${bin}" ;;
+        sl)     skip_case "proc::run_ok ${bin} interactive tool" ;;
         figlet) run_case "proc::run_ok ${bin}" proc::run_ok "${bin}" "OK" ;;
         jq)     run_case "proc::run_ok ${bin}" proc::run_ok "${bin}" --version ;;
         *)      run_case "proc::run_ok ${bin}" proc::run_ok "${bin}" --version ;;
