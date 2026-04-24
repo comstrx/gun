@@ -158,14 +158,6 @@ env::get () {
     fi
 
 }
-env::set () {
-
-    local key="${1:-}" value="${2-}"
-
-    env::valid "${key}" || return 1
-    export "${key}=${value}"
-
-}
 env::unset () {
 
     local key="${1:-}"
@@ -174,13 +166,20 @@ env::unset () {
     unset "${key}"
 
 }
+env::set () {
+
+    local key="${1:-}" value="${2-}"
+
+    env::valid "${key}" || return 1
+    export "${key}=${value}"
+
+}
 env::set_once () {
 
     local key="${1:-}" value="${2-}"
 
     env::valid "${key}" || return 1
     env::has "${key}" && return 0
-
     env::set "${key}" "${value}"
 
 }
@@ -191,13 +190,18 @@ env::get_all () {
 
     (( $# > 0 )) || return 1
 
-    for key in "$@"; do
-        env::valid "${key}" || return 1
-    done
+    for key in "$@"; do env::valid "${key}" || return 1; done
+    for key in "$@"; do printf '%s=%s\n' "${key}" "${!key-}"; done
 
-    for key in "$@"; do
-        printf '%s=%s\n' "${key}" "${!key-}"
-    done
+}
+env::unset_all () {
+
+    local key=""
+
+    (( $# > 0 )) || return 1
+
+    for key in "$@"; do env::valid "${key}" || return 1; done
+    for key in "$@"; do env::unset "${key}" || return 1; done
 
 }
 env::set_all () {
@@ -207,30 +211,21 @@ env::set_all () {
     (( $# > 0 )) || return 1
 
     for pair in "$@"; do
+
         [[ "${pair}" == *=* ]] || return 1
         key="${pair%%=*}"
+
         env::valid "${key}" || return 1
+
     done
 
     for pair in "$@"; do
+
         key="${pair%%=*}"
         value="${pair#*=}"
+
         env::set "${key}" "${value}" || return 1
-    done
 
-}
-env::unset_all () {
-
-    local key=""
-
-    (( $# > 0 )) || return 1
-
-    for key in "$@"; do
-        env::valid "${key}" || return 1
-    done
-
-    for key in "$@"; do
-        env::unset "${key}" || return 1
     done
 
 }
@@ -241,9 +236,12 @@ env::set_all_once () {
     (( $# > 0 )) || return 1
 
     for pair in "$@"; do
+
         [[ "${pair}" == *=* ]] || return 1
         key="${pair%%=*}"
+
         env::valid "${key}" || return 1
+
     done
 
     for pair in "$@"; do
@@ -318,6 +316,7 @@ env::list_ref () {
 
     [[ -n "${name}" ]] || return 1
 
+    # shellcheck disable=SC2178
     local -n __std_env_ref__="${name}"
     __std_env_ref__=()
 
@@ -335,6 +334,7 @@ env::keys_ref () {
 
     [[ -n "${name}" ]] || return 1
 
+    # shellcheck disable=SC2178
     local -n __std_env_ref__="${name}"
     __std_env_ref__=()
 
@@ -352,6 +352,7 @@ env::values_ref () {
 
     [[ -n "${name}" ]] || return 1
 
+    # shellcheck disable=SC2178
     local -n __std_env_ref__="${name}"
     __std_env_ref__=()
 
@@ -428,7 +429,6 @@ env::path_del () {
 
     current="${!key-}"
     sep="$(env::path_sep "${current}")"
-
     IFS="${sep}" read -r -a __env_parts__ <<< "${current}"
 
     for part in "${__env_parts__[@]}"; do
