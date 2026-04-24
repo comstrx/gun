@@ -1,5 +1,4 @@
 
-
 proc::has () {
 
     command -v "${1:-}" >/dev/null 2>&1
@@ -458,6 +457,7 @@ proc::version () {
 
                     tail="${tail#[.+-]}"
                     tail="$(printf '%s\n' "${tail}" | sed -E 's/[.+-]+/./g; s/^\.+//; s/\.+$//')"
+
                     [[ -n "${tail}" ]] && v="${v}-${tail}"
 
                 fi
