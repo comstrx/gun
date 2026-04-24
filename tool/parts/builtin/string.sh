@@ -1,4 +1,22 @@
 
+str::len () {
+
+    local s="${1-}"
+    printf '%s' "${#s}"
+
+}
+str::lower () {
+
+    local s="${1-}"
+    printf '%s' "${s,,}"
+
+}
+str::upper () {
+
+    local s="${1-}"
+    printf '%s' "${s^^}"
+
+}
 str::ltrim () {
 
     local s="${1-}"
@@ -21,6 +39,16 @@ str::trim () {
 
     s="${s#"${s%%[![:space:]]*}"}"
     s="${s%"${s##*[![:space:]]}"}"
+
+    printf '%s' "${s}"
+
+}
+str::chomp () {
+
+    local s="${1-}"
+
+    s="${s%$'\n'}"
+    s="${s%$'\r'}"
 
     printf '%s' "${s}"
 
@@ -51,9 +79,10 @@ str::slice () {
     if [[ -n "${count}" ]]; then
         [[ "${count}" =~ ^[0-9]+$ ]] || return 1
         printf '%s' "${s:${start}:${count}}"
-    else
-        printf '%s' "${s:${start}}"
+        return 0
     fi
+
+    printf '%s' "${s:${start}}"
 
 }
 str::reverse () {
@@ -86,7 +115,7 @@ str::truncate () {
 }
 str::normalize () {
 
-    local s="${1-}" sep="${2:-}" out="" x="" i=0 prev_sep=1
+    local s="${1-}" sep="${2:- }" out="" x="" i=0 prev=1
 
     sep="${sep:0:1}"
     [[ -n "${sep}" ]] || sep=' '
@@ -96,23 +125,18 @@ str::normalize () {
         x="${s:i:1}"
 
         if [[ "${x}" =~ [[:space:]] ]]; then
-
-            (( prev_sep )) && continue
-
+            (( prev )) && continue
             out+="${sep}"
-            prev_sep=1
+            prev=1
             continue
-
         fi
 
         out+="${x}"
-        prev_sep=0
+        prev=0
 
     done
 
-    [[ "${out}" == "${sep}"* ]] && out="${out#"${sep}"}"
     [[ "${out}" == *"${sep}" ]] && out="${out%"${sep}"}"
-
     printf '%s' "${out}"
 
 }
@@ -175,7 +199,7 @@ str::join_by () {
             out="${x}"
             first=0
         else
-            out="${out}${sep}${x}"
+            out+="${sep}${x}"
         fi
 
     done
@@ -191,11 +215,9 @@ str::wrap () {
     printf '%s%s%s' "${left}" "${s}" "${right}"
 
 }
+str::quote () {
 
-str::len () {
-
-    local s="${1-}"
-    printf '%s' "${#s}"
+    printf '%q' "${1-}"
 
 }
 str::index () {
@@ -219,7 +241,7 @@ str::index () {
 str::index_ci () {
 
     local s="${1-}" part="${2-}"
-    str::index "$(str::lower "${s}")" "$(str::lower "${part}")"
+    str::index "${s,,}" "${part,,}"
 
 }
 str::last_index () {
@@ -241,7 +263,7 @@ str::last_index () {
 str::last_index_ci () {
 
     local s="${1-}" part="${2-}"
-    str::last_index "$(str::lower "${s}")" "$(str::lower "${part}")"
+    str::last_index "${s,,}" "${part,,}"
 
 }
 str::find () {
@@ -252,6 +274,71 @@ str::find () {
 str::find_ci () {
 
     str::index_ci "$@"
+
+}
+str::contains () {
+
+    local s="${1-}" part="${2-}"
+
+    [[ -n "${part}" ]] || return 1
+    [[ "${s}" == *"${part}"* ]]
+
+}
+str::contains_ci () {
+
+    local s="${1-}" part="${2-}"
+
+    [[ -n "${part}" ]] || return 1
+    [[ "${s,,}" == *"${part,,}"* ]]
+
+}
+str::starts_with () {
+
+    local s="${1-}" prefix="${2-}"
+
+    [[ -n "${prefix}" ]] || return 1
+    [[ "${s:0:${#prefix}}" == "${prefix}" ]]
+
+}
+str::starts_with_ci () {
+
+    local s="${1-}" prefix="${2-}"
+
+    [[ -n "${prefix}" ]] || return 1
+    [[ "${s:0:${#prefix},,}" == "${prefix,,}" ]]
+
+}
+str::ends_with () {
+
+    local s="${1-}" suffix="${2-}" start=0
+
+    [[ -n "${suffix}" ]] || return 1
+    (( ${#s} >= ${#suffix} )) || return 1
+
+    start=$(( ${#s} - ${#suffix} ))
+    [[ "${s:${start}}" == "${suffix}" ]]
+
+}
+str::ends_with_ci () {
+
+    local s="${1-}" suffix="${2-}" start=0
+
+    [[ -n "${suffix}" ]] || return 1
+    (( ${#s} >= ${#suffix} )) || return 1
+
+    start=$(( ${#s} - ${#suffix} ))
+    [[ "${s:${start},,}" == "${suffix,,}" ]]
+
+}
+str::equals () {
+
+    [[ "${1-}" == "${2-}" ]]
+
+}
+str::equals_ci () {
+
+    local a="${1-}" b="${2-}"
+    [[ "${a,,}" == "${b,,}" ]]
 
 }
 str::count () {
@@ -281,7 +368,6 @@ str::lines_count () {
     printf '%s' "$(( n + 1 ))"
 
 }
-
 str::first_char () {
 
     local s="${1-}"
@@ -356,29 +442,18 @@ str::between_last () {
 }
 str::replace () {
 
-    local s="${1-}" from="${2-}" to="${3-}" rest="" out="" pos="" len=0
+    local s="${1-}" from="${2-}" to="${3-}"
 
     [[ -n "${from}" ]] || { printf '%s' "${s}"; return 0; }
-
-    rest="${s}"
-    len="${#from}"
-
-    while pos="$(str::index "${rest}" "${from}")"; do
-        out+="${rest:0:pos}${to}"
-        rest="${rest:$(( pos + len ))}"
-    done
-
-    printf '%s%s' "${out}" "${rest}"
+    printf '%s' "${s//"${from}"/${to}}"
 
 }
 str::replace_first () {
 
-    local s="${1-}" from="${2-}" to="${3-}" pos=""
+    local s="${1-}" from="${2-}" to="${3-}"
 
     [[ -n "${from}" ]] || { printf '%s' "${s}"; return 0; }
-    pos="$(str::index "${s}" "${from}")" || { printf '%s' "${s}"; return 0; }
-
-    printf '%s%s%s' "${s:0:pos}" "${to}" "${s:$(( pos + ${#from} ))}"
+    printf '%s' "${s/"${from}"/${to}}"
 
 }
 str::replace_last () {
@@ -424,15 +499,34 @@ str::remove_suffix () {
     (( ${#s} >= ${#suffix} )) || { printf '%s' "${s}"; return 0; }
 
     start=$(( ${#s} - ${#suffix} ))
-    [[ "${s:start}" == "${suffix}" ]] || { printf '%s' "${s}"; return 0; }
+    [[ "${s:${start}}" == "${suffix}" ]] || { printf '%s' "${s}"; return 0; }
 
     printf '%s' "${s:0:start}"
 
 }
+str::ensure_prefix () {
 
+    local s="${1-}" prefix="${2-}"
+
+    [[ -n "${prefix}" ]] || { printf '%s' "${s}"; return 0; }
+    str::starts_with "${s}" "${prefix}" && { printf '%s' "${s}"; return 0; }
+
+    printf '%s%s' "${prefix}" "${s}"
+
+}
+str::ensure_suffix () {
+
+    local s="${1-}" suffix="${2-}"
+
+    [[ -n "${suffix}" ]] || { printf '%s' "${s}"; return 0; }
+    str::ends_with "${s}" "${suffix}" && { printf '%s' "${s}"; return 0; }
+
+    printf '%s%s' "${s}" "${suffix}"
+
+}
 str::words () {
 
-    local s="${1-}" i=0 x="" next="" out="" prev_kind="" kind="" lx=""
+    local s="${1-}" i=0 x="" next="" out="" prev_kind="" kind=""
     local -a words=()
 
     [[ -n "${s}" ]] || return 0
@@ -460,8 +554,7 @@ str::words () {
 
             fi
 
-            lx="$(str::lower "${x}")"
-            out+="${lx}"
+            out+="${x,,}"
             prev_kind="${kind}"
             continue
 
@@ -474,20 +567,18 @@ str::words () {
     done
 
     [[ -n "${out}" ]] && words+=( "${out}" )
-    ((${#words[@]} > 0)) && printf '%s\n' "${words[@]}"
+    (( ${#words[@]} > 0 )) && printf '%s\n' "${words[@]}"
 
 }
 str::title () {
 
-    local s="${1-}" x="" out="" first=""
+    local s="${1-}" x="" out=""
 
     while IFS= read -r x; do
 
         [[ -n "${x}" ]] || continue
         [[ -n "${out}" ]] && out+=' '
-
-        first="$(str::upper "${x:0:1}")"
-        out+="${first}${x:1}"
+        out+="${x^}"
 
     done < <(str::words "${s}")
 
@@ -496,18 +587,17 @@ str::title () {
 }
 str::camel () {
 
-    local s="${1-}" x="" out="" first_word=1 first=""
+    local s="${1-}" x="" out="" first=1
 
     while IFS= read -r x; do
 
         [[ -n "${x}" ]] || continue
 
-        if (( first_word )); then
+        if (( first )); then
             out+="${x}"
-            first_word=0
+            first=0
         else
-            first="$(str::upper "${x:0:1}")"
-            out+="${first}${x:1}"
+            out+="${x^}"
         fi
 
     done < <(str::words "${s}")
@@ -517,31 +607,12 @@ str::camel () {
 }
 str::pascal () {
 
-    local s="${1-}" x="" out="" first=""
+    local s="${1-}" x="" out=""
 
     while IFS= read -r x; do
 
         [[ -n "${x}" ]] || continue
-
-        first="$(str::upper "${x:0:1}")"
-        out+="${first}${x:1}"
-
-    done < <(str::words "${s}")
-
-    printf '%s' "${out}"
-
-}
-str::train () {
-
-    local s="${1-}" x="" out="" first=""
-
-    while IFS= read -r x; do
-
-        [[ -n "${x}" ]] || continue
-        [[ -n "${out}" ]] && out+='-'
-
-        first="$(str::upper "${x:0:1}")"
-        out+="${first}${x:1}"
+        out+="${x^}"
 
     done < <(str::words "${s}")
 
@@ -578,21 +649,149 @@ str::snake () {
     printf '%s' "${out}"
 
 }
+str::train () {
+
+    local s="${1-}" x="" out=""
+
+    while IFS= read -r x; do
+
+        [[ -n "${x}" ]] || continue
+        [[ -n "${out}" ]] && out+='-'
+        out+="${x^}"
+
+    done < <(str::words "${s}")
+
+    printf '%s' "${out}"
+
+}
+str::constant () {
+
+    local s="${1-}"
+    printf '%s' "$(str::snake "${s}")" | tr '[:lower:]' '[:upper:]'
+
+}
 str::slug () {
 
     str::kebab "$@"
 
 }
-str::lower () {
+str::capitalize () {
 
     local s="${1-}"
-    printf '%s' "${s}" | tr '[:upper:]' '[:lower:]'
+
+    [[ -n "${s}" ]] || return 0
+    printf '%s' "${s^}"
 
 }
-str::upper () {
+str::uncapitalize () {
 
     local s="${1-}"
-    printf '%s' "${s}" | tr '[:lower:]' '[:upper:]'
+
+    [[ -n "${s}" ]] || return 0
+    printf '%s' "${s,}"
+
+}
+str::swapcase () {
+
+    local s="${1-}" out="" x="" i=0
+
+    for (( i=0; i<${#s}; i++ )); do
+
+        x="${s:i:1}"
+
+        if str::is_upper "${x}"; then
+            out+="${x,,}"
+        elif str::is_lower "${x}"; then
+            out+="${x^^}"
+        else
+            out+="${x}"
+        fi
+
+    done
+
+    printf '%s' "${out}"
+
+}
+str::split () {
+
+    local s="${1-}" sep="${2-}" rest="" pos="" len=0
+
+    [[ -n "${sep}" ]] || return 1
+
+    rest="${s}"
+    len="${#sep}"
+
+    while pos="$(str::index "${rest}" "${sep}")"; do
+        printf '%s\n' "${rest:0:pos}"
+        rest="${rest:$(( pos + len ))}"
+    done
+
+    printf '%s\n' "${rest}"
+
+}
+str::lines () {
+
+    local s="${1-}"
+
+    [[ -n "${s}" ]] || return 0
+    printf '%s\n' "${s}"
+
+}
+str::indent () {
+
+    local s="${1-}" prefix="${2:-    }" line="" first=1
+
+    while IFS= read -r line || [[ -n "${line}" ]]; do
+
+        (( first )) || printf '\n'
+        first=0
+        printf '%s%s' "${prefix}" "${line}"
+
+    done <<< "${s}"
+
+}
+str::dedent () {
+
+    local s="${1-}" line="" min="" n=0 pad="" out="" first=1
+
+    while IFS= read -r line || [[ -n "${line}" ]]; do
+
+        [[ -z "${line//[[:space:]]/}" ]] && continue
+
+        pad="${line%%[![:space:]]*}"
+        n="${#pad}"
+
+        [[ -z "${min}" || n -lt min ]] && min="${n}"
+
+    done <<< "${s}"
+
+    [[ -n "${min}" ]] || { printf '%s' "${s}"; return 0; }
+
+    while IFS= read -r line || [[ -n "${line}" ]]; do
+
+        (( first )) || out+=$'\n'
+        first=0
+
+        if [[ -z "${line//[[:space:]]/}" ]]; then
+            out+="${line}"
+        else
+            out+="${line:${min}}"
+        fi
+
+    done <<< "${s}"
+
+    printf '%s' "${out}"
+
+}
+str::is_empty () {
+
+    [[ -z "${1-}" ]]
+
+}
+str::is_blank () {
+
+    local s="${1-}"
+    [[ -z "${s//[[:space:]]/}" ]]
 
 }
 str::is_lower () {
@@ -620,110 +819,10 @@ str::is_alnum () {
     [[ "${1-}" =~ ^[A-Za-z0-9]$ ]]
 
 }
-
-str::capitalize () {
-
-    local s="${1-}" first=""
-    [[ -n "${s}" ]] || return 0
-
-    first="$(str::upper "${s:0:1}")"
-    printf '%s%s' "${first}" "${s:1}"
-
-}
-str::uncapitalize () {
-
-    local s="${1-}" first=""
-    [[ -n "${s}" ]] || return 0
-
-    first="$(str::lower "${s:0:1}")"
-    printf '%s%s' "${first}" "${s:1}"
-
-}
-str::swapcase () {
-
-    local s="${1-}" out="" x="" i=0
-
-    for (( i=0; i<${#s}; i++ )); do
-
-        x="${s:i:1}"
-
-        if str::is_upper "${x}"; then out+="$(str::lower "${x}")"
-        elif str::is_lower "${x}"; then out+="$(str::upper "${x}")"
-        else out+="${x}"
-        fi
-
-    done
-
-    printf '%s' "${out}"
-
-}
-
-str::contains () {
-
-    local s="${1-}" part="${2-}"
-
-    [[ -n "${part}" ]] || return 1
-    str::index "${s}" "${part}" >/dev/null
-
-}
-str::contains_ci () {
-
-    local s="${1-}" part="${2-}"
-
-    [[ -n "${part}" ]] || return 1
-    str::index_ci "${s}" "${part}" >/dev/null
-
-}
-str::equals () {
-
-    [[ "${1-}" == "${2-}" ]]
-
-}
-str::equals_ci () {
-
-    local a="${1-}" b="${2-}"
-    [[ "$(str::lower "${a}")" == "$(str::lower "${b}")" ]]
-
-}
-str::starts_with () {
-
-    local s="${1-}" prefix="${2-}"
-
-    [[ -n "${prefix}" ]] || return 1
-    [[ "${s:0:${#prefix}}" == "${prefix}" ]]
-
-}
-str::ends_with () {
-
-    local s="${1-}" suffix="${2-}" start=0
-
-    [[ -n "${suffix}" ]] || return 1
-    (( ${#s} >= ${#suffix} )) || return 1
-
-    start=$(( ${#s} - ${#suffix} ))
-    [[ "${s:start}" == "${suffix}" ]]
-
-}
-str::is_empty () {
-
-    [[ -z "${1-}" ]]
-
-}
-str::is_blank () {
+str::is_char () {
 
     local s="${1-}"
-    [[ -z "${s//[[:space:]]/}" ]]
-
-}
-
-str::is_email () {
-
-    [[ "${1-}" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]
-
-}
-str::is_url () {
-
-    [[ "${1-}" =~ ^https?://[^[:space:]]+$ ]]
+    (( ${#s} == 1 ))
 
 }
 str::is_int () {
@@ -741,22 +840,24 @@ str::is_float () {
     [[ "${1-}" =~ ^[+-]?([0-9]+([.][0-9]+)?|[.][0-9]+|[0-9]+[.])$ ]]
 
 }
-str::is_char () {
-
-    local s="${1-}"
-    (( ${#s} == 1 ))
-
-}
 str::is_bool () {
 
-    local s=""
+    local s="${1-}"
 
-    s="$(str::lower "${1-}")"
-
-    case "${s}" in
+    case "${s,,}" in
         1|0|true|false|yes|no|y|n|on|off) return 0 ;;
         *) return 1 ;;
     esac
+
+}
+str::is_email () {
+
+    [[ "${1-}" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+[.][A-Za-z]{2,}$ ]]
+
+}
+str::is_url () {
+
+    [[ "${1-}" =~ ^https?://[^[:space:]]+$ ]]
 
 }
 str::is_slug () {
@@ -766,80 +867,85 @@ str::is_slug () {
 }
 str::is_identifier () {
 
-    [[ "${1-}" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]
+    [[ "${1-}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
 
 }
-
-str::chomp () {
+str::bool () {
 
     local s="${1-}"
 
-    s="${s%$'\n'}"
-    s="${s%$'\r'}"
+    case "${s,,}" in
+        1|true|yes|y|on) printf 'true' ;;
+        0|false|no|n|off) printf 'false' ;;
+        *) return 1 ;;
+    esac
+
+}
+str::escape_regex () {
+
+    local s="${1-}"
+
+    s="${s//\\/\\\\}"
+    s="${s//./\\.}"
+    s="${s//\*/\\*}"
+    s="${s//+/\\+}"
+    s="${s//\?/\\?}"
+    s="${s//\[/\\[}"
+    s="${s//\]/\\]}"
+    s="${s//\^/\\^}"
+    s="${s//\$/\\$}"
+    s="${s//\(/\\(}"
+    s="${s//\)/\\)}"
+    s="${s//\{/\\{}"
+    s="${s//\}/\\}}"
+    s="${s//|/\\|}"
 
     printf '%s' "${s}"
 
 }
-str::lines () {
+str::escape_sed () {
 
     local s="${1-}"
 
-    [[ -n "${s}" ]] || return 0
-    printf '%s\n' "${s}"
+    s="${s//\\/\\\\}"
+    s="${s//&/\\&}"
+    s="${s//\//\\/}"
+
+    printf '%s' "${s}"
 
 }
-str::split () {
+str::escape_json () {
 
-    local s="${1-}" sep="${2-}" rest="" pos="" len=0
+    local s="${1-}" out="" x="" i=0 code=0
 
-    [[ -n "${sep}" ]] || return 1
+    for (( i=0; i<${#s}; i++ )); do
 
-    rest="${s}"
-    len="${#sep}"
+        x="${s:i:1}"
 
-    while pos="$(str::index "${rest}" "${sep}")"; do
-        printf '%s\n' "${rest:0:pos}"
-        rest="${rest:$(( pos + len ))}"
+        case "${x}" in
+            '"')   out="${out}\\\"" ;;
+            "\\")  out="${out}\\\\" ;;
+            $'\b') out="${out}\\b"  ;;
+            $'\f') out="${out}\\f"  ;;
+            $'\n') out="${out}\\n"  ;;
+            $'\r') out="${out}\\r"  ;;
+            $'\t') out="${out}\\t"  ;;
+            *)
+                printf -v code '%d' "'${x}"
+                if (( code < 32 )); then
+                    printf -v x '\\u%04x' "${code}"
+                fi
+                out+="${x}"
+                ;;
+        esac
+
     done
 
-    printf '%s\n' "${rest}"
+    printf '%s' "${out}"
 
 }
-str::ensure_prefix () {
+str::json_quote () {
 
-    local s="${1-}" prefix="${2-}"
-
-    [[ -n "${prefix}" ]] || { printf '%s' "${s}"; return 0; }
-    str::starts_with "${s}" "${prefix}" && { printf '%s' "${s}"; return 0; }
-
-    printf '%s%s' "${prefix}" "${s}"
-
-}
-str::ensure_suffix () {
-
-    local s="${1-}" suffix="${2-}"
-
-    [[ -n "${suffix}" ]] || { printf '%s' "${s}"; return 0; }
-    str::ends_with "${s}" "${suffix}" && { printf '%s' "${s}"; return 0; }
-
-    printf '%s%s' "${s}" "${suffix}"
-
-}
-str::quote () {
-
-    printf '%q' "${1-}"
-
-}
-str::indent () {
-
-    local s="${1-}" prefix="${2:-    }" line="" first=1
-
-    while IFS= read -r line || [[ -n "${line}" ]]; do
-
-        (( first )) || printf '\n'
-        first=0
-        printf '%s%s' "${prefix}" "${line}"
-
-    done <<< "${s}"
+    printf '"%s"' "$(str::escape_json "${1-}")"
 
 }

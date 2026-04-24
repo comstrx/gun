@@ -84,7 +84,7 @@ mode::set () {
                     [[ -n "${domain_user}" ]] || return 1
                     icacls.exe "${winpath}" /grant:r "${domain_user}:(R,W)" "*S-1-5-18:(F)" "*S-1-5-32-544:(F)" >/dev/null 2>&1 || return 1
                 }
-                sys::has chmod && chmod 600 "${path}" >/dev/null 2>&1 || true
+                sys::has chmod && { chmod 600 "${path}" >/dev/null 2>&1 || true; }
                 return 0
             ;;
             644)
@@ -93,7 +93,7 @@ mode::set () {
                     [[ -n "${domain_user}" ]] || return 1
                     icacls.exe "${winpath}" /grant:r "${domain_user}:(R,W)" "*S-1-5-32-545:(R)" >/dev/null 2>&1 || return 1
                 }
-                sys::has chmod && chmod 644 "${path}" >/dev/null 2>&1 || true
+                sys::has chmod && { chmod 644 "${path}" >/dev/null 2>&1 || true; }
                 return 0
             ;;
             700)
@@ -103,7 +103,7 @@ mode::set () {
                     [[ -n "${domain_user}" ]] || return 1
                     icacls.exe "${winpath}" /grant:r "${domain_user}:(F)" "*S-1-5-18:(F)" "*S-1-5-32-544:(F)" >/dev/null 2>&1 || return 1
                 }
-                sys::has chmod && chmod 700 "${path}" >/dev/null 2>&1 || true
+                sys::has chmod && { chmod 700 "${path}" >/dev/null 2>&1 || true; }
                 return 0
             ;;
             755)
@@ -112,7 +112,7 @@ mode::set () {
                     [[ -n "${domain_user}" ]] || return 1
                     icacls.exe "${winpath}" /grant:r "${domain_user}:(F)" "*S-1-5-32-545:(RX)" >/dev/null 2>&1 || return 1
                 }
-                sys::has chmod && chmod 755 "${path}" >/dev/null 2>&1 || true
+                sys::has chmod && { chmod 755 "${path}" >/dev/null 2>&1 || true; }
                 return 0
             ;;
         esac
