@@ -302,10 +302,12 @@ str::starts_with () {
 }
 str::starts_with_ci () {
 
-    local s="${1-}" prefix="${2-}"
+    local s="${1-}" prefix="${2-}" head=""
 
     [[ -n "${prefix}" ]] || return 1
-    [[ "${s:0:${#prefix},,}" == "${prefix,,}" ]]
+
+    head="${s:0:${#prefix}}"
+    [[ "${head,,}" == "${prefix,,}" ]]
 
 }
 str::ends_with () {
@@ -321,13 +323,15 @@ str::ends_with () {
 }
 str::ends_with_ci () {
 
-    local s="${1-}" suffix="${2-}" start=0
+    local s="${1-}" suffix="${2-}" start=0 tail=""
 
     [[ -n "${suffix}" ]] || return 1
     (( ${#s} >= ${#suffix} )) || return 1
 
     start=$(( ${#s} - ${#suffix} ))
-    [[ "${s:${start},,}" == "${suffix,,}" ]]
+    tail="${s:${start}}"
+
+    [[ "${tail,,}" == "${suffix,,}" ]]
 
 }
 str::equals () {
@@ -544,7 +548,13 @@ str::words () {
 
             if [[ -n "${out}" ]]; then
 
-                if [[ "${kind}" == "upper" && ( "${prev_kind}" == "lower" || "${prev_kind}" == "digit" ) ]]; then
+                if [[ "${kind}" == "digit" && "${prev_kind}" != "digit" ]]; then
+                    words+=( "${out}" )
+                    out=""
+                elif [[ "${kind}" != "digit" && "${prev_kind}" == "digit" ]]; then
+                    words+=( "${out}" )
+                    out=""
+                elif [[ "${kind}" == "upper" && ( "${prev_kind}" == "lower" || "${prev_kind}" == "digit" ) ]]; then
                     words+=( "${out}" )
                     out=""
                 elif [[ "${kind}" == "upper" && "${prev_kind}" == "upper" ]] && str::is_lower "${next}"; then
@@ -883,24 +893,24 @@ str::bool () {
 }
 str::escape_regex () {
 
-    local s="${1-}"
+    local s="${1-}" out="" x="" i=0
 
-    s="${s//\\/\\\\}"
-    s="${s//./\\.}"
-    s="${s//\*/\\*}"
-    s="${s//+/\\+}"
-    s="${s//\?/\\?}"
-    s="${s//\[/\\[}"
-    s="${s//\]/\\]}"
-    s="${s//\^/\\^}"
-    s="${s//\$/\\$}"
-    s="${s//\(/\\(}"
-    s="${s//\)/\\)}"
-    s="${s//\{/\\{}"
-    s="${s//\}/\\}}"
-    s="${s//|/\\|}"
+    for (( i=0; i<${#s}; i++ )); do
 
-    printf '%s' "${s}"
+        x="${s:i:1}"
+
+        case "${x}" in
+            '\'|'.'|'*'|'+'|'?'|'['|']'|'^'|'$'|'('|')'|'{'|'}'|'|')
+                out+="\\${x}"
+                ;;
+            *)
+                out+="${x}"
+                ;;
+        esac
+
+    done
+
+    printf '%s' "${out}"
 
 }
 str::escape_sed () {

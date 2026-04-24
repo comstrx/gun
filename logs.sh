@@ -1,6 +1,0 @@
-[[ LINUX ]]
-
-
-[[ MACOS ]]
-
-[[ WINDOWS ]]
