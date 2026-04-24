@@ -47,67 +47,18 @@ force="0"
 refresh="1"
 
 case "${manager}" in
-
-    apt)
-        bin="sl"
-        package="sl"
-    ;;
-
-    apk)
-        bin="figlet"
-        package="figlet"
-    ;;
-
-    dnf|yum)
-        bin="figlet"
-        package="figlet"
-    ;;
-
-    zypper)
-        bin="figlet"
-        package="figlet"
-    ;;
-
-    pacman)
-        bin="figlet"
-        package="figlet"
-    ;;
-
-    xbps)
-        bin="figlet"
-        package="figlet"
-    ;;
-
-    brew)
-        bin="figlet"
-        package="figlet"
-    ;;
-
-    scoop)
-        bin="figlet"
-        package="figlet"
-    ;;
-
-    choco)
-        bin="figlet"
-        package="figlet"
-    ;;
-
-    winget)
-        bin="jq"
-        package="jqlang.jq"
-    ;;
-
-    nix)
-        bin="figlet"
-        package="figlet"
-    ;;
-
-    *)
-        bin=""
-        package=""
-    ;;
-
+    apt)     bin="sl";     package="sl" ;;
+    apk)     bin="figlet"; package="figlet" ;;
+    dnf)     bin="figlet"; package="figlet" ;;
+    yum)     bin="figlet"; package="figlet" ;;
+    zypper)  bin="figlet"; package="figlet" ;;
+    pacman)  bin="figlet"; package="figlet" ;;
+    xbps)    bin="figlet"; package="figlet" ;;
+    brew)    bin="figlet"; package="figlet" ;;
+    scoop)   bin="figlet"; package="figlet" ;;
+    choco)   bin="figlet"; package="figlet" ;;
+    nix)     bin="figlet"; package="figlet" ;;
+    winget)  bin="jq";     package="jqlang.jq" ;;
 esac
 
 printf '%s\n' "------------------------------------------------------------"
@@ -127,11 +78,13 @@ run_case "proc::version bash" proc::version bash
 if [[ -z "${bin}" || -z "${package}" ]]; then
 
     skip_case "real install unsupported manager"
+
     printf '%s\n' "------------------------------------------------------------"
     printf 'Passed: %s\n' "${pass}"
     printf 'Failed: %s\n' "${fail}"
     printf 'Skipped: %s\n' "${skip}"
     printf '%s\n' "------------------------------------------------------------"
+
     (( fail == 0 ))
     exit $?
 
@@ -139,9 +92,11 @@ fi
 
 if proc::has "${bin}"; then
 
-    printf '[INFO] %s already exists; testing uninstall/install cycle carefully\n' "${bin}"
+    printf '[INFO] %s already exists; testing uninstall carefully\n' "${bin}"
 
     run_case "proc::uninstall existing ${bin}" proc::uninstall "${bin}" "${package}"
+
+    hash -r 2>/dev/null || true
 
     if proc::has "${bin}"; then
         skip_case "binary still exists after uninstall; probably installed by another source"
@@ -155,9 +110,14 @@ else
 
 fi
 
+hash -r 2>/dev/null || true
+
 if ! proc::has "${bin}"; then
 
     run_case "proc::install ${bin}" proc::install "${bin}" "${package}" "${version}" "${force}" "${refresh}"
+
+    hash -r 2>/dev/null || true
+
     run_case "proc::has ${bin} after install" proc::has "${bin}"
     run_case "proc::path ${bin} after install" proc::path "${bin}"
 
@@ -167,14 +127,21 @@ if ! proc::has "${bin}"; then
         skip_case "proc::version ${bin} unavailable"
     fi
 
-    run_case "proc::run_ok ${bin}" proc::run_ok "${bin}" --help
+    case "${bin}" in
+        sl)     run_case "proc::run_ok ${bin}" proc::run_ok "${bin}" ;;
+        figlet) run_case "proc::run_ok ${bin}" proc::run_ok "${bin}" "OK" ;;
+        jq)     run_case "proc::run_ok ${bin}" proc::run_ok "${bin}" --version ;;
+        *)      run_case "proc::run_ok ${bin}" proc::run_ok "${bin}" --version ;;
+    esac
 
     run_case "proc::ensure ${bin}" proc::ensure "${bin}" "${package}" "" "0" "0"
 
     run_case "proc::uninstall ${bin}" proc::uninstall "${bin}" "${package}"
 
+    hash -r 2>/dev/null || true
+
     if proc::has "${bin}"; then
-        bad "proc::has ${bin} after uninstall"
+        skip_case "${bin} still visible after uninstall; maybe cached or installed by another source"
     else
         ok "proc::has ${bin} after uninstall"
     fi

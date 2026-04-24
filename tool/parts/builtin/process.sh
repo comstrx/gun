@@ -1,7 +1,13 @@
 
+
 proc::has () {
 
     command -v "${1:-}" >/dev/null 2>&1
+
+}
+proc::hash () {
+
+    hash -r 2>/dev/null || true
 
 }
 proc::die () {
@@ -319,6 +325,7 @@ proc::install_all () {
 
         IFS=':' read -r bin package version force refresh <<< "${spec}"
         [[ -n "${bin}" ]] || return 1
+
         proc::install "${bin}" "${package:-${bin}}" "${version:-}" "${force:-0}" "${refresh:-0}" || return 1
 
     done
@@ -333,6 +340,7 @@ proc::uninstall_all () {
 
         IFS=':' read -r bin package _ <<< "${spec}"
         [[ -n "${bin}" ]] || return 1
+
         proc::uninstall "${bin}" "${package:-${bin}}" || return 1
 
     done
@@ -447,9 +455,11 @@ proc::version () {
                 v="${major}.${minor}.${patch}"
 
                 if [[ -n "${tail}" ]]; then
+
                     tail="${tail#[.+-]}"
                     tail="$(printf '%s\n' "${tail}" | sed -E 's/[.+-]+/./g; s/^\.+//; s/\.+$//')"
                     [[ -n "${tail}" ]] && v="${v}-${tail}"
+
                 fi
 
                 printf '%s\n' "${v}"
