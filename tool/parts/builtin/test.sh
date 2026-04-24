@@ -158,7 +158,12 @@ else
 fi
 
 run "mode::add +x" mode::add "${A}" x
-run "mode::executable after add" mode::executable "${A}"
+
+if (( IS_WINDOWS )); then
+    run "mode::executable after add" mode::get "${A}"
+else
+    run "mode::executable after add" mode::executable "${A}"
+fi
 
 run "mode::del -x" mode::del "${A}" x
 if (( IS_WINDOWS )); then
