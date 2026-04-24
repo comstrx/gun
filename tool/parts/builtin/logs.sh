@@ -1,3 +1,5 @@
+codingmaster@codingmstr:/var/www/projects/gun$ bash -n tool/parts/builtin/string.sh
+codingmaster@codingmstr:/var/www/projects/gun$ shellcheck tool/parts/builtin/string.sh
 codingmaster@codingmstr:/var/www/projects/gun$ bash tool/parts/builtin/test.sh
 
 == syntax / existence ==

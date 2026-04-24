@@ -47,8 +47,10 @@ str::chomp () {
 
     local s="${1-}"
 
-    s="${s%$'\n'}"
-    s="${s%$'\r'}"
+    while [[ "${s}" == *$'\n' || "${s}" == *$'\r' ]]; do
+        s="${s%$'\n'}"
+        s="${s%$'\r'}"
+    done
 
     printf '%s' "${s}"
 
@@ -709,13 +711,11 @@ str::swapcase () {
 
         x="${s:i:1}"
 
-        if str::is_upper "${x}"; then
-            out+="${x,,}"
-        elif str::is_lower "${x}"; then
-            out+="${x^^}"
-        else
-            out+="${x}"
-        fi
+        case "${x}" in
+            [A-Z]) out+="${x,,}" ;;
+            [a-z]) out+="${x^^}" ;;
+            *)     out+="${x}"   ;;
+        esac
 
     done
 
@@ -749,15 +749,19 @@ str::lines () {
 }
 str::indent () {
 
-    local s="${1-}" prefix="${2:-    }" line="" first=1
+    local s="${1-}" prefix="${2:-    }" line="" out="" first=1
+
+    [[ -n "${s}" ]] || return 0
 
     while IFS= read -r line || [[ -n "${line}" ]]; do
 
-        (( first )) || printf '\n'
+        (( first )) || out+=$'\n'
         first=0
-        printf '%s%s' "${prefix}" "${line}"
+        out+="${prefix}${line}"
 
-    done <<< "${s}"
+    done < <(printf '%s' "${s}")
+
+    printf '%s' "${out}"
 
 }
 str::dedent () {
@@ -900,12 +904,21 @@ str::escape_regex () {
         x="${s:i:1}"
 
         case "${x}" in
-            '\'|'.'|'*'|'+'|'?'|'['|']'|'^'|'$'|'('|')'|'{'|'}'|'|')
-                out+="\\${x}"
-                ;;
-            *)
-                out+="${x}"
-                ;;
+            \\) out="${out}\\\\" ;;
+            .)  out+='\.' ;;
+            '*') out+='\*' ;;
+            +)  out+='\+' ;;
+            '?') out+='\?' ;;
+            '[') out+='\[' ;;
+            ']') out+='\]' ;;
+            '^') out+='\^' ;;
+            '$') out+='\$' ;;
+            '(') out+='\(' ;;
+            ')') out+='\)' ;;
+            '{') out+='\{' ;;
+            '}') out+='\}' ;;
+            '|') out+='\|' ;;
+            *)  out+="${x}" ;;
         esac
 
     done
@@ -957,5 +970,15 @@ str::escape_json () {
 str::json_quote () {
 
     printf '"%s"' "$(str::escape_json "${1-}")"
+
+}
+str::compare () {
+
+    local a="${1-}" b="${2-}"
+
+    [[ "${a}" == "${b}" ]] && { printf '0'; return 0; }
+    [[ "${a}" < "${b}"  ]] && { printf '%s' '-1'; return 0; }
+
+    printf '1'
 
 }
