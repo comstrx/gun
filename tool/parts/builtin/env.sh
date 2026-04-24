@@ -291,13 +291,13 @@ env::map () {
 
     [[ -n "${name}" ]] || return 1
 
-    declare -n ref="${name}"
-    ref=()
+    local -n __std_env_ref__="${name}"
+    __std_env_ref__=()
 
     while IFS= read -r key; do
 
         [[ -n "${prefix}" && "${key}" != "${prefix}"* ]] && continue
-        ref["${key}"]="${!key-}"
+        __std_env_ref__["${key}"]="${!key-}"
 
     done < <(compgen -e | sort)
 
@@ -306,14 +306,16 @@ env::list_ref () {
 
     local name="${1:-}" prefix="${2:-}" key=""
 
-    env::valid "${name}" || return 1
+    [[ -n "${name}" ]] || return 1
 
-    local -n ref="${name}"
-    ref=()
+    local -n __std_env_ref__="${name}"
+    __std_env_ref__=()
 
     while IFS= read -r key; do
+
         [[ -n "${prefix}" && "${key}" != "${prefix}"* ]] && continue
-        ref+=( "${key}=${!key-}" )
+        __std_env_ref__+=( "${key}=${!key-}" )
+
     done < <(compgen -e | sort)
 
 }
@@ -321,14 +323,16 @@ env::keys_ref () {
 
     local name="${1:-}" prefix="${2:-}" key=""
 
-    env::valid "${name}" || return 1
+    [[ -n "${name}" ]] || return 1
 
-    local -n ref="${name}"
-    ref=()
+    local -n __std_env_ref__="${name}"
+    __std_env_ref__=()
 
     while IFS= read -r key; do
+
         [[ -n "${prefix}" && "${key}" != "${prefix}"* ]] && continue
-        ref+=( "${key}" )
+        __std_env_ref__+=( "${key}" )
+
     done < <(compgen -e | sort)
 
 }
@@ -336,84 +340,100 @@ env::values_ref () {
 
     local name="${1:-}" prefix="${2:-}" key=""
 
-    env::valid "${name}" || return 1
+    [[ -n "${name}" ]] || return 1
 
-    local -n ref="${name}"
-    ref=()
+    local -n __std_env_ref__="${name}"
+    __std_env_ref__=()
 
     while IFS= read -r key; do
+
         [[ -n "${prefix}" && "${key}" != "${prefix}"* ]] && continue
-        ref+=( "${!key-}" )
+        __std_env_ref__+=( "${!key-}" )
+
     done < <(compgen -e | sort)
 
 }
 
+env::path_sep () {
+
+    local value="${1:-}"
+    [[ "${value}" == *";"* ]] && { printf ';'; return 0; }
+    printf ':'
+
+}
 env::path_has () {
 
-    local dir="${1:-}" current="${2:-${PATH:-}}"
+    local dir="${1:-}" current="${2:-${PATH:-}}" sep=""
 
     [[ -n "${dir}" ]] || return 1
 
-    case ":${current}:" in
-        *:"${dir}":*) return 0 ;;
-        *)            return 1 ;;
+    sep="$(env::path_sep "${current}")"
+
+    case "${sep}${current}${sep}" in
+        *"${sep}${dir}${sep}"*) return 0 ;;
+        *)                      return 1 ;;
     esac
 
 }
 env::path_prepend () {
 
-    local dir="${1:-}" key="${2:-PATH}" current=""
+    local dir="${1:-}" key="${2:-PATH}" current="" sep=""
 
     [[ -n "${dir}" ]] || return 1
     env::valid "${key}" || return 1
 
     current="${!key-}"
+    sep="$(env::path_sep "${current}")"
 
     env::path_has "${dir}" "${current}" && return 0
 
-    if [[ -n "${current}" ]]; then env::set "${key}" "${dir}:${current}"
+    if [[ -n "${current}" ]]; then env::set "${key}" "${dir}${sep}${current}"
     else env::set "${key}" "${dir}"
     fi
 
 }
 env::path_append () {
 
-    local dir="${1:-}" key="${2:-PATH}" current=""
+    local dir="${1:-}" key="${2:-PATH}" current="" sep=""
 
     [[ -n "${dir}" ]] || return 1
     env::valid "${key}" || return 1
 
     current="${!key-}"
+    sep="$(env::path_sep "${current}")"
 
     env::path_has "${dir}" "${current}" && return 0
 
-    if [[ -n "${current}" ]]; then env::set "${key}" "${current}:${dir}"
+    if [[ -n "${current}" ]]; then env::set "${key}" "${current}${sep}${dir}"
     else env::set "${key}" "${dir}"
     fi
- 
+
 }
 env::path_del () {
 
-    local dir="${1:-}" key="${2:-PATH}" current="" part="" next=""
+    local dir="${1:-}" key="${2:-PATH}" current="" part="" next="" sep=""
 
     [[ -n "${dir}" ]] || return 1
     env::valid "${key}" || return 1
 
     current="${!key-}"
+    sep="$(env::path_sep "${current}")"
 
-    IFS=':' read -r -a __env_parts__ <<< "${current}"
+    IFS="${sep}" read -r -a __env_parts__ <<< "${current}"
 
     for part in "${__env_parts__[@]}"; do
 
         [[ -z "${part}" || "${part}" == "${dir}" ]] && continue
 
-        if [[ -n "${next}" ]]; then next="${next}:${part}"
+        if [[ -n "${next}" ]]; then next="${next}${sep}${part}"
         else next="${part}"
         fi
 
     done
 
     unset __env_parts__
+    [[ "${key}" == "PATH" && -z "${next}" ]] && return 1
+
     env::set "${key}" "${next}"
 
 }

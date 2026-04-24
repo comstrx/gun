@@ -97,7 +97,7 @@ t::no_line () {
 t::clean () {
 
     unset ENV_TEST_A ENV_TEST_B ENV_TEST_C ENV_TEST_D ENV_TEST_E || true
-    unset ENV_TEST_EMPTY ENV_TEST_TRUE ENV_TEST_FALSE ENV_TEST_PATH || true
+    unset ENV_TEST_EMPTY ENV_TEST_TRUE ENV_TEST_FALSE ENV_TEST_PATH ENV_TEST_PATH_WIN || true
     unset ENV_TEST_SPECIAL ENV_TEST_MULTI ENV_TEST_X ENV_TEST_Y || true
 
 }
@@ -317,6 +317,28 @@ t::eq  "path_del missing result" "$(env::get ENV_TEST_PATH)" "/usr/bin"
 env::set ENV_TEST_PATH "/bin:/binx:/x/bin:/usr/bin"
 t::run "path_del exact only" env::path_del "/bin" ENV_TEST_PATH
 t::eq  "path_del exact result" "$(env::get ENV_TEST_PATH)" "/binx:/x/bin:/usr/bin"
+
+env::set ENV_TEST_PATH_WIN "C:\\A;C:\\B;C:\\C"
+
+t::run "path_has semicolon" env::path_has "C:\\B" "$(env::get ENV_TEST_PATH_WIN)"
+
+t::run "path_del semicolon" env::path_del "C:\\B" ENV_TEST_PATH_WIN
+t::eq  "path_del semicolon result" "$(env::get ENV_TEST_PATH_WIN)" "C:\\A;C:\\C"
+
+t::run "path_prepend semicolon" env::path_prepend "C:\\Z" ENV_TEST_PATH_WIN
+t::eq  "path_prepend semicolon result" "$(env::get ENV_TEST_PATH_WIN)" "C:\\Z;C:\\A;C:\\C"
+
+t::run "path_append semicolon" env::path_append "C:\\Y" ENV_TEST_PATH_WIN
+t::eq  "path_append semicolon result" "$(env::get ENV_TEST_PATH_WIN)" "C:\\Z;C:\\A;C:\\C;C:\\Y"
+
+__OLD_PATH="${PATH:-}"
+PATH="/__env_only_path__"
+
+t::deny "path_del refuses empty PATH" env::path_del "/__env_only_path__" PATH
+t::eq   "path_del keeps PATH after deny" "${PATH}" "/__env_only_path__"
+
+PATH="${__OLD_PATH}"
+unset __OLD_PATH
 
 t::deny "path invalid key"       env::path_prepend "/x" "BAD-NAME"
 t::deny "path empty dir prepend" env::path_prepend "" ENV_TEST_PATH
