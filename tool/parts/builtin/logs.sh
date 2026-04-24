@@ -1,10 +1,8 @@
 codingmaster@codingmstr:/var/www/projects/gun$ bash -n tool/parts/builtin/string.sh
 codingmaster@codingmstr:/var/www/projects/gun$ shellcheck tool/parts/builtin/string.sh
-codingmaster@codingmstr:/var/www/projects/gun$ bash tool/parts/builtin/test.sh
+codingmaster@codingmstr:/var/www/projects/gun$ time bash tool/parts/builtin/test.sh
 
-== syntax / existence ==
-str::len
-[PASS] function exists: str::len
+== existence / public api ==
 str::lower
 [PASS] function exists: str::lower
 str::upper
@@ -23,10 +21,10 @@ str::slice
 [PASS] function exists: str::slice
 str::reverse
 [PASS] function exists: str::reverse
-str::truncate
-[PASS] function exists: str::truncate
 str::normalize
 [PASS] function exists: str::normalize
+str::truncate
+[PASS] function exists: str::truncate
 str::pad_left
 [PASS] function exists: str::pad_left
 str::pad_right
@@ -39,34 +37,42 @@ str::wrap
 [PASS] function exists: str::wrap
 str::quote
 [PASS] function exists: str::quote
+str::bool
+[PASS] function exists: str::bool
 str::index
 [PASS] function exists: str::index
-str::index_ci
-[PASS] function exists: str::index_ci
 str::last_index
 [PASS] function exists: str::last_index
-str::last_index_ci
-[PASS] function exists: str::last_index_ci
-str::find
-[PASS] function exists: str::find
-str::find_ci
-[PASS] function exists: str::find_ci
-str::contains
-[PASS] function exists: str::contains
-str::contains_ci
-[PASS] function exists: str::contains_ci
 str::starts_with
 [PASS] function exists: str::starts_with
-str::starts_with_ci
-[PASS] function exists: str::starts_with_ci
 str::ends_with
 [PASS] function exists: str::ends_with
-str::ends_with_ci
-[PASS] function exists: str::ends_with_ci
+str::find
+[PASS] function exists: str::find
+str::contains
+[PASS] function exists: str::contains
 str::equals
 [PASS] function exists: str::equals
-str::equals_ci
-[PASS] function exists: str::equals_ci
+str::compare
+[PASS] function exists: str::compare
+str::index_icase
+[PASS] function exists: str::index_icase
+str::last_index_icase
+[PASS] function exists: str::last_index_icase
+str::starts_with_icase
+[PASS] function exists: str::starts_with_icase
+str::ends_with_icase
+[PASS] function exists: str::ends_with_icase
+str::find_icase
+[PASS] function exists: str::find_icase
+str::contains_icase
+[PASS] function exists: str::contains_icase
+str::equals_icase
+[PASS] function exists: str::equals_icase
+str::compare_icase
+[PASS] function exists: str::compare_icase
+str::len
+[PASS] function exists: str::len
 str::count
 [PASS] function exists: str::count
 str::lines_count
@@ -121,14 +127,14 @@ str::snake
 [PASS] function exists: str::snake
 str::train
 [PASS] function exists: str::train
-str::constant
-[PASS] function exists: str::constant
 str::slug
 [PASS] function exists: str::slug
 str::capitalize
 [PASS] function exists: str::capitalize
 str::uncapitalize
 [PASS] function exists: str::uncapitalize
+str::constant
+[PASS] function exists: str::constant
 str::swapcase
 [PASS] function exists: str::swapcase
 str::split
@@ -171,8 +177,6 @@ str::is_slug
 [PASS] function exists: str::is_slug
 str::is_identifier
 [PASS] function exists: str::is_identifier
-str::bool
-[PASS] function exists: str::bool
 str::escape_regex
 [PASS] function exists: str::escape_regex
 str::escape_sed
@@ -182,135 +186,214 @@ str::escape_json
 str::json_quote
 [PASS] function exists: str::json_quote
 
-== basic transform ==
-[PASS] len empty
-[PASS] len ascii
-[PASS] lower
-[PASS] upper
-[PASS] trim spaces
-[PASS] ltrim tabs/spaces
-[PASS] rtrim tabs/spaces
+== case / trim / newline cleanup ==
+[PASS] lower ascii
+[PASS] upper ascii
+[PASS] ltrim spaces tabs
+[PASS] rtrim spaces tabs
+[PASS] trim spaces tabs newlines
+[PASS] trim all blank
+[PASS] trim no-op
 [PASS] chomp LF
-[PASS] chomp CRLF once
+[PASS] chomp CR
+[PASS] chomp CRLF
+[PASS] chomp LFCR
+[PASS] chomp many trailing
+[PASS] chomp does not remove internal CRLF
 
-== repeat / slice / reverse / truncate / normalize ==
+== repeat / slice / reverse ==
 [PASS] repeat zero
 [PASS] repeat one
-[PASS] repeat many
+[PASS] repeat power pattern
+[PASS] repeat empty string
 [PASS] repeat rejects negative
+[PASS] repeat rejects plus
 [PASS] repeat rejects text
-[PASS] slice from start
+[PASS] slice no count
 [PASS] slice count
-[PASS] slice negative
-[PASS] slice bad start
-[PASS] slice bad count
+[PASS] slice count zero
+[PASS] slice negative offset
+[PASS] slice start zero
+[PASS] slice beyond end
+[PASS] slice rejects bad start
+[PASS] slice rejects bad count negative
+[PASS] slice rejects bad count text
 [PASS] reverse empty
+[PASS] reverse one
 [PASS] reverse ascii
-[PASS] truncate short
-[PASS] truncate exact
-[PASS] truncate zero
-[PASS] truncate default tail
-[PASS] truncate tiny tail clipped
+[PASS] reverse punctuation
+
+== normalize / truncate ==
 [PASS] normalize spaces
-[PASS] normalize custom sep
+[PASS] normalize custom dash
+[PASS] normalize custom multi uses first char
+[PASS] normalize empty
+[PASS] normalize blank
+[PASS] truncate shorter
+[PASS] truncate exact
+[PASS] truncate default
+[PASS] truncate custom tail
+[PASS] truncate tail longer than max
+[PASS] truncate max zero
+[PASS] truncate empty
+[PASS] truncate rejects negative max
+[PASS] truncate rejects text max
 
-== padding / join / wrap / quote ==
-[PASS] pad left
-[PASS] pad right
-[PASS] pad center odd
-[PASS] pad center even remainder right
-[PASS] pad no-op
-[PASS] pad bad width
-[PASS] join none
+== padding / join / wrapping / quote / bool ==
+[PASS] pad_left zero
+[PASS] pad_left number
+[PASS] pad_left no-op
+[PASS] pad_left multi char uses first
+[PASS] pad_left empty ch becomes space
+[PASS] pad_right number
+[PASS] pad_right no-op
+[PASS] pad_right multi char uses first
+[PASS] pad_center odd
+[PASS] pad_center even remainder right
+[PASS] pad_center no-op
+[PASS] pad_left rejects bad width
+[PASS] pad_right rejects bad width
+[PASS] pad_center rejects bad width
+[PASS] join no args
 [PASS] join one
-[PASS] join many
-[PASS] wrap symmetric
+[PASS] join three
+[PASS] join empty values
+[PASS] join multi separator
 [PASS] wrap same
-[PASS] quote returns something
+[PASS] wrap different
+[PASS] wrap empty
+[PASS] quote spaces returns success
+[PASS] bool true on
+[PASS] bool false off
+[PASS] bool rejects maybe
+[PASS] bool rejects empty
 
-== search / compare ==
+== search / compare exact ==
 [PASS] index first
-[PASS] index empty needle
-[PASS] index miss rc
-[PASS] index_ci
-[PASS] last_index
-[PASS] last_index empty needle
-[PASS] last_index miss rc
-[PASS] last_index_ci
-[PASS] contains
-[PASS] contains empty needle false
+[PASS] index start hit zero
+[PASS] index empty needle zero
+[PASS] index repeated first
+[PASS] index miss
+[PASS] index longer needle miss
+[PASS] last_index last
+[PASS] last_index needle
+[PASS] last_index empty needle len
+[PASS] last_index miss
+[PASS] find alias
+[PASS] contains hit
 [PASS] contains miss
-[PASS] contains_ci
-[PASS] starts_with
-[PASS] starts_with empty false
+[PASS] contains empty needle false
+[PASS] starts_with hit
 [PASS] starts_with miss
-[PASS] starts_with_ci
-[PASS] ends_with
-[PASS] ends_with empty false
+[PASS] starts_with empty false
+[PASS] ends_with hit
 [PASS] ends_with miss
-[PASS] ends_with_ci
-[PASS] equals
+[PASS] ends_with empty false
+[PASS] equals hit
 [PASS] equals miss
-[PASS] equals_ci
+[PASS] compare equal
+[PASS] compare less
+[PASS] compare greater
 
-== count / lines / char ==
-[PASS] count non-overlap
-[PASS] count miss
+== search / compare icase ==
+[PASS] index_icase hit
+[PASS] index_icase empty needle
+[PASS] index_icase miss
+[PASS] last_index_icase hit
+[PASS] find_icase hit
+[PASS] contains_icase hit
+[PASS] contains_icase lowercase hit
+[PASS] contains_icase empty false
+[PASS] contains_icase miss
+[PASS] starts_with_icase hit
+[PASS] starts_with_icase miss
+[PASS] ends_with_icase hit
+[PASS] ends_with_icase miss
+[PASS] equals_icase hit
+[PASS] equals_icase miss
+[PASS] compare_icase equal
+[PASS] compare_icase less
+[PASS] compare_icase greater
+
+== length / count / chars ==
+[PASS] len empty
+[PASS] len ascii
 [PASS] count empty needle
+[PASS] count miss
+[PASS] count non-overlap aa in aaaa
+[PASS] count separator
+[PASS] count newline
 [PASS] lines_count empty
 [PASS] lines_count one
 [PASS] lines_count two
+[PASS] lines_count trailing newline
 [PASS] first_char empty
-[PASS] first_char
+[PASS] first_char normal
 [PASS] last_char empty
-[PASS] last_char
+[PASS] last_char normal
 
 == before / after / between ==
-[PASS] before hit
+[PASS] before first delimiter
 [PASS] before miss returns original
 [PASS] before empty delimiter returns original
-[PASS] after hit
-[PASS] after miss rc
-[PASS] after empty delimiter rc
-[PASS] before_last hit
-[PASS] after_last hit
-[PASS] between hit
-[PASS] between_last hit
+[PASS] after first delimiter
+[PASS] after miss fails
+[PASS] after empty delimiter fails
+[PASS] before_last delimiter
+[PASS] before_last miss original
+[PASS] after_last delimiter
+[PASS] after_last miss fails
+[PASS] between simple
+[PASS] between last
+[PASS] between missing left fails
+[PASS] between missing right returns rest
 
-== replace / remove / prefix / suffix ==
+== replace / remove / affixes ==
 [PASS] replace all simple
 [PASS] replace first simple
 [PASS] replace last simple
+[PASS] replace empty from no-op
+[PASS] replace_first empty from no-op
+[PASS] replace_last empty from no-op
 [PASS] replace literal star
 [PASS] replace literal question
 [PASS] replace literal bracket
+[PASS] replace literal slash
 [PASS] remove all
 [PASS] remove first
 [PASS] remove last
 [PASS] remove_prefix hit
 [PASS] remove_prefix miss
+[PASS] remove_prefix empty no-op
 [PASS] remove_suffix hit
 [PASS] remove_suffix miss
+[PASS] remove_suffix empty no-op
 [PASS] ensure_prefix hit
-[PASS] ensure_prefix miss
 [PASS] ensure_prefix add
+[PASS] ensure_prefix empty no-op
 [PASS] ensure_suffix hit
 [PASS] ensure_suffix add
+[PASS] ensure_suffix empty no-op
 
-== case conversions ==
+== words / naming conversions ==
+[PASS] words empty
+[PASS] words separators
 [PASS] words camel acronym
-[PASS] words mixed
+[PASS] words mixed digits split
+[PASS] words consecutive separators
 [PASS] title
 [PASS] camel
 [PASS] pascal
 [PASS] kebab
 [PASS] snake
 [PASS] train
-[PASS] constant
 [PASS] slug alias
-[PASS] capitalize
-[PASS] uncapitalize
-[PASS] swapcase
+[PASS] constant
+[PASS] capitalize empty
+[PASS] capitalize word
+[PASS] uncapitalize empty
+[PASS] uncapitalize word
+[PASS] swapcase ascii
 
 == split / lines / indent / dedent ==
 [PASS] split simple
@@ -318,27 +401,45 @@ str::json_quote
 [PASS] split keeps empty tail len
 [PASS] split keeps empty tail first
 [PASS] split keeps empty tail second
-[PASS] split empty sep rc
+[PASS] split keeps empty head len
+[PASS] split keeps empty head first
+[PASS] split keeps empty head second
+[PASS] split empty input emits one empty field
+[PASS] split empty input field empty
+[PASS] split empty separator fails
 [PASS] lines empty
 [PASS] lines one
+[PASS] lines multi command-substitution strips final newline
+[PASS] indent empty
+[PASS] indent one
 [PASS] indent multi
+[PASS] indent preserves middle empty
+[PASS] dedent empty
 [PASS] dedent simple
 [PASS] dedent blank lines
+[PASS] dedent no indent
 
 == predicates ==
-[PASS] is_empty true
-[PASS] is_empty false
+[PASS] is_empty empty
+[PASS] is_empty space false
 [PASS] is_blank empty
-[PASS] is_blank spaces
-[PASS] is_blank false
-[PASS] is_lower
+[PASS] is_blank spaces tabs newlines
+[PASS] is_blank text false
+[PASS] is_lower a
+[PASS] is_lower A false
 [PASS] is_lower multi false
-[PASS] is_upper
+[PASS] is_lower empty false
+[PASS] is_upper A
+[PASS] is_upper a false
+[PASS] is_upper multi false
 [PASS] is_alpha lower
 [PASS] is_alpha upper
 [PASS] is_alpha digit false
+[PASS] is_alpha underscore false
 [PASS] is_digit
-[PASS] is_alnum alpha
+[PASS] is_digit letter false
+[PASS] is_digit multi false
+[PASS] is_alnum letter
 [PASS] is_alnum digit
 [PASS] is_alnum symbol false
 [PASS] is_char one
@@ -346,47 +447,68 @@ str::json_quote
 [PASS] is_char many false
 [PASS] is_int positive
 [PASS] is_int negative
+[PASS] is_int zero
+[PASS] is_int empty false
 [PASS] is_int float false
 [PASS] is_uint zero
+[PASS] is_uint number
 [PASS] is_uint signed false
+[PASS] is_uint negative false
 [PASS] is_float int-compatible
 [PASS] is_float decimal
 [PASS] is_float leading dot
 [PASS] is_float trailing dot
-[PASS] is_float bad false
+[PASS] is_float dot false
+[PASS] is_float exponent unsupported false
 [PASS] is_bool true
-[PASS] is_bool false input
-[PASS] is_email simple
-[PASS] is_email bad false
+[PASS] is_bool on uppercase
+[PASS] is_bool zero
+[PASS] is_bool maybe false
+[PASS] is_bool empty false
+[PASS] is_email basic
+[PASS] is_email subdomain
+[PASS] is_email no tld false
+[PASS] is_email spaces false
 [PASS] is_url http
 [PASS] is_url https
 [PASS] is_url ftp false
-[PASS] is_slug
+[PASS] is_url spaces false
+[PASS] is_slug simple
 [PASS] is_slug uppercase false
-[PASS] is_identifier
+[PASS] is_slug leading dash false
+[PASS] is_slug trailing dash false
+[PASS] is_identifier simple
+[PASS] is_identifier caps
 [PASS] is_identifier leading digit false
-
-== bool conversion ==
-[PASS] bool true
-[PASS] bool false
-[PASS] bool invalid rc
+[PASS] is_identifier dash false
 
 == escaping ==
 [PASS] escape_sed slash amp backslash
-[PASS] escape_regex produces matching literal regex
+[PASS] escape_regex literal matches raw
+[PASS] escape_regex literal does not overmatch
 [PASS] escape_json specials
 [PASS] escape_json control U+0001
-[PASS] json_quote
+[PASS] json_quote quoted
+[PASS] json_quote empty
 
 == properties / invariants ==
 [PASS] property trim idempotent
+[PASS] property normalize idempotent
 [PASS] property lower idempotent
 [PASS] property upper idempotent
-[PASS] property snake is stable through words
-[PASS] property kebab is stable through words
+[PASS] property snake stable
+[PASS] property kebab stable
+[PASS] property ensure_prefix idempotent
+[PASS] property ensure_suffix idempotent
+[PASS] property remove_prefix inverse simple
+[PASS] property remove_suffix inverse simple
 
 == summary ==
 
-TOTAL=266 PASS=266 FAIL=0
-LOCKED: string.sh passed the brutal suite.
+TOTAL=380 PASS=380 FAIL=0
+GAME OVER: string.sh passed the savage suite.
+
+real    0m0.275s
+user    0m0.222s
+sys     0m0.062s
 codingmaster@codingmstr:/var/www/projects/gun$
