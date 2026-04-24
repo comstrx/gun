@@ -4,8 +4,7 @@ set -Eeuo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 
 source "${ROOT}/system.sh"
-source "${ROOT}/user.sh"
-source "${ROOT}/mode.sh"
+source "${ROOT}/process.sh"
 
 pass=0
 fail=0
@@ -15,7 +14,7 @@ ok () { printf '[OK]   %s\n' "$1"; pass=$(( pass + 1 )); }
 bad () { printf '[FAIL] %s\n' "$1"; fail=$(( fail + 1 )); }
 skip_case () { printf '[SKIP] %s\n' "$1"; skip=$(( skip + 1 )); }
 
-run () {
+run_case () {
 
     local name="$1"
     shift
@@ -26,153 +25,158 @@ run () {
 
 }
 
-eq () {
+not_case () {
+
+    local name="$1"
+    shift
+
+    if "$@"; then bad "${name}"
+    else ok "${name}"
+    fi
+
+}
+
+eq_case () {
 
     local name="$1" got="$2" want="$3"
 
     if [[ "${got}" == "${want}" ]]; then ok "${name}"
     else
-        printf '[FAIL] %s | got=%s want=%s\n' "${name}" "${got}" "${want}"
+        printf '[FAIL] %s | got=%q want=%q\n' "${name}" "${got}" "${want}"
         fail=$(( fail + 1 ))
     fi
 
 }
 
-mode_is () {
+contains_case () {
 
-    local path="$1" want="$2" got=""
+    local name="$1" got="$2" want="$3"
 
-    got="$(mode::get "${path}" 2>/dev/null || true)"
-    [[ "${got}" == "${want}" ]]
+    if [[ "${got}" == *"${want}"* ]]; then ok "${name}"
+    else
+        printf '[FAIL] %s | missing=%q got=%q\n' "${name}" "${want}" "${got}"
+        fail=$(( fail + 1 ))
+    fi
 
 }
 
-TMP="${TMPDIR:-/tmp}/mode_hard_test_$$"
-FILE="${TMP}/file.txt"
-EXEC="${TMP}/run.sh"
-DIR="${TMP}/dir"
-A="${TMP}/a.txt"
-B="${TMP}/b.txt"
+TMP="${TMPDIR:-/tmp}/proc_hard_test_$$"
+BIN_DIR="${TMP}/bin"
+LOG="${TMP}/log.txt"
 
 cleanup () {
 
-    chmod -R u+w "${TMP}" >/dev/null 2>&1 || true
     rm -rf "${TMP}" >/dev/null 2>&1 || true
 
 }
 
 trap cleanup EXIT
 
-mkdir -p "${TMP}"
-printf 'hello\n' > "${FILE}"
-printf '#!/usr/bin/env bash\nprintf "ok\\n"\n' > "${EXEC}"
-mkdir -p "${DIR}"
-printf 'a\n' > "${A}"
-printf 'b\n' > "${B}"
+mkdir -p "${BIN_DIR}"
+: > "${LOG}"
 
-IS_WINDOWS=0
-sys::is_windows && IS_WINDOWS=1
+cat > "${BIN_DIR}/fakever" <<'SH'
+#!/usr/bin/env bash
+case "${1:-}" in
+    --version) printf 'fakever version 1.2.3-alpha+001\n' ;;
+    -v)        printf 'fakever v9.9.9\n' ;;
+    -V)        printf 'fakever 8.8.8\n' ;;
+    version)   printf 'fakever 7.7.7\n' ;;
+    *)         printf 'fakever run\n' ;;
+esac
+SH
+
+cat > "${BIN_DIR}/fakebadver" <<'SH'
+#!/usr/bin/env bash
+case "${1:-}" in
+    --version|-v|-V|version) printf 'no version here\n' ;;
+    *) printf 'ok\n' ;;
+esac
+SH
+
+cat > "${BIN_DIR}/fakecmd" <<'SH'
+#!/usr/bin/env bash
+printf 'fakecmd:%s\n' "$*"
+SH
+
+cat > "${BIN_DIR}/fakefail" <<'SH'
+#!/usr/bin/env bash
+exit 42
+SH
+
+chmod +x "${BIN_DIR}/fakever" "${BIN_DIR}/fakebadver" "${BIN_DIR}/fakecmd" "${BIN_DIR}/fakefail"
+export PATH="${BIN_DIR}:${PATH}"
 
 printf '%s\n' "------------------------------------------------------------"
-printf '%s\n' "[HARD TEST] mode.sh"
+printf '%s\n' "[HARD TEST] process.sh"
 printf '%s\n' "------------------------------------------------------------"
 printf 'Runtime : %s\n' "$(sys::runtime 2>/dev/null || printf unknown)"
 printf 'OS      : %s\n' "$(sys::name 2>/dev/null || printf unknown)"
-printf 'User    : %s\n' "$(sys::uname 2>/dev/null || printf unknown)"
+printf 'Manager : %s\n' "$(sys::manager 2>/dev/null || printf unknown)"
 printf 'TMP     : %s\n' "${TMP}"
 printf '%s\n' "------------------------------------------------------------"
 
-run "mode::get file" mode::get "${FILE}"
-run "mode::info file" mode::info "${FILE}"
+run_case "proc::has bash" proc::has bash
+run_case "proc::has fakecmd" proc::has fakecmd
+not_case "proc::has missing" proc::has "definitely_missing_command_zzzz"
 
-for m in 600 644 700 755; do
-    run "mode::set file ${m}" mode::set "${FILE}" "${m}"
+run_case "proc::has_any hit" proc::has_any "missing_1" fakecmd "missing_2"
+not_case "proc::has_any miss" proc::has_any "missing_1" "missing_2"
 
-    if (( IS_WINDOWS )); then
-        run "mode::get after ${m}" mode::get "${FILE}"
-    else
-        run "mode exact file ${m}" mode_is "${FILE}" "${m}"
-    fi
-done
+run_case "proc::has_all hit" proc::has_all bash fakecmd
+not_case "proc::has_all miss" proc::has_all bash "missing_zzzz"
 
-run "mode::private file" mode::private "${FILE}"
-if (( IS_WINDOWS )); then run "private file readable" mode::readable "${FILE}"
-else run "private file is 600" mode_is "${FILE}" 600
-fi
+run_case "proc::need bash" proc::need bash
+run_case "proc::need_any hit" proc::need_any "missing_x" bash
+run_case "proc::need_all hit" proc::need_all bash fakecmd
 
-run "mode::public file" mode::public "${FILE}"
-if (( IS_WINDOWS )); then run "public file readable" mode::readable "${FILE}"
-else run "public file is 644" mode_is "${FILE}" 644
-fi
+run_case "proc::run true" proc::run true
+not_case "proc::run false" proc::run false
 
-run "mode::private dir" mode::private "${DIR}"
-if (( IS_WINDOWS )); then run "private dir readable" mode::readable "${DIR}"
-else run "private dir is 700" mode_is "${DIR}" 700
-fi
+run_case "proc::run_ok true" proc::run_ok true
+not_case "proc::run_ok false" proc::run_ok false
 
-run "mode::public dir" mode::public "${DIR}"
-if (( IS_WINDOWS )); then run "public dir readable" mode::readable "${DIR}"
-else run "public dir is 755" mode_is "${DIR}" 755
-fi
+run_case "proc::run fakecmd" bash -c 'proc::run fakecmd hello >/tmp/proc_test_run_out 2>/dev/null && grep -qx "fakecmd:hello" /tmp/proc_test_run_out'
 
-run "mode::read u" mode::read "${FILE}" u
-run "mode::write u" mode::write "${FILE}" u
-run "mode::exec u" mode::exec "${EXEC}" u
+run_case "proc::run_all one" proc::run_all "printf one >> '${LOG}'"
+contains_case "run_all wrote one" "$(cat "${LOG}")" "one"
 
-run "mode::readable" mode::readable "${FILE}"
-run "mode::writable" mode::writable "${FILE}"
-run "mode::executable" mode::executable "${EXEC}"
+run_case "proc::run_all multiple" proc::run_all "printf two >> '${LOG}'" "printf three >> '${LOG}'"
+contains_case "run_all wrote two" "$(cat "${LOG}")" "two"
+contains_case "run_all wrote three" "$(cat "${LOG}")" "three"
 
-run "execute script" bash -c '"$1" | grep -qx ok' _ "${EXEC}"
+not_case "proc::run_all fail" proc::run_all "true" "false" "printf never >> '${LOG}'"
 
-run "mode::lock u" mode::lock "${FILE}" u
+run_case "proc::run_all_ok true" proc::run_all_ok "true" "printf hidden"
+not_case "proc::run_all_ok fail" proc::run_all_ok "true" "false"
 
-if (( IS_WINDOWS )); then
-    run "mode::lock returns no-write or ACL accepted" bash -c '[[ ! -w "$1" ]] || true' _ "${FILE}"
+path_fake="$(proc::path fakecmd 2>/dev/null || true)"
+[[ -n "${path_fake}" ]] && ok "proc::path fakecmd" || bad "proc::path fakecmd"
+[[ "${path_fake}" == *"fakecmd"* ]] && ok "proc::path contains fakecmd" || bad "proc::path contains fakecmd"
+
+path_direct="$(proc::path "${BIN_DIR}/fakecmd" 2>/dev/null || true)"
+[[ -n "${path_direct}" ]] && ok "proc::path direct" || bad "proc::path direct"
+
+not_case "proc::path missing" proc::path "definitely_missing_command_zzzz"
+
+ver="$(proc::version fakever 2>/dev/null || true)"
+eq_case "proc::version normalized" "${ver}" "1.2.3-alpha.001"
+
+not_case "proc::version no version" proc::version fakebadver
+not_case "proc::version missing" proc::version "definitely_missing_command_zzzz"
+
+manager="$(sys::manager 2>/dev/null || true)"
+if [[ -n "${manager}" && "${manager}" != "unknown" ]]; then
+    run_case "proc::refresh_ok callable" proc::refresh_ok
 else
-    run "locked file not writable" bash -c '[[ ! -w "$1" ]]' _ "${FILE}"
+    skip_case "proc::refresh_ok callable"
 fi
 
-run "mode::unlock u" mode::unlock "${FILE}" u
-run "unlocked file writable" mode::writable "${FILE}"
+run_case "proc::install existing no version" proc::install fakecmd fakecmd "" 0 0
+run_case "proc::ensure existing no version" proc::ensure fakecmd fakecmd "" 0 0
 
-run "mode::owner get" mode::owner "${FILE}"
-run "mode::group get" mode::group "${FILE}"
-run "mode::owned current" mode::owned "${FILE}"
-
-mode::set "${A}" 644
-mode::set "${B}" 644
-run "mode::same equal" mode::same "${A}" "${B}"
-
-mode::set "${B}" 755
-if mode::same "${A}" "${B}"; then bad "mode::same different"
-else ok "mode::same different"
-fi
-
-run "mode::ensure 644" mode::ensure "${A}" 644
-
-if (( IS_WINDOWS )); then
-    run "mode::ensure get" mode::get "${A}"
-else
-    run "mode::ensure exact 644" mode_is "${A}" 644
-fi
-
-run "mode::add +x" mode::add "${A}" x
-
-if (( IS_WINDOWS )); then
-    run "mode::executable after add" mode::get "${A}"
-else
-    run "mode::executable after add" mode::executable "${A}"
-fi
-
-run "mode::del -x" mode::del "${A}" x
-if (( IS_WINDOWS )); then
-    run "mode::del accepted" mode::get "${A}"
-else
-    if mode::executable "${A}"; then bad "not executable after del"
-    else ok "not executable after del"
-    fi
-fi
+run_case "proc::install_all existing" proc::install_all "fakecmd:fakecmd::0:0" "bash:bash::0:0"
+run_case "proc::ensure_all existing" proc::ensure_all "fakecmd:fakecmd::0:0"
 
 printf '%s\n' "------------------------------------------------------------"
 printf 'Passed: %s\n' "${pass}"

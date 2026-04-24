@@ -110,8 +110,7 @@ sys::is_gitbash () {
 }
 sys::is_windows () {
 
-    sys::is_wsl && return 1
-
+    sys::is_wsl    && return 1
     sys::is_msys   && return 0
     sys::is_cygwin && return 0
 
@@ -476,6 +475,7 @@ sys::manager () {
         sys::has zypper       && { printf '%s\n' "zypper";  return 0; }
         sys::has xbps-install && { printf '%s\n' "xbps";    return 0; }
         sys::has nix          && { printf '%s\n' "nix";     return 0; }
+        sys::has rpm          && { printf '%s\n' "rpm";     return 0; }
 
         printf '%s\n' "unknown"
         return 1
