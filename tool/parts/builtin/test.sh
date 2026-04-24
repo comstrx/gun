@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# shellcheck disable=SC1091
-source "${1:-./env.sh}"
+ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+source "${ROOT}/env.sh"
 
 __T_TOTAL=0
 __T_PASS=0
