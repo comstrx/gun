@@ -421,7 +421,8 @@ proc::path () {
 }
 proc::version () {
 
-    local bin="${1:-}" exe="" arg="" out="" v=""
+    local bin="${1:-}" exe="" arg="" out="" s="" v=""
+    local major="" minor="" patch="" tail=""
 
     [[ -n "${bin}" ]] || return 1
     proc::has "${bin}" || return 1
@@ -433,44 +434,34 @@ proc::version () {
         out="$("${exe}" "${arg}" 2>&1 || true)"
         [[ -n "${out}" ]] || continue
 
-        v="$(
-            printf '%s\n' "${out}" | LC_ALL=C awk '
-            {
-                text = $0
+        while IFS= read -r s; do
 
-                while ( match(text, /[0-9]+\.[0-9]+(\.[0-9]+)?([-.+][0-9A-Za-z][0-9A-Za-z.+-]*)?/ ) ) {
+            [[ -n "${s}" ]] || continue
 
-                    s = substr(text, RSTART, RLENGTH)
+            if [[ "${s}" =~ ^([0-9]+)\.([0-9]+)(\.([0-9]+))?([.+-].*)?$ ]]; then
 
-                    if ( s ~ /^[0-9]+\.[0-9]+([-.+]|$)/ ) {
-                        sub(/^([0-9]+\.[0-9]+)/, "&.0", s)
-                    }
+                major="${BASH_REMATCH[1]}"
+                minor="${BASH_REMATCH[2]}"
+                patch="${BASH_REMATCH[4]:-0}"
+                tail="${BASH_REMATCH[5]:-}"
 
-                    base = s
-                    sub(/^([0-9]+\.[0-9]+\.[0-9]+).*/, "\\1", base)
+                v="${major}.${minor}.${patch}"
 
-                    if ( base !~ /^[0-9]+\.[0-9]+\.[0-9]+$/ ) {
-                        text = substr(text, RSTART + RLENGTH)
-                        continue
-                    }
+                if [[ -n "${tail}" ]]; then
+                    tail="${tail#[.+-]}"
+                    tail="$(printf '%s\n' "${tail}" | sed -E 's/[.+-]+/./g; s/^\.+//; s/\.+$//')"
+                    [[ -n "${tail}" ]] && v="${v}-${tail}"
+                fi
 
-                    tail = s
-                    sub(/^[0-9]+\.[0-9]+\.[0-9]+[-.+]?/, "", tail)
+                printf '%s\n' "${v}"
+                return 0
 
-                    if ( tail != "" ) {
-                        gsub(/[-.+]+/, ".", tail)
-                        gsub(/^\.+|\.+$/, "", tail)
+            fi
 
-                        if ( tail != "" ) base = base "-" tail
-                    }
-
-                    print base
-                    exit
-                }
-            }
-        ')"
-
-        [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
+        done < <(
+            printf '%s\n' "${out}" |
+            LC_ALL=C grep -Eio '[0-9]+[.][0-9]+([.][0-9]+)?([.+-][0-9A-Za-z][0-9A-Za-z.+-]*)?' 2>/dev/null
+        )
 
     done
 
