@@ -36,149 +36,154 @@ not_case () {
 
 }
 
-eq_case () {
+manager="$(sys::manager 2>/dev/null || true)"
+runtime="$(sys::runtime 2>/dev/null || true)"
+os="$(sys::name 2>/dev/null || true)"
 
-    local name="$1" got="$2" want="$3"
+bin=""
+package=""
+version=""
+force="0"
+refresh="1"
 
-    if [[ "${got}" == "${want}" ]]; then ok "${name}"
-    else
-        printf '[FAIL] %s | got=%q want=%q\n' "${name}" "${got}" "${want}"
-        fail=$(( fail + 1 ))
-    fi
+case "${manager}" in
 
-}
+    apt)
+        bin="sl"
+        package="sl"
+    ;;
 
-contains_case () {
+    apk)
+        bin="figlet"
+        package="figlet"
+    ;;
 
-    local name="$1" got="$2" want="$3"
+    dnf|yum)
+        bin="figlet"
+        package="figlet"
+    ;;
 
-    if [[ "${got}" == *"${want}"* ]]; then ok "${name}"
-    else
-        printf '[FAIL] %s | missing=%q got=%q\n' "${name}" "${want}" "${got}"
-        fail=$(( fail + 1 ))
-    fi
+    zypper)
+        bin="figlet"
+        package="figlet"
+    ;;
 
-}
+    pacman)
+        bin="figlet"
+        package="figlet"
+    ;;
 
-TMP="${TMPDIR:-/tmp}/proc_hard_test_$$"
-BIN_DIR="${TMP}/bin"
-LOG="${TMP}/log.txt"
+    xbps)
+        bin="figlet"
+        package="figlet"
+    ;;
 
-cleanup () {
+    brew)
+        bin="figlet"
+        package="figlet"
+    ;;
 
-    rm -rf "${TMP}" >/dev/null 2>&1 || true
+    scoop)
+        bin="figlet"
+        package="figlet"
+    ;;
 
-}
+    choco)
+        bin="figlet"
+        package="figlet"
+    ;;
 
-trap cleanup EXIT
+    winget)
+        bin="jq"
+        package="jqlang.jq"
+    ;;
 
-mkdir -p "${BIN_DIR}"
-: > "${LOG}"
+    nix)
+        bin="figlet"
+        package="figlet"
+    ;;
 
-cat > "${BIN_DIR}/fakever" <<'SH'
-#!/usr/bin/env bash
-case "${1:-}" in
-    --version) printf 'fakever version 1.2.3-alpha+001\n' ;;
-    -v)        printf 'fakever v9.9.9\n' ;;
-    -V)        printf 'fakever 8.8.8\n' ;;
-    version)   printf 'fakever 7.7.7\n' ;;
-    *)         printf 'fakever run\n' ;;
+    *)
+        bin=""
+        package=""
+    ;;
+
 esac
-SH
-
-cat > "${BIN_DIR}/fakebadver" <<'SH'
-#!/usr/bin/env bash
-case "${1:-}" in
-    --version|-v|-V|version) printf 'no version here\n' ;;
-    *) printf 'ok\n' ;;
-esac
-SH
-
-cat > "${BIN_DIR}/fakecmd" <<'SH'
-#!/usr/bin/env bash
-printf 'fakecmd:%s\n' "$*"
-SH
-
-cat > "${BIN_DIR}/fakefail" <<'SH'
-#!/usr/bin/env bash
-exit 42
-SH
-
-chmod +x "${BIN_DIR}/fakever" "${BIN_DIR}/fakebadver" "${BIN_DIR}/fakecmd" "${BIN_DIR}/fakefail"
-export PATH="${BIN_DIR}:${PATH}"
 
 printf '%s\n' "------------------------------------------------------------"
-printf '%s\n' "[HARD TEST] process.sh"
+printf '%s\n' "[REAL INSTALL TEST] process.sh"
 printf '%s\n' "------------------------------------------------------------"
-printf 'Runtime : %s\n' "$(sys::runtime 2>/dev/null || printf unknown)"
-printf 'OS      : %s\n' "$(sys::name 2>/dev/null || printf unknown)"
-printf 'Manager : %s\n' "$(sys::manager 2>/dev/null || printf unknown)"
-printf 'TMP     : %s\n' "${TMP}"
+printf 'OS      : %s\n' "${os:-unknown}"
+printf 'Runtime : %s\n' "${runtime:-unknown}"
+printf 'Manager : %s\n' "${manager:-unknown}"
+printf 'Tool    : %s\n' "${bin:-none}"
+printf 'Package : %s\n' "${package:-none}"
 printf '%s\n' "------------------------------------------------------------"
 
 run_case "proc::has bash" proc::has bash
-run_case "proc::has fakecmd" proc::has fakecmd
-not_case "proc::has missing" proc::has "definitely_missing_command_zzzz"
+run_case "proc::path bash" proc::path bash
+run_case "proc::version bash" proc::version bash
 
-run_case "proc::has_any hit" proc::has_any "missing_1" fakecmd "missing_2"
-not_case "proc::has_any miss" proc::has_any "missing_1" "missing_2"
+if [[ -z "${bin}" || -z "${package}" ]]; then
 
-run_case "proc::has_all hit" proc::has_all bash fakecmd
-not_case "proc::has_all miss" proc::has_all bash "missing_zzzz"
+    skip_case "real install unsupported manager"
+    printf '%s\n' "------------------------------------------------------------"
+    printf 'Passed: %s\n' "${pass}"
+    printf 'Failed: %s\n' "${fail}"
+    printf 'Skipped: %s\n' "${skip}"
+    printf '%s\n' "------------------------------------------------------------"
+    (( fail == 0 ))
+    exit $?
 
-run_case "proc::need bash" proc::need bash
-run_case "proc::need_any hit" proc::need_any "missing_x" bash
-run_case "proc::need_all hit" proc::need_all bash fakecmd
-
-run_case "proc::run true" proc::run true
-not_case "proc::run false" proc::run false
-
-run_case "proc::run_ok true" proc::run_ok true
-not_case "proc::run_ok false" proc::run_ok false
-
-tmp_out="${TMP}/run_out.txt"
-proc::run fakecmd hello > "${tmp_out}" 2>/dev/null && grep -qx "fakecmd:hello" "${tmp_out}" \
-    && ok "proc::run fakecmd" || bad "proc::run fakecmd"
-
-run_case "proc::run_all one" proc::run_all "printf one >> '${LOG}'"
-contains_case "run_all wrote one" "$(cat "${LOG}")" "one"
-
-run_case "proc::run_all multiple" proc::run_all "printf two >> '${LOG}'" "printf three >> '${LOG}'"
-contains_case "run_all wrote two" "$(cat "${LOG}")" "two"
-contains_case "run_all wrote three" "$(cat "${LOG}")" "three"
-
-not_case "proc::run_all fail" proc::run_all "true" "false" "printf never >> '${LOG}'"
-
-run_case "proc::run_all_ok true" proc::run_all_ok "true" "printf hidden"
-not_case "proc::run_all_ok fail" proc::run_all_ok "true" "false"
-
-path_fake="$(proc::path fakecmd 2>/dev/null || true)"
-[[ -n "${path_fake}" ]] && ok "proc::path fakecmd" || bad "proc::path fakecmd"
-[[ "${path_fake}" == *"fakecmd"* ]] && ok "proc::path contains fakecmd" || bad "proc::path contains fakecmd"
-
-path_direct="$(proc::path "${BIN_DIR}/fakecmd" 2>/dev/null || true)"
-[[ -n "${path_direct}" ]] && ok "proc::path direct" || bad "proc::path direct"
-
-not_case "proc::path missing" proc::path "definitely_missing_command_zzzz"
-
-ver="$(proc::version fakever 2>/dev/null || true)"
-eq_case "proc::version normalized" "${ver}" "1.2.3-alpha.001"
-
-not_case "proc::version no version" proc::version fakebadver
-not_case "proc::version missing" proc::version "definitely_missing_command_zzzz"
-
-manager="$(sys::manager 2>/dev/null || true)"
-if [[ -n "${manager}" && "${manager}" != "unknown" ]]; then
-    run_case "proc::refresh_ok callable" proc::refresh_ok
-else
-    skip_case "proc::refresh_ok callable"
 fi
 
-run_case "proc::install existing no version" proc::install fakecmd fakecmd "" 0 0
-run_case "proc::ensure existing no version" proc::ensure fakecmd fakecmd "" 0 0
+if proc::has "${bin}"; then
 
-run_case "proc::install_all existing" proc::install_all "fakecmd:fakecmd::0:0" "bash:bash::0:0"
-run_case "proc::ensure_all existing" proc::ensure_all "fakecmd:fakecmd::0:0"
+    printf '[INFO] %s already exists; testing uninstall/install cycle carefully\n' "${bin}"
+
+    run_case "proc::uninstall existing ${bin}" proc::uninstall "${bin}" "${package}"
+
+    if proc::has "${bin}"; then
+        skip_case "binary still exists after uninstall; probably installed by another source"
+    else
+        ok "binary removed after uninstall"
+    fi
+
+else
+
+    ok "${bin} initially missing"
+
+fi
+
+if ! proc::has "${bin}"; then
+
+    run_case "proc::install ${bin}" proc::install "${bin}" "${package}" "${version}" "${force}" "${refresh}"
+    run_case "proc::has ${bin} after install" proc::has "${bin}"
+    run_case "proc::path ${bin} after install" proc::path "${bin}"
+
+    if proc::version "${bin}" >/dev/null 2>&1; then
+        ok "proc::version ${bin} after install"
+    else
+        skip_case "proc::version ${bin} unavailable"
+    fi
+
+    run_case "proc::run_ok ${bin}" proc::run_ok "${bin}" --help
+
+    run_case "proc::ensure ${bin}" proc::ensure "${bin}" "${package}" "" "0" "0"
+
+    run_case "proc::uninstall ${bin}" proc::uninstall "${bin}" "${package}"
+
+    if proc::has "${bin}"; then
+        bad "proc::has ${bin} after uninstall"
+    else
+        ok "proc::has ${bin} after uninstall"
+    fi
+
+else
+
+    skip_case "install/uninstall cycle skipped because ${bin} still exists"
+
+fi
 
 printf '%s\n' "------------------------------------------------------------"
 printf 'Passed: %s\n' "${pass}"

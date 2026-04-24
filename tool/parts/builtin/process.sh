@@ -421,8 +421,7 @@ proc::path () {
 }
 proc::version () {
 
-    local bin="${1:-}" exe="" arg="" out="" s="" v=""
-    local major="" minor="" patch="" tail=""
+    local bin="${1:-}" exe="" arg="" out="" s="" v="" major="" minor="" patch="" tail=""
 
     [[ -n "${bin}" ]] || return 1
     proc::has "${bin}" || return 1
