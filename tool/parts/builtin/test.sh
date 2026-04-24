@@ -229,6 +229,26 @@ t::deny "unset_all gone A" env::has ENV_TEST_A
 t::deny "unset_all gone B" env::has ENV_TEST_B
 t::deny "unset_all gone C" env::has ENV_TEST_C
 
+env::unset_all ENV_TEST_A ENV_TEST_B ENV_TEST_C 2>/dev/null || true
+
+t::deny "set_all atomic fail" env::set_all ENV_TEST_A=one BAD-NAME=bad ENV_TEST_B=two
+t::deny "set_all atomic no A" env::has ENV_TEST_A
+t::deny "set_all atomic no B" env::has ENV_TEST_B
+
+env::set ENV_TEST_A "old"
+t::deny "set_all_once atomic fail" env::set_all_once ENV_TEST_A=new BAD-NAME=bad ENV_TEST_B=two
+t::eq   "set_all_once atomic keeps old" "$(env::get ENV_TEST_A)" "old"
+t::deny "set_all_once atomic no B" env::has ENV_TEST_B
+
+env::set ENV_TEST_A "one"
+env::set ENV_TEST_B "two"
+t::deny "unset_all atomic fail" env::unset_all ENV_TEST_A BAD-NAME ENV_TEST_B
+t::run  "unset_all atomic keeps A" env::has ENV_TEST_A
+t::run  "unset_all atomic keeps B" env::has ENV_TEST_B
+
+get_all_bad_out="$(env::get_all ENV_TEST_A BAD-NAME 2>/dev/null || true)"
+t::eq "get_all atomic no partial output" "${get_all_bad_out}" ""
+
 # list / keys / values
 t::clean
 env::set ENV_TEST_A "aaa"

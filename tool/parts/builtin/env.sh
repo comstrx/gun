@@ -193,6 +193,9 @@ env::get_all () {
 
     for key in "$@"; do
         env::valid "${key}" || return 1
+    done
+
+    for key in "$@"; do
         printf '%s=%s\n' "${key}" "${!key-}"
     done
 
@@ -204,14 +207,15 @@ env::set_all () {
     (( $# > 0 )) || return 1
 
     for pair in "$@"; do
-
         [[ "${pair}" == *=* ]] || return 1
+        key="${pair%%=*}"
+        env::valid "${key}" || return 1
+    done
 
+    for pair in "$@"; do
         key="${pair%%=*}"
         value="${pair#*=}"
-
         env::set "${key}" "${value}" || return 1
-
     done
 
 }
@@ -220,6 +224,10 @@ env::unset_all () {
     local key=""
 
     (( $# > 0 )) || return 1
+
+    for key in "$@"; do
+        env::valid "${key}" || return 1
+    done
 
     for key in "$@"; do
         env::unset "${key}" || return 1
@@ -233,15 +241,17 @@ env::set_all_once () {
     (( $# > 0 )) || return 1
 
     for pair in "$@"; do
-
         [[ "${pair}" == *=* ]] || return 1
+        key="${pair%%=*}"
+        env::valid "${key}" || return 1
+    done
+
+    for pair in "$@"; do
 
         key="${pair%%=*}"
         value="${pair#*=}"
 
-        env::valid "${key}" || return 1
         env::has "${key}" && continue
-
         env::set "${key}" "${value}" || return 1
 
     done
