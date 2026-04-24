@@ -450,6 +450,9 @@ ok "is_identifier caps" rc str::is_identifier "Abc_123"
 no "is_identifier leading digit false" rc str::is_identifier "1abc"
 no "is_identifier dash false" rc str::is_identifier "a-b"
 
+ok "is_ascii true" rc str::is_ascii "abc123"
+no "is_ascii false" rc str::is_ascii "✅"
+
 section "escaping"
 eq "escape_sed slash amp backslash" 'a\/b\&c\\d' "$(out str::escape_sed 'a/b&c\d')"
 regex_raw='a.b*c+d?e[f]g^h$i(j)k{l}m|n\o'

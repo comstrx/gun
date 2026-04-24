@@ -782,11 +782,9 @@ str::indent () {
     [[ -n "${s}" ]] || return 0
 
     while IFS= read -r line || [[ -n "${line}" ]]; do
-
         (( first )) || out+=$'\n'
         first=0
         out+="${prefix}${line}"
-
     done < <(printf '%s' "${s}")
 
     printf '%s' "${out}"
@@ -797,14 +795,10 @@ str::dedent () {
     local s="${1:-}" line="" min="" n=0 pad="" out="" first=1
 
     while IFS= read -r line || [[ -n "${line}" ]]; do
-
         [[ -z "${line//[[:space:]]/}" ]] && continue
-
         pad="${line%%[![:space:]]*}"
         n="${#pad}"
-
         [[ -z "${min}" || n -lt min ]] && min="${n}"
-
     done <<< "${s}"
 
     [[ -n "${min}" ]] || { printf '%s' "${s}"; return 0; }
@@ -909,6 +903,22 @@ str::is_slug () {
 str::is_identifier () {
 
     [[ "${1:-}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+
+}
+str::is_ascii () {
+
+    local LC_ALL=C
+    local s="${1:-}" i=0 x="" code=0
+
+    for (( i=0; i<${#s}; i++ )); do
+
+        x="${s:i:1}"
+        printf -v code '%d' "'${x}"
+        (( code <= 127 )) || return 1
+
+    done
+
+    return 0
 
 }
 
