@@ -1,236 +1,130 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P)/system.sh"
+ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+SYS_FILE="${ROOT}/system.sh"
+USER_FILE="${ROOT}/user.sh"
+MODE_FILE="${ROOT}/mode.sh"
 
-print_line () {
+[[ -f "${SYS_FILE}"  ]] && source "${SYS_FILE}"
+[[ -f "${USER_FILE}" ]] && source "${USER_FILE}"
+[[ -f "${MODE_FILE}" ]] && source "${MODE_FILE}"
 
-    printf '%s\n' "------------------------------------------------------------"
+pass=0
+fail=0
 
-}
-print_title () {
+ok () {
 
-    print_line
-    printf '[TEST] %s\n' "${1:-}"
-    print_line
-
-}
-print_bool () {
-
-    local name="${1:-}"
-
-    shift || true
-
-    if "$@"; then
-        printf '%-24s : true\n' "${name}"
-    else
-        printf '%-24s : false\n' "${name}"
-    fi
+    printf '[OK]   %s\n' "$1"
+    pass=$(( pass + 1 ))
 
 }
-print_value () {
 
-    local name="${1:-}" value="${2:-}"
+bad () {
 
-    printf '%-24s : %s\n' "${name}" "${value}"
-
-}
-print_call () {
-
-    local name="${1:-}"
-
-    shift || true
-
-    local out="" rc=0
-
-    out="$("$@" 2>/dev/null)" || rc=$?
-
-    if [[ -n "${out}" ]]; then
-        printf '%-24s : %s\n' "${name}" "${out}"
-    else
-        printf '%-24s : <empty> (rc=%s)\n' "${name}" "${rc}"
-    fi
+    printf '[FAIL] %s\n' "$1"
+    fail=$(( fail + 1 ))
 
 }
-print_bool_call () {
 
-    local name="${1:-}"
+test_case () {
 
-    shift || true
+    local name="$1"
+    shift
 
-    if "$@" >/dev/null 2>&1; then
-        printf '%-24s : true\n' "${name}"
-    else
-        printf '%-24s : false\n' "${name}"
-    fi
-
-}
-print_open_result () {
-
-    local name="${1:-}"
-
-    shift || true
-
-    if "$@" >/dev/null 2>&1; then
-        printf '%-24s : ok\n' "${name}"
-    else
-        printf '%-24s : fail\n' "${name}"
+    if "$@"; then ok "${name}"
+    else bad "${name}"
     fi
 
 }
 
-test_detect () {
+same_mode () {
 
-    print_title "detect"
+    local path="$1" want="$2" got=""
 
-    print_bool_call "sys::is_linux"       sys::is_linux
-    print_bool_call "sys::is_macos"       sys::is_macos
-    print_bool_call "sys::is_wsl"         sys::is_wsl
-    print_bool_call "sys::is_unix"        sys::is_unix
-    print_bool_call "sys::is_cygwin"      sys::is_cygwin
-    print_bool_call "sys::is_msys"        sys::is_msys
-    print_bool_call "sys::is_gitbash"     sys::is_gitbash
-    print_bool_call "sys::is_windows"     sys::is_windows
-    print_bool_call "sys::is_posix"       sys::is_posix
-    print_bool_call "sys::is_gui"         sys::is_gui
-    print_bool_call "sys::is_terminal"    sys::is_terminal
-    print_bool_call "sys::is_interactive" sys::is_interactive
-    print_bool_call "sys::is_headless"    sys::is_headless
-    print_bool_call "sys::is_container"   sys::is_container
-    print_bool_call "sys::is_root"        sys::is_root
-    print_bool_call "sys::can_sudo"       sys::can_sudo
-
-    printf '\n'
-
-    print_call "sys::name"                sys::name
-    print_call "sys::runtime"             sys::runtime
-    print_call "sys::distro"              sys::distro
-    print_call "sys::manager"             sys::manager
-    print_call "sys::arch"                sys::arch
-
-}
-test_ci () {
-
-    print_title "ci"
-
-    print_call      "sys::ci_name"        sys::ci_name
-    print_bool_call "sys::is_ci"          sys::is_ci
-    print_bool_call "sys::is_ci_pull"     sys::is_ci_pull
-    print_bool_call "sys::is_ci_push"     sys::is_ci_push
-    print_bool_call "sys::is_ci_tag"      sys::is_ci_tag
-
-}
-test_has () {
-
-    print_title "has"
-
-    print_bool_call "sys::has bash"       sys::has bash
-    print_bool_call "sys::has sh"         sys::has sh
-    print_bool_call "sys::has uname"      sys::has uname
-    print_bool_call "sys::has awk"        sys::has awk
-    print_bool_call "sys::has sed"        sys::has sed
-    print_bool_call "sys::has grep"       sys::has grep
-    print_bool_call "sys::has df"         sys::has df
-    print_bool_call "sys::has du"         sys::has du
-    print_bool_call "sys::has xdg-open"   sys::has xdg-open
-    print_bool_call "sys::has open"       sys::has open
-    print_bool_call "sys::has powershell" sys::has powershell.exe
-
-}
-test_disk () {
-
-    local path="${1:-.}"
-
-    print_title "disk"
-
-    print_value "path" "${path}"
-
-    print_call "sys::disk_total"          sys::disk_total   "${path}"
-    print_call "sys::disk_free"           sys::disk_free    "${path}"
-    print_call "sys::disk_used"           sys::disk_used    "${path}"
-    print_call "sys::disk_percent"        sys::disk_percent "${path}"
-    print_call "sys::disk_size"           sys::disk_size    "${path}"
-    print_call "sys::disk_info"           sys::disk_info    "${path}"
-
-}
-test_mem () {
-
-    print_title "memory"
-
-    print_call "sys::mem_total"           sys::mem_total
-    print_call "sys::mem_free"            sys::mem_free
-    print_call "sys::mem_used"            sys::mem_used
-    print_call "sys::mem_percent"         sys::mem_percent
-    print_call "sys::mem_info"            sys::mem_info
-
-}
-test_open_safe () {
-
-    print_title "open-safe"
-
-    print_open_result "sys::open . path"              sys::open "." path
-    print_open_result "sys::open localhost"           sys::open "localhost" url
-    print_open_result "sys::open example.com"         sys::open "example.com" url
-    print_open_result "sys::open https://openai.com"  sys::open "https://openai.com" url
-
-}
-test_open_apps () {
-
-    print_title "open-apps"
-
-    print_open_result "sys::open bash app"            sys::open bash app --version
-    print_open_result "sys::open sh app"              sys::open sh app -c 'exit 0'
-
-}
-test_env () {
-
-    print_title "env"
-
-    print_value "OSTYPE"               "${OSTYPE:-}"
-    print_value "MSYSTEM"              "${MSYSTEM:-}"
-    print_value "TERM_PROGRAM"         "${TERM_PROGRAM:-}"
-    print_value "WSL_DISTRO_NAME"      "${WSL_DISTRO_NAME:-}"
-    print_value "WSL_INTEROP"          "${WSL_INTEROP:-}"
-    print_value "WINDIR"               "${WINDIR:-}"
-    print_value "SystemRoot"           "${SystemRoot:-}"
-    print_value "COMSPEC"              "${COMSPEC:-}"
-    print_value "DISPLAY"              "${DISPLAY:-}"
-    print_value "WAYLAND_DISPLAY"      "${WAYLAND_DISPLAY:-}"
-    print_value "SSH_CONNECTION"       "${SSH_CONNECTION:-}"
-    print_value "CI"                   "${CI:-}"
-    print_value "GITHUB_ACTIONS"       "${GITHUB_ACTIONS:-}"
-    print_value "GITLAB_CI"            "${GITLAB_CI:-}"
-    print_value "GitInstallRoot"       "${GitInstallRoot:-}"
-    print_value "MSYS2_PATH_TYPE"      "${MSYS2_PATH_TYPE:-}"
-
-}
-main () {
-
-    local path="${1:-.}"
-
-    print_title "system.sh integration test"
-
-    test_env
-    test_has
-    test_detect
-    test_ci
-    test_disk "${path}"
-    test_mem
-
-    # printf '\n'
-    # print_line
-    # printf '[INFO] open tests may launch file manager, browser, or app.\n'
-    # printf '[INFO] comment them out if you want silent runs only.\n'
-    # print_line
-    # printf '\n'
-    # test_open_safe
-    # test_open_apps
-
-    printf '\n'
-    print_line
-    printf '[DONE] all tests finished\n'
-    print_line
+    got="$(mode::get "${path}" 2>/dev/null || true)"
+    [[ "${got}" == "${want}" ]]
 
 }
 
-main "$@"
+TMP="${TMPDIR:-/tmp}/mode_test_$$"
+FILE="${TMP}/file.txt"
+EXEC="${TMP}/run.sh"
+DIR="${TMP}/dir"
+
+cleanup () {
+
+    rm -rf "${TMP}" >/dev/null 2>&1 || true
+
+}
+
+trap cleanup EXIT
+
+mkdir -p "${TMP}"
+
+printf 'hello\n' > "${FILE}"
+printf '#!/usr/bin/env bash\nprintf "ok\\n"\n' > "${EXEC}"
+mkdir -p "${DIR}"
+
+printf '%s\n' "------------------------------------------------------------"
+printf '%s\n' "[TEST] mode.sh"
+printf '%s\n' "------------------------------------------------------------"
+printf 'Runtime : %s\n' "$(sys::runtime 2>/dev/null || printf unknown)"
+printf 'OS      : %s\n' "$(sys::name 2>/dev/null || printf unknown)"
+printf 'User    : %s\n' "$(sys::uname 2>/dev/null || printf unknown)"
+printf 'TMP     : %s\n' "${TMP}"
+printf '%s\n' "------------------------------------------------------------"
+
+test_case "mode::get file"        mode::get "${FILE}"
+test_case "mode::set 600"         mode::set "${FILE}" 600
+test_case "mode is 600"           same_mode "${FILE}" 600
+
+test_case "mode::set 644"         mode::set "${FILE}" 644
+test_case "mode is 644"           same_mode "${FILE}" 644
+
+test_case "mode::read u"          mode::read "${FILE}" u
+test_case "mode::write u"         mode::write "${FILE}" u
+test_case "mode::readable"        mode::readable "${FILE}"
+test_case "mode::writable"        mode::writable "${FILE}"
+
+test_case "mode::exec u"          mode::exec "${EXEC}" u
+test_case "mode::executable"      mode::executable "${EXEC}"
+
+test_case "mode::private file"    mode::private "${FILE}"
+test_case "private file is 600"   same_mode "${FILE}" 600
+
+test_case "mode::public file"     mode::public "${FILE}"
+test_case "public file is 644"    same_mode "${FILE}" 644
+
+test_case "mode::private dir"     mode::private "${DIR}"
+test_case "private dir is 700"    same_mode "${DIR}" 700
+
+test_case "mode::public dir"      mode::public "${DIR}"
+test_case "public dir is 755"     same_mode "${DIR}" 755
+
+test_case "mode::lock file"       mode::lock "${FILE}" u
+test_case "file not writable"     bash -c '[[ ! -w "$1" ]]' _ "${FILE}"
+
+test_case "mode::unlock file"     mode::unlock "${FILE}" u
+test_case "file writable again"   mode::writable "${FILE}"
+
+test_case "mode::owner get"       mode::owner "${FILE}"
+test_case "mode::group get"       mode::group "${FILE}"
+test_case "mode::owned current"   mode::owned "${FILE}"
+
+cp "${FILE}" "${TMP}/same.txt"
+mode::set "${TMP}/same.txt" "$(mode::get "${FILE}")"
+test_case "mode::same"            mode::same "${FILE}" "${TMP}/same.txt"
+
+test_case "mode::info"            mode::info "${FILE}"
+
+printf '%s\n' "------------------------------------------------------------"
+printf 'Passed: %s\n' "${pass}"
+printf 'Failed: %s\n' "${fail}"
+printf '%s\n' "------------------------------------------------------------"
+
+if (( fail > 0 )); then
+    exit 1
+fi
+
+exit 0

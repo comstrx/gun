@@ -288,6 +288,7 @@ sys::is_root () {
 
             cmd="[bool](([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))"
             powershell.exe -NoProfile -NonInteractive -Command "${cmd}" 2>/dev/null | tr -d '\r' | grep -qi '^True$'
+
             return
 
         fi
@@ -306,12 +307,12 @@ sys::is_root () {
     return 1
 
 }
-sys::can_sudo () {
+sys::is_admin () {
 
     local v="" x=""
 
-    sys::is_windows && return 1
     sys::is_root    && return 0
+    sys::is_windows && return 1
 
     if sys::has id; then
 
@@ -337,6 +338,15 @@ sys::can_sudo () {
     fi
 
     return 1
+
+}
+sys::can_sudo () {
+
+    sys::is_windows && return 1
+    sys::is_root    && return 0
+
+    sys::has sudo || return 1
+    sudo -n true >/dev/null 2>&1
 
 }
 
