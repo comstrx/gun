@@ -11,10 +11,10 @@ proc::hash () {
 }
 proc::die () {
 
-    local msg="${1-}" code="${2:-1}"
+    local msg="${1:-}" code="${2:-1}"
 
     [[ "${code}" =~ ^[0-9]+$ ]] || code=1
-    [[ -n "${msg}" ]] && printf '[ERR] %s\n' "${msg}"
+    [[ -n "${msg}" ]] && printf '[ERR] %s\n' "${msg}" >&2
     [[ "${-}" == *i* ]] && return "${code}"
 
     exit "${code}"
