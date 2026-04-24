@@ -481,6 +481,8 @@ str::json_quote
 [PASS] is_identifier caps
 [PASS] is_identifier leading digit false
 [PASS] is_identifier dash false
+[PASS] is_ascii true
+[PASS] is_ascii false
 
 == escaping ==
 [PASS] escape_sed slash amp backslash
@@ -505,10 +507,10 @@ str::json_quote
 
 == summary ==
 
-TOTAL=380 PASS=380 FAIL=0
+TOTAL=382 PASS=382 FAIL=0
 GAME OVER: string.sh passed the savage suite.
 
-real    0m0.275s
-user    0m0.222s
-sys     0m0.062s
+real    0m0.300s
+user    0m0.212s
+sys     0m0.099s
 codingmaster@codingmstr:/var/www/projects/gun$
