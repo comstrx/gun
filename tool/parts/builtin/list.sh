@@ -1,4 +1,3 @@
-# shellcheck shell=bash
 # shellcheck disable=SC2178
 
 list::init () {
@@ -13,6 +12,7 @@ list::init () {
     fi
 
     decl="$(declare -p "${name}" 2>/dev/null)" || return 1
+
     [[ "${decl}" =~ ^declare\ -[a-zA-Z]*a[a-zA-Z]*[[:space:]] ]]
 
 }
@@ -21,8 +21,8 @@ list::valid () {
     local name="${1:-}" decl=""
 
     [[ "${name}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
-
     decl="$(declare -p "${name}" 2>/dev/null)" || return 1
+
     [[ "${decl}" =~ ^declare\ -[a-zA-Z]*a[a-zA-Z]*[[:space:]] ]]
 
 }
@@ -100,6 +100,7 @@ list::pop () {
 
     last=$(( ${#ref[@]} - 1 ))
     value="${ref[$last]}"
+
     unset 'ref[$last]'
 
     if [[ -n "${target}" ]]; then printf -v "${target}" '%s' "${value}"
@@ -405,36 +406,10 @@ list::replace_last () {
 
 }
 
-list::concat () {
-
-    local name="${1:-}" other="${2:-}"
-
-    list::init "${name}"  || return 1
-    list::init "${other}" || return 1
-
-    local -n ref="${name}"
-    local -n src="${other}"
-
-    ref+=( "${src[@]}" )
-
-}
-list::copy () {
-
-    local from="${1:-}" to="${2:-}"
-
-    list::init "${from}" || return 1
-    [[ "${to}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
-
-    local -n src="${from}"
-    declare -g -a "${to}=()"
-    local -n dst="${to}"
-
-    dst=( "${src[@]}" )
-
-}
 list::slice () {
 
     local name="${1:-}" target="${2:-}" start="${3:-0}" count="${4:-}" len=0
+    local -a snapshot=()
 
     list::init "${name}" || return 1
 
@@ -442,10 +417,12 @@ list::slice () {
     [[ "${start}" =~ ^-?[0-9]+$ ]] || return 1
 
     local -n src="${name}"
+    snapshot=( "${src[@]}" )
+
     declare -g -a "${target}=()"
     local -n dst="${target}"
 
-    len="${#src[@]}"
+    len="${#snapshot[@]}"
 
     (( start < 0 )) && start=$(( len + start ))
     (( start < 0 )) && start=0
@@ -453,9 +430,9 @@ list::slice () {
 
     if [[ -n "${count}" ]]; then
         [[ "${count}" =~ ^[0-9]+$ ]] || return 1
-        dst=( "${src[@]:start:count}" )
+        dst=( "${snapshot[@]:start:count}" )
     else
-        dst=( "${src[@]:start}" )
+        dst=( "${snapshot[@]:start}" )
     fi
 
 }
@@ -542,6 +519,7 @@ list::each () {
 list::map () {
 
     local name="${1:-}" target="${2:-}" fn="${3:-}" x="" y=""
+    local -a snapshot=()
 
     list::init "${name}" || return 1
 
@@ -549,10 +527,12 @@ list::map () {
     declare -F "${fn}" >/dev/null 2>&1 || return 1
 
     local -n src="${name}"
+    snapshot=( "${src[@]}" )
+
     declare -g -a "${target}=()"
     local -n dst="${target}"
 
-    for x in "${src[@]}"; do
+    for x in "${snapshot[@]}"; do
         y="$("${fn}" "${x}")" || return
         dst+=( "${y}" )
     done
@@ -561,6 +541,7 @@ list::map () {
 list::filter () {
 
     local name="${1:-}" target="${2:-}" fn="${3:-}" x=""
+    local -a snapshot=()
 
     list::init "${name}" || return 1
 
@@ -568,10 +549,12 @@ list::filter () {
     declare -F "${fn}" >/dev/null 2>&1 || return 1
 
     local -n src="${name}"
+    snapshot=( "${src[@]}" )
+
     declare -g -a "${target}=()"
     local -n dst="${target}"
 
-    for x in "${src[@]}"; do
+    for x in "${snapshot[@]}"; do
         "${fn}" "${x}" && dst+=( "${x}" )
     done
 
@@ -614,55 +597,40 @@ list::none () {
 
 }
 
-list::from () {
+list::copy () {
 
-    local name="${1:-}" s="${2:-}" sep="${3-$'\n'}" rest="" pos=""
+    local from="${1:-}" to="${2:-}"
 
-    [[ "${name}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
-    [[ -n "${sep}" ]] || return 1
+    list::init "${from}" || return 1
 
-    declare -g -a "${name}=()"
-    local -n ref="${name}"
+    [[ "${to}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
 
-    rest="${s}"
+    local -a snapshot=()
+    local -n src="${from}"
 
-    while [[ "${rest}" == *"${sep}"* ]]; do
-        pos="${rest%%"${sep}"*}"
-        ref+=( "${pos}" )
-        rest="${rest#*"${sep}"}"
-    done
+    snapshot=( "${src[@]}" )
 
-    ref+=( "${rest}" )
+    declare -g -a "${to}=()"
+    local -n dst="${to}"
+
+    dst=( "${snapshot[@]}" )
 
 }
-list::from_lines () {
+list::concat () {
 
-    local name="${1:-}" line=""
+    local name="${1:-}" other="${2:-}"
+    local -a snapshot=()
 
-    [[ "${name}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
+    list::init "${name}"  || return 1
+    list::init "${other}" || return 1
 
-    declare -g -a "${name}=()"
     local -n ref="${name}"
+    local -n src="${other}"
 
-    while IFS= read -r line || [[ -n "${line}" ]]; do
-        ref+=( "${line}" )
-    done
+    snapshot=( "${src[@]}" )
+    ref+=( "${snapshot[@]}" )
 
 }
-list::from_args () {
-
-    local name="${1:-}"
-
-    [[ "${name}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
-    shift || true
-
-    declare -g -a "${name}=()"
-    local -n ref="${name}"
-
-    ref=( "$@" )
-
-}
-
 list::join () {
 
     local name="${1:-}" sep="${2:-}" result="" item="" first=1
@@ -696,5 +664,56 @@ list::args () {
 
     local name="${1:-}"
     list::print "${name}"
+
+}
+
+list::from () {
+
+    local name="${1:-}" s="${2:-}" sep="${3-$'\n'}" rest="" pos=""
+
+    [[ "${name}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
+    [[ -n "${sep}" ]] || return 1
+
+    declare -g -a "${name}=()"
+    local -n ref="${name}"
+
+    rest="${s}"
+
+    while [[ "${rest}" == *"${sep}"* ]]; do
+
+        pos="${rest%%"${sep}"*}"
+        ref+=( "${pos}" )
+        rest="${rest#*"${sep}"}"
+
+    done
+
+    ref+=( "${rest}" )
+
+}
+list::from_lines () {
+
+    local name="${1:-}" line=""
+
+    [[ "${name}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
+
+    declare -g -a "${name}=()"
+    local -n ref="${name}"
+
+    while IFS= read -r line || [[ -n "${line}" ]]; do
+        ref+=( "${line}" )
+    done
+
+}
+list::from_args () {
+
+    local name="${1:-}"
+
+    [[ "${name}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
+    shift || true
+
+    declare -g -a "${name}=()"
+    local -n ref="${name}"
+
+    ref=( "$@" )
 
 }

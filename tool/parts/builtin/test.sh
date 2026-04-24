@@ -591,6 +591,28 @@ eq "copy content invariant" "$(out list::join prop $'\037')" "$(out list::join p
 ok "slice full equals original" rc list::slice prop prop_slice 0
 eq "slice full invariant" "$(out list::join prop $'\037')" "$(out list::join prop_slice $'\037')"
 
+section "self reference safety"
+
+list::from_args self_copy "a" "b" "c"
+ok "copy to self preserves" rc list::copy self_copy self_copy
+same_list self_copy $'<a>\n<b>\n<c>'
+
+list::from_args self_slice "a" "b" "c"
+ok "slice to self preserves selected" rc list::slice self_slice self_slice 1
+same_list self_slice $'<b>\n<c>'
+
+list::from_args self_map "a" "b" ""
+ok "map to self works" rc list::map self_map self_map cb_upper
+same_list self_map $'<A>\n<B>\n<>'
+
+list::from_args self_filter "a" "" "b"
+ok "filter to self works" rc list::filter self_filter self_filter cb_nonempty
+same_list self_filter $'<a>\n<b>'
+
+list::from_args self_concat "a" "b"
+ok "concat self duplicates once" rc list::concat self_concat self_concat
+same_list self_concat $'<a>\n<b>\n<a>\n<b>'
+
 printf '\n%s== result ==%s\n' "${yellow}" "${reset}"
 printf 'total: %s\n' "${TOTAL}"
 printf '%spass : %s%s\n' "${green}" "${PASS}" "${reset}"
