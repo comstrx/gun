@@ -444,28 +444,28 @@ proc::version () {
                     sub(/^[^0-9]*/, "", s)
                     sub(/^[A-Za-z]+/, "", s)
 
-                    if ( s ~ /^[0-9]+\.[0-9]+$/ ) { s = s ".0" }
+                    if ( s ~ /^[0-9]+\.[0-9]+$/ ) {  s = s ".0" }
                     else if ( s ~ /^[0-9]+\.[0-9]+[^0-9.]/ ) { sub(/^([0-9]+\.[0-9]+)/, "&.0", s) }
 
-                    split(s, a, /[.+-]/)
-                    base = a[1]
+                    base = s
+                    sub(/[.+-].*$/, "", base)
 
-                    if ( base ~ /^[0-9]+\.[0-9]+\.[0-9]+$/ ) {
-
-                        tail = s
-                        sub(/^[0-9]+\.[0-9]+\.[0-9]+[.+-]?/, "", tail)
-
-                        if ( tail != "" ) {
-                            gsub(/[.+-]+/, ".", tail)
-                            gsub(/^\.+|\.+$/, "", tail)
-                            if ( tail != "" ) base = base "-" tail
-                        }
-
-                        print base
-                        exit
+                    if ( base !~ /^[0-9]+\.[0-9]+\.[0-9]+$/ ) {
+                        text = substr(text, RSTART + RLENGTH)
+                        continue
                     }
 
-                    text = substr(text, RSTART + RLENGTH)
+                    tail = s
+                    sub(/^[0-9]+\.[0-9]+\.[0-9]+[.+-]?/, "", tail)
+
+                    if ( tail != "" ) {
+                        gsub(/[.+-]+/, ".", tail)
+                        gsub(/^\.+|\.+$/, "", tail)
+                        if ( tail != "" ) base = base "-" tail
+                    }
+
+                    print base
+                    exit
                 }
             }
         ')"

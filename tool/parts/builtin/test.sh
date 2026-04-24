@@ -136,7 +136,9 @@ not_case "proc::run false" proc::run false
 run_case "proc::run_ok true" proc::run_ok true
 not_case "proc::run_ok false" proc::run_ok false
 
-run_case "proc::run fakecmd" bash -c 'proc::run fakecmd hello >/tmp/proc_test_run_out 2>/dev/null && grep -qx "fakecmd:hello" /tmp/proc_test_run_out'
+tmp_out="${TMP}/run_out.txt"
+proc::run fakecmd hello > "${tmp_out}" 2>/dev/null && grep -qx "fakecmd:hello" "${tmp_out}" \
+    && ok "proc::run fakecmd" || bad "proc::run fakecmd"
 
 run_case "proc::run_all one" proc::run_all "printf one >> '${LOG}'"
 contains_case "run_all wrote one" "$(cat "${LOG}")" "one"
