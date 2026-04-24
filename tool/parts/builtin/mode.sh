@@ -118,6 +118,15 @@ mode::add () {
     [[ -e "${path}" || -L "${path}" ]] || return 1
     [[ "${mode}" != *$'\n'* && "${mode}" != *$'\r'* ]] || return 1
 
+    if sys::is_windows && sys::has icacls.exe; then
+
+        [[ "${mode}" == *r* ]] && mode::read  "${path}" u
+        [[ "${mode}" == *w* ]] && mode::write "${path}" u
+        [[ "${mode}" == *x* ]] && mode::exec  "${path}" u
+        return 0
+
+    fi
+
     sys::has chmod || return 1
 
     case "${mode}" in
@@ -156,13 +165,13 @@ mode::read () {
         winpath="${path}"
         sys::has cygpath && winpath="$(cygpath -aw "${path}" 2>/dev/null || printf '%s' "${path}")"
 
-        user="${USERNAME:-}"
-        [[ -n "${user}" ]] || user="$(sys::uname 2>/dev/null || true)"
+        user="${USERDOMAIN:-}\\${USERNAME:-}"
+        [[ "${user}" != "\\" ]] || user="$(sys::uname 2>/dev/null || true)"
         [[ -n "${user}" ]] || return 1
 
         case "${who}" in
-            *a*|*g*|*o*) icacls.exe "${winpath}" /grant "*S-1-5-32-545:(R)" >/dev/null 2>&1 || return 1 ;;
-            *)           icacls.exe "${winpath}" /grant "${user}:(R)" >/dev/null 2>&1 || return 1 ;;
+            *a*|*g*|*o*) icacls.exe "${winpath}" /grant "*S-1-5-32-545:R" >/dev/null 2>&1 || return 1 ;;
+            *)           icacls.exe "${winpath}" /grant "${user}:R" >/dev/null 2>&1 || return 1 ;;
         esac
 
         sys::has chmod && chmod "${who}+r" "${path}" >/dev/null 2>&1 || true
@@ -187,13 +196,13 @@ mode::write () {
         winpath="${path}"
         sys::has cygpath && winpath="$(cygpath -aw "${path}" 2>/dev/null || printf '%s' "${path}")"
 
-        user="${USERNAME:-}"
-        [[ -n "${user}" ]] || user="$(sys::uname 2>/dev/null || true)"
+        user="${USERDOMAIN:-}\\${USERNAME:-}"
+        [[ "${user}" != "\\" ]] || user="$(sys::uname 2>/dev/null || true)"
         [[ -n "${user}" ]] || return 1
 
         case "${who}" in
-            *a*|*g*|*o*) icacls.exe "${winpath}" /grant "*S-1-5-32-545:(W)" >/dev/null 2>&1 || return 1 ;;
-            *)           icacls.exe "${winpath}" /grant "${user}:(W)" >/dev/null 2>&1 || return 1 ;;
+            *a*|*g*|*o*) icacls.exe "${winpath}" /grant "*S-1-5-32-545:W" >/dev/null 2>&1 || return 1 ;;
+            *)           icacls.exe "${winpath}" /grant "${user}:W" >/dev/null 2>&1 || return 1 ;;
         esac
 
         sys::has chmod && chmod "${who}+w" "${path}" >/dev/null 2>&1 || true
@@ -218,13 +227,13 @@ mode::exec () {
         winpath="${path}"
         sys::has cygpath && winpath="$(cygpath -aw "${path}" 2>/dev/null || printf '%s' "${path}")"
 
-        user="${USERNAME:-}"
-        [[ -n "${user}" ]] || user="$(sys::uname 2>/dev/null || true)"
+        user="${USERDOMAIN:-}\\${USERNAME:-}"
+        [[ "${user}" != "\\" ]] || user="$(sys::uname 2>/dev/null || true)"
         [[ -n "${user}" ]] || return 1
 
         case "${who}" in
-            *a*|*g*|*o*) icacls.exe "${winpath}" /grant "*S-1-5-32-545:(RX)" >/dev/null 2>&1 || return 1 ;;
-            *)           icacls.exe "${winpath}" /grant "${user}:(RX)" >/dev/null 2>&1 || return 1 ;;
+            *a*|*g*|*o*) icacls.exe "${winpath}" /grant "*S-1-5-32-545:RX" >/dev/null 2>&1 || return 1 ;;
+            *)           icacls.exe "${winpath}" /grant "${user}:RX" >/dev/null 2>&1 || return 1 ;;
         esac
 
         sys::has chmod && chmod "${who}+x" "${path}" >/dev/null 2>&1 || true
@@ -290,7 +299,7 @@ mode::group () {
             winpath="${path}"
             sys::has cygpath && winpath="$(cygpath -aw "${path}" 2>/dev/null || printf '%s' "${path}")"
 
-            icacls.exe "${winpath}" /grant "${group}:(RX)" >/dev/null 2>&1 || return 1
+            icacls.exe "${winpath}" /grant "${group}:RX" >/dev/null 2>&1 || return 1
             return 0
 
         fi
@@ -299,6 +308,11 @@ mode::group () {
         chgrp "${group}" "${path}" >/dev/null 2>&1
         return
 
+    fi
+
+    if sys::is_windows; then
+        printf '%s\n' "Users"
+        return 0
     fi
 
     sys::has stat || return 1
@@ -356,13 +370,13 @@ mode::lock () {
         winpath="${path}"
         sys::has cygpath && winpath="$(cygpath -aw "${path}" 2>/dev/null || printf '%s' "${path}")"
 
-        user="${USERNAME:-}"
-        [[ -n "${user}" ]] || user="$(sys::uname 2>/dev/null || true)"
+        user="${USERDOMAIN:-}\\${USERNAME:-}"
+        [[ "${user}" != "\\" ]] || user="$(sys::uname 2>/dev/null || true)"
         [[ -n "${user}" ]] || return 1
 
         case "${who}" in
-            *a*|*g*|*o*) icacls.exe "${winpath}" /deny "*S-1-5-32-545:(W)" >/dev/null 2>&1 || return 1 ;;
-            *)           icacls.exe "${winpath}" /deny "${user}:(W)" >/dev/null 2>&1 || return 1 ;;
+            *a*|*g*|*o*) icacls.exe "${winpath}" /deny "*S-1-5-32-545:W" >/dev/null 2>&1 || return 1 ;;
+            *)           icacls.exe "${winpath}" /deny "${user}:W" >/dev/null 2>&1 || return 1 ;;
         esac
 
         sys::has chmod && chmod "${who}-w" "${path}" >/dev/null 2>&1 || true
@@ -387,18 +401,18 @@ mode::unlock () {
         winpath="${path}"
         sys::has cygpath && winpath="$(cygpath -aw "${path}" 2>/dev/null || printf '%s' "${path}")"
 
-        user="${USERNAME:-}"
-        [[ -n "${user}" ]] || user="$(sys::uname 2>/dev/null || true)"
+        user="${USERDOMAIN:-}\\${USERNAME:-}"
+        [[ "${user}" != "\\" ]] || user="$(sys::uname 2>/dev/null || true)"
         [[ -n "${user}" ]] || return 1
 
         case "${who}" in
             *a*|*g*|*o*)
                 icacls.exe "${winpath}" /remove:d "*S-1-5-32-545" >/dev/null 2>&1 || true
-                icacls.exe "${winpath}" /grant "*S-1-5-32-545:(W)" >/dev/null 2>&1 || return 1
+                icacls.exe "${winpath}" /grant "*S-1-5-32-545:W" >/dev/null 2>&1 || return 1
             ;;
             *)
                 icacls.exe "${winpath}" /remove:d "${user}" >/dev/null 2>&1 || true
-                icacls.exe "${winpath}" /grant "${user}:(W)" >/dev/null 2>&1 || return 1
+                icacls.exe "${winpath}" /grant "${user}:W" >/dev/null 2>&1 || return 1
             ;;
         esac
 
