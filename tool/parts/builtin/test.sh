@@ -4,7 +4,7 @@
 set -u
 set -o pipefail
 
-TARGET="${1:-tool/parts/builtin/list.sh}"
+TARGET="${1:-tool/parts/builtin/map.sh}"
 
 PASS=0
 FAIL=0
@@ -102,24 +102,81 @@ section () {
 
 }
 
-dump () {
+dump_map () {
 
-    local name="${1:-}" item=""
+    local name="${1:-}" key=""
 
     local -n ref="${name}"
 
-    for item in "${ref[@]}"; do
-        printf '<%s>\n' "${item}"
-    done
+    for key in "${!ref[@]}"; do
+        printf '<%s>=<%s>\n' "${key}" "${ref[$key]}"
+    done | LC_ALL=C sort
 
 }
 
-same_list () {
+dump_keys0 () {
+
+    local name="${1:-}" key=""
+
+    while IFS= read -r -d '' key; do
+        printf '<%s>\n' "${key}"
+    done < <(map::keys0 "${name}") | LC_ALL=C sort
+
+}
+
+dump_values0 () {
+
+    local name="${1:-}" value=""
+
+    while IFS= read -r -d '' value; do
+        printf '<%s>\n' "${value}"
+    done < <(map::values0 "${name}") | LC_ALL=C sort
+
+}
+
+dump_items0 () {
+
+    local name="${1:-}" key="" value=""
+
+    while IFS= read -r -d '' key && IFS= read -r -d '' value; do
+        printf '[%q]=[%q]\n' "${key}" "${value}"
+    done < <(map::items0 "${name}") | LC_ALL=C sort
+
+}
+
+same_map () {
 
     local name="${1:-}" want="${2:-}" got=""
 
-    got="$(dump "${name}")"
+    got="$(dump_map "${name}")"
     eq "${name}" "${want}" "${got}"
+
+}
+
+same_keys0 () {
+
+    local name="${1:-}" want="${2:-}" got=""
+
+    got="$(dump_keys0 "${name}")"
+    eq "${name}:keys0" "${want}" "${got}"
+
+}
+
+same_values0 () {
+
+    local name="${1:-}" want="${2:-}" got=""
+
+    got="$(dump_values0 "${name}")"
+    eq "${name}:values0" "${want}" "${got}"
+
+}
+
+same_items0 () {
+
+    local name="${1:-}" want="${2:-}" got=""
+
+    got="$(dump_items0 "${name}")"
+    eq "${name}:items0" "${want}" "${got}"
 
 }
 
@@ -128,58 +185,47 @@ if [[ ! -r "${TARGET}" ]]; then
     exit 2
 fi
 
-# shellcheck source=/dev/null
 source "${TARGET}"
 
 section "existence / public api"
 
 required=(
-    list::init
-    list::valid
-    list::len
-    list::has
-    list::count
-    list::empty
-    list::filled
-    list::push
-    list::pop
-    list::unshift
-    list::shift
-    list::clear
-    list::get
-    list::set
-    list::put
-    list::insert
-    list::first
-    list::last
-    list::index
-    list::last_index
-    list::remove
-    list::remove_at
-    list::remove_first
-    list::remove_last
-    list::replace
-    list::replace_first
-    list::replace_last
-    list::concat
-    list::copy
-    list::slice
-    list::reverse
-    list::reversed
-    list::unique
-    list::sort
-    list::each
-    list::map
-    list::filter
-    list::all
-    list::any
-    list::none
-    list::from
-    list::from_lines
-    list::from_args
-    list::join
-    list::print
-    list::args
+    map::init
+    map::valid
+    map::len
+    map::empty
+    map::filled
+    map::has
+    map::get
+    map::set
+    map::put
+    map::del
+    map::delete
+    map::set_once
+    map::replace
+    map::clear
+    map::keys0
+    map::values0
+    map::items0
+    map::keys
+    map::values
+    map::items
+    map::merge
+    map::concat
+    map::copy
+    map::only
+    map::without
+    map::each
+    map::map
+    map::filter
+    map::all
+    map::any
+    map::none
+    map::print
+    map::str
+    map::from
+    map::from_pairs
+    map::from_lines
 )
 
 for fn in "${required[@]}"; do
@@ -188,310 +234,235 @@ done
 
 section "init / valid / invalid names"
 
-unset arr scalar __bad 2>/dev/null || true
+unset m scalar __bad 2>/dev/null || true
 
-ok "init creates array" rc list::init arr
-ok "valid existing array" rc list::valid arr
-eq "init len empty" "0" "$(out list::len arr)"
-ok "empty true" rc list::empty arr
-no "filled false" rc list::filled arr
+ok "init creates assoc map" rc map::init m
+ok "valid existing assoc map" rc map::valid m
+eq "len empty" "0" "$(out map::len m)"
+ok "empty true" rc map::empty m
+no "filled false" rc map::filled m
 
 scalar="x"
-no "valid scalar false" rc list::valid scalar
-no "init scalar false" rc list::init scalar
-no "init invalid empty" rc list::init ""
-no "init invalid starts digit" rc list::init "1abc"
-no "init invalid dash" rc list::init "bad-name"
-no "valid missing false" rc list::valid missing_array_name
+no "valid scalar false" rc map::valid scalar
+no "init scalar false" rc map::init scalar
+no "init invalid empty" rc map::init ""
+no "init invalid starts digit" rc map::init "1bad"
+no "init invalid dash" rc map::init "bad-name"
+no "valid missing false" rc map::valid missing_map_name
 
-section "push / len / empty / filled / count / has"
+section "set / put / get / has / len / empty / filled"
 
-list::from_args items "a" "b" "a" "" "c" ""
+ok "set name" rc map::set m name "Gun"
+ok "set empty value" rc map::set m empty ""
+ok "set key with spaces" rc map::set m "hello world" "space"
+ok "set key with star" rc map::set m "*" "star"
+ok "set key with equals" rc map::set m "a=b" "eq"
+no "set empty key fails" rc map::set m "" "x"
 
-eq "len initial" "6" "$(out list::len items)"
-no "empty false" rc list::empty items
-ok "filled true" rc list::filled items
-ok "has b" rc list::has items "b"
-ok "has empty item" rc list::has items ""
-no "has z false" rc list::has items "z"
-eq "count a" "2" "$(out list::count items "a")"
-eq "count empty" "2" "$(out list::count items "")"
-eq "count missing" "0" "$(out list::count items "z")"
+eq "get name" "Gun" "$(out map::get m name)"
+eq "get empty value" "" "$(out map::get m empty DEF)"
+eq "get missing default" "DEF" "$(out map::get m missing DEF)"
+eq "get empty key returns default" "DEF" "$(out map::get m "" DEF)"
 
-list::push items "x" "y z" "*"
-same_list items $'<a>\n<b>\n<a>\n<>\n<c>\n<>\n<x>\n<y z>\n<*>'
+ok "has name" rc map::has m name
+ok "has empty value key" rc map::has m empty
+no "has missing false" rc map::has m missing
+no "has empty key false" rc map::has m ""
 
-section "first / last / get"
+eq "len after set" "5" "$(out map::len m)"
+no "empty false" rc map::empty m
+ok "filled true" rc map::filled m
 
-eq "first value" "a" "$(out list::first items)"
-eq "last value" "*" "$(out list::last items)"
-eq "first default ignored" "a" "$(out list::first items DEF)"
-eq "last default ignored" "*" "$(out list::last items DEF)"
+ok "put alias set" rc map::put m role admin
+eq "put alias get" "admin" "$(out map::get m role)"
 
-empty_list=()
-eq "first empty default" "DEF" "$(out list::first empty_list DEF)"
-eq "last empty default" "DEF" "$(out list::last empty_list DEF)"
-eq "get 0" "a" "$(out list::get items 0)"
-eq "get 1" "b" "$(out list::get items 1)"
-eq "get -1" "*" "$(out list::get items -1)"
-eq "get -2" "y z" "$(out list::get items -2)"
-eq "get bad index default" "DEF" "$(out list::get items abc DEF)"
-eq "get out default" "DEF" "$(out list::get items 999 DEF)"
-eq "get negative out default" "DEF" "$(out list::get items -999 DEF)"
+section "set_once / replace / del / delete / clear"
 
-section "set / put / insert"
+map::from_pairs once a 1 b 2
 
-list::from_args a "zero" "one" "two"
+ok "set_once existing returns ok" rc map::set_once once a 999
+eq "set_once existing unchanged" "1" "$(out map::get once a)"
+ok "set_once missing writes" rc map::set_once once c 3
+eq "set_once missing value" "3" "$(out map::get once c)"
+no "set_once empty key fails" rc map::set_once once "" x
 
-ok "set middle" rc list::set a 1 "ONE"
-same_list a $'<zero>\n<ONE>\n<two>'
+ok "replace existing" rc map::replace once b 22
+eq "replace existing value" "22" "$(out map::get once b)"
+no "replace missing fails" rc map::replace once z 9
+no "replace empty key fails" rc map::replace once "" x
 
-ok "set negative last" rc list::set a -1 "TWO"
-same_list a $'<zero>\n<ONE>\n<TWO>'
+ok "del existing" rc map::del once c
+no "del removed missing" rc map::has once c
+no "del missing fails" rc map::del once z
+no "del empty key fails" rc map::del once ""
 
-no "set index == len fails" rc list::set a 3 "THREE"
-no "set out fails" rc list::set a 99 "x"
-no "set bad index fails" rc list::set a x "x"
+ok "delete alias existing" rc map::delete once b
+no "delete removed missing" rc map::has once b
 
-ok "put index == len appends sparse-safe" rc list::put a 3 "THREE"
-same_list a $'<zero>\n<ONE>\n<TWO>\n<THREE>'
+ok "clear map" rc map::clear once
+eq "clear len zero" "0" "$(out map::len once)"
+ok "clear empty true" rc map::empty once
 
-ok "put existing replaces" rc list::put a 0 "ZERO"
-same_list a $'<ZERO>\n<ONE>\n<TWO>\n<THREE>'
+section "from_pairs"
 
-no "put gap fails" rc list::put a 9 "NINE"
-no "put negative fails" rc list::put a -1 "x"
+ok "from_pairs creates map" rc map::from_pairs fp \
+    name "Ali" \
+    email "a@test.com" \
+    empty "" \
+    "space key" "space value" \
+    "*" "star"
 
-ok "insert middle multiple" rc list::insert a 2 "x" "y"
-same_list a $'<ZERO>\n<ONE>\n<x>\n<y>\n<TWO>\n<THREE>'
+same_map fp $'<*>=<star>\n<email>=<a@test.com>\n<empty>=<>\n<name>=<Ali>\n<space key>=<space value>'
 
-ok "insert start" rc list::insert a 0 "START"
-same_list a $'<START>\n<ZERO>\n<ONE>\n<x>\n<y>\n<TWO>\n<THREE>'
+ok "from_pairs duplicate last wins" rc map::from_pairs dup a 1 a 2 b 3
+eq "duplicate value" "2" "$(out map::get dup a)"
+eq "duplicate len" "2" "$(out map::len dup)"
 
-ok "insert end" rc list::insert a 7 "END"
-same_list a $'<START>\n<ZERO>\n<ONE>\n<x>\n<y>\n<TWO>\n<THREE>\n<END>'
+ok "from_pairs zero pairs creates empty" rc map::from_pairs empty_pairs
+eq "from_pairs zero len" "0" "$(out map::len empty_pairs)"
 
-ok "insert negative before last" rc list::insert a -1 "BEFORE_END"
-same_list a $'<START>\n<ZERO>\n<ONE>\n<x>\n<y>\n<TWO>\n<THREE>\n<BEFORE_END>\n<END>'
+no "from_pairs odd args fails" rc map::from_pairs bad_pairs a 1 b
+no "from_pairs empty key fails" rc map::from_pairs bad_pairs2 "" x
 
-no "insert bad index fails" rc list::insert a zz "x"
-no "insert out positive fails" rc list::insert a 99 "x"
-no "insert out negative fails" rc list::insert a -99 "x"
+section "from / from_lines / str"
 
-section "pop / shift / unshift / clear"
+ok "from default newline" rc map::from mf $'a=1\nb=2\nempty=\nignored\nc=3'
+same_map mf $'<a>=<1>\n<b>=<2>\n<c>=<3>\n<empty>=<>'
 
-list::from_args q "a" "b" "c"
+ok "from custom separators" rc map::from mf2 "a:1;b:2;empty:;bad;c:3" ";" ":"
+same_map mf2 $'<a>=<1>\n<b>=<2>\n<c>=<3>\n<empty>=<>'
 
-pop_value=""
-ok "pop into target" rc list::pop q pop_value
-eq "pop target value" "c" "${pop_value}"
-same_list q $'<a>\n<b>'
+ok "from duplicate last wins" rc map::from mf3 "a=1,a=2,b=3" "," "="
+eq "from duplicate value" "2" "$(out map::get mf3 a)"
 
-pop_value=""
-ok "pop into target again" rc list::pop q pop_value
-eq "pop target value again" "b" "${pop_value}"
-same_list q '<a>'
+ok "from trailing item sep" rc map::from mf4 "a=1,b=2," "," "="
+same_map mf4 $'<a>=<1>\n<b>=<2>'
 
-shift_value=""
-ok "shift into target" rc list::shift q shift_value
-eq "shift target value" "a" "${shift_value}"
-same_list q ""
+ok "from empty string creates empty" rc map::from mf_empty ""
+eq "from empty len" "0" "$(out map::len mf_empty)"
 
-no "pop empty fails" rc list::pop q
-no "shift empty fails" rc list::shift q
+no "from empty item_sep fails" rc map::from mf_bad "a=1" "" "="
+no "from empty pair_sep fails" rc map::from mf_bad "a=1" "," ""
+no "from empty key fails" rc map::from mf_bad "=x" "," "="
 
-list::from_args q "b" "c"
-ok "unshift multiple" rc list::unshift q "a" ""
-same_list q $'<a>\n<>\n<b>\n<c>'
+ok "from_lines default" rc map::from_lines ml < <(printf '%s\n' "a=1" "b=2" "ignored" "empty=")
+same_map ml $'<a>=<1>\n<b>=<2>\n<empty>=<>'
 
-shift_value=""
-ok "shift into target again" rc list::shift q shift_value
-eq "shift target value again" "a" "${shift_value}"
-same_list q $'<>\n<b>\n<c>'
+ok "from_lines custom sep" rc map::from_lines ml2 ":" < <(printf '%s\n' "a:1" "b:2" "bad" "empty:")
+same_map ml2 $'<a>=<1>\n<b>=<2>\n<empty>=<>'
 
-no "pop invalid target fails" rc list::pop q "bad-name"
-no "shift invalid target fails" rc list::shift q "bad-name"
+ok "from_lines no final newline" rc map::from_lines ml3 < <(printf '%s' "last=value")
+eq "from_lines no final newline value" "value" "$(out map::get ml3 last)"
 
-ok "clear list" rc list::clear q
-eq "clear len zero" "0" "$(out list::len q)"
-same_list q ""
+no "from_lines empty sep fails" rc map::from_lines ml_bad ""
+no "from_lines empty key fails" rc map::from_lines ml_bad2 < <(printf '%s\n' "=x")
 
-section "index / last_index / remove_at"
+map::from_pairs str_src a 1 b 2 empty ""
+text="$(out map::str str_src "," "=")"
+ok "str returns parseable text" rc map::from str_dst "${text}" "," "="
+same_map str_dst $'<a>=<1>\n<b>=<2>\n<empty>=<>'
 
-list::from_args idx "a" "b" "a" "" "c" "a" ""
+text2="$(out map::str str_src $'\n' "=")"
+ok "str default newline parseable" rc map::from str_dst2 "${text2}"
+same_map str_dst2 $'<a>=<1>\n<b>=<2>\n<empty>=<>'
 
-eq "index first a" "0" "$(out list::index idx "a")"
-eq "last_index a" "5" "$(out list::last_index idx "a")"
-eq "index empty" "3" "$(out list::index idx "")"
-eq "last_index empty" "6" "$(out list::last_index idx "")"
-no "index missing fails" rc list::index idx "z"
-no "last_index missing fails" rc list::last_index idx "z"
+no "str empty item sep fails" rc map::str str_src "" "="
+no "str empty pair sep fails" rc map::str str_src "," ""
 
-removed=""
-ok "remove_at target" rc list::remove_at idx 1 removed
-eq "remove_at target value" "b" "${removed}"
-same_list idx $'<a>\n<a>\n<>\n<c>\n<a>\n<>'
+section "keys0 / values0 / items0"
 
-removed=""
-ok "remove_at negative target" rc list::remove_at idx -1 removed
-eq "remove_at target value empty" "" "${removed}"
-same_list idx $'<a>\n<a>\n<>\n<c>\n<a>'
+map::from_pairs kv \
+    b 2 \
+    a 1 \
+    c 3 \
+    empty "" \
+    "space key" "space value" \
+    "*" "star"
 
-no "remove_at out fails" rc list::remove_at idx 99
-no "remove_at bad index fails" rc list::remove_at idx x
-no "remove_at invalid target fails" rc list::remove_at idx 0 "bad-name"
+same_keys0 kv $'<*>\n<a>\n<b>\n<c>\n<empty>\n<space key>'
+same_values0 kv $'<1>\n<2>\n<3>\n<>\n<space value>\n<star>'
+same_items0 kv $'[\\*]=[star]\n[a]=[1]\n[b]=[2]\n[c]=[3]\n[empty]=[\'\']\n[space\\ key]=[space\\ value]'
 
-section "remove / remove_first / remove_last"
+map::from_pairs weird $'line\nkey' $'line\nvalue' $'tab\tkey' $'tab\tvalue'
+ok "keys0 supports newline key" rc map::has weird $'line\nkey'
+ok "values0 supports newline value" rc map::has weird $'tab\tkey'
+same_items0 weird $'[$\'line\\nkey\']=[$\'line\\nvalue\']\n[$\'tab\\tkey\']=[$\'tab\\tvalue\']'
 
-list::from_args r "a" "b" "a" "" "c" "a" ""
+section "keys / values / items / print"
 
-ok "remove all a" rc list::remove r "a"
-same_list r $'<b>\n<>\n<c>\n<>'
+map::from_pairs printable b 2 a 1 c 3
 
-ok "remove all empty" rc list::remove r ""
-same_list r $'<b>\n<c>'
+keys_text="$(out map::keys printable | LC_ALL=C sort)"
+eq "keys printable" $'a\nb\nc' "${keys_text}"
 
-list::from_args r "a" "b" "a" "c" "a"
+values_text="$(out map::values printable | LC_ALL=C sort)"
+eq "values printable" $'1\n2\n3' "${values_text}"
 
-ok "remove_first a" rc list::remove_first r "a"
-same_list r $'<b>\n<a>\n<c>\n<a>'
+items_text="$(out map::items printable | LC_ALL=C sort)"
+eq "items printable" $'a\t1\nb\t2\nc\t3' "${items_text}"
 
-ok "remove_last a" rc list::remove_last r "a"
-same_list r $'<b>\n<a>\n<c>'
+print_text="$(out map::print printable | LC_ALL=C sort)"
+eq "print alias items" "${items_text}" "${print_text}"
 
-no "remove_first missing fails" rc list::remove_first r "z"
-no "remove_last missing fails" rc list::remove_last r "z"
+section "copy / merge / concat"
 
-section "replace / replace_first / replace_last"
+map::from_pairs src a 1 b 2 empty ""
+ok "copy src dst" rc map::copy src dst
+same_map dst $'<a>=<1>\n<b>=<2>\n<empty>=<>'
 
-list::from_args rp "a" "b" "a" "" "a"
+ok "copy is independent" rc map::set dst a 999
+eq "copy changed dst" "999" "$(out map::get dst a)"
+eq "copy source unchanged" "1" "$(out map::get src a)"
 
-ok "replace all a" rc list::replace rp "a" "x"
-same_list rp $'<x>\n<b>\n<x>\n<>\n<x>'
+ok "copy to self safe" rc map::copy src src
+same_map src $'<a>=<1>\n<b>=<2>\n<empty>=<>'
 
-ok "replace empty" rc list::replace rp "" "EMPTY"
-same_list rp $'<x>\n<b>\n<x>\n<EMPTY>\n<x>'
+map::from_pairs left a 1 b 2
+map::from_pairs right b 22 c 3
+ok "merge overwrites and adds" rc map::merge left right
+same_map left $'<a>=<1>\n<b>=<22>\n<c>=<3>'
+same_map right $'<b>=<22>\n<c>=<3>'
 
-no "replace missing fails" rc list::replace rp "z" "q"
+map::from_pairs self_merge a 1 b 2
+ok "merge self safe" rc map::merge self_merge self_merge
+same_map self_merge $'<a>=<1>\n<b>=<2>'
 
-list::from_args rp "a" "b" "a" "c" "a"
-ok "replace_first" rc list::replace_first rp "a" "FIRST"
-same_list rp $'<FIRST>\n<b>\n<a>\n<c>\n<a>'
+map::from_pairs concat_left a 1
+map::from_pairs concat_right b 2
+ok "concat alias merge" rc map::concat concat_left concat_right
+same_map concat_left $'<a>=<1>\n<b>=<2>'
 
-ok "replace_last" rc list::replace_last rp "a" "LAST"
-same_list rp $'<FIRST>\n<b>\n<a>\n<c>\n<LAST>'
+section "only / without"
 
-no "replace_first missing fails" rc list::replace_first rp "z" "x"
-no "replace_last missing fails" rc list::replace_last rp "z" "x"
+map::from_pairs user \
+    name Ali \
+    email a@test.com \
+    password secret \
+    token xyz \
+    empty ""
 
-section "concat / copy / slice"
+ok "only selected keys" rc map::only user public name email missing empty ""
+same_map public $'<email>=<a@test.com>\n<empty>=<>\n<name>=<Ali>'
 
-list::from_args left "a" "b"
-list::from_args right "c" "" "d"
+same_map user $'<email>=<a@test.com>\n<empty>=<>\n<name>=<Ali>\n<password>=<secret>\n<token>=<xyz>'
 
-ok "concat" rc list::concat left right
-same_list left $'<a>\n<b>\n<c>\n<>\n<d>'
-same_list right $'<c>\n<>\n<d>'
+ok "only self-reference safe" rc map::only user user name email
+same_map user $'<email>=<a@test.com>\n<name>=<Ali>'
 
-ok "copy" rc list::copy left copied
-same_list copied $'<a>\n<b>\n<c>\n<>\n<d>'
+map::from_pairs secret_user \
+    name Ali \
+    email a@test.com \
+    password secret \
+    token xyz \
+    empty ""
 
-list::set copied 0 "CHANGED"
-same_list left $'<a>\n<b>\n<c>\n<>\n<d>'
-same_list copied $'<CHANGED>\n<b>\n<c>\n<>\n<d>'
+ok "without removes selected" rc map::without secret_user safe_user password token missing ""
+same_map safe_user $'<email>=<a@test.com>\n<empty>=<>\n<name>=<Ali>'
 
-ok "slice from 1 count 3" rc list::slice left sliced 1 3
-same_list sliced $'<b>\n<c>\n<>'
+same_map secret_user $'<email>=<a@test.com>\n<empty>=<>\n<name>=<Ali>\n<password>=<secret>\n<token>=<xyz>'
 
-ok "slice negative start" rc list::slice left sliced2 -2
-same_list sliced2 $'<>\n<d>'
-
-ok "slice start beyond len empty" rc list::slice left sliced3 99
-same_list sliced3 ""
-
-ok "slice negative far clamps zero" rc list::slice left sliced4 -99 2
-same_list sliced4 $'<a>\n<b>'
-
-no "slice bad target fails" rc list::slice left "bad-name" 0
-no "slice bad start fails" rc list::slice left out x
-no "slice bad count fails" rc list::slice left out 0 -1
-
-section "reverse / reversed"
-
-list::from_args rev "a" "b" "" "c"
-
-ok "reverse in-place" rc list::reverse rev
-same_list rev $'<c>\n<>\n<b>\n<a>'
-
-ok "reversed copy" rc list::reversed rev rev2
-same_list rev $'<c>\n<>\n<b>\n<a>'
-same_list rev2 $'<a>\n<b>\n<>\n<c>'
-
-ok "reverse empty" rc list::reverse empty_list
-same_list empty_list ""
-
-no "reversed bad target fails" rc list::reversed rev "bad-name"
-
-section "unique"
-
-list::from_args u "a" "" "b" "a" "" "c" "b" ""
-
-ok "unique preserves first occurrence including empty" rc list::unique u
-same_list u $'<a>\n<>\n<b>\n<c>'
-
-list::from_args u2 "" "" ""
-ok "unique all empty" rc list::unique u2
-same_list u2 '<>'
-
-section "sort"
-
-list::from_args s "b" "a" "c" "a"
-
-ok "sort asc" rc list::sort s
-same_list s $'<a>\n<a>\n<b>\n<c>'
-
-ok "sort desc" rc list::sort s desc
-same_list s $'<c>\n<b>\n<a>\n<a>'
-
-no "sort bad order fails" rc list::sort s weird
-
-section "join / print / args"
-
-list::from_args j "a" "" "b c" "*"
-
-eq "join comma" "a,,b c,*" "$(out list::join j ",")"
-eq "join empty sep" "ab c*" "$(out list::join j "")"
-eq "print lines" $'a\n\nb c\n*' "$(out list::print j)"
-eq "args alias lines" $'a\n\nb c\n*' "$(out list::args j)"
-
-empty_print=()
-eq "print empty no output" "" "$(out list::print empty_print)"
-eq "args empty no output" "" "$(out list::args empty_print)"
-
-section "from / from_args / from_lines"
-
-list::from_args fa "one two" "" "*" "end"
-same_list fa $'<one two>\n<>\n<*>\n<end>'
-
-ok "from comma" rc list::from ff "a,,b," ","
-same_list ff $'<a>\n<>\n<b>\n<>'
-
-ok "from multi sep" rc list::from fm "a--b----c--" "--"
-same_list fm $'<a>\n<b>\n<>\n<c>\n<>'
-
-ok "from default newline" rc list::from fl $'a\n\nb\n'
-same_list fl $'<a>\n<>\n<b>\n<>'
-
-ok "from empty string gives one empty item" rc list::from fe "" ","
-same_list fe '<>'
-
-no "from empty separator fails" rc list::from bad "a,b" ""
-
-list::from_lines stdin_lines < <(printf '%s\n' "alpha" "" "beta gamma")
-same_list stdin_lines $'<alpha>\n<>\n<beta gamma>'
-
-list::from_lines no_final_newline < <(printf '%s' "no-final-newline")
-same_list no_final_newline '<no-final-newline>'
+ok "without self-reference safe" rc map::without secret_user secret_user password token
+same_map secret_user $'<email>=<a@test.com>\n<empty>=<>\n<name>=<Ali>'
 
 section "callbacks each / map / filter / all / any / none"
 
@@ -499,25 +470,37 @@ cb_seen=()
 
 cb_collect () {
 
-    cb_seen+=( "$1" )
+    cb_seen+=( "${1}=${2}" )
 
 }
 
-cb_upper () {
+cb_upper_value () {
 
-    printf '%s' "${1^^}"
-
-}
-
-cb_nonempty () {
-
-    [[ -n "${1:-}" ]]
+    printf '%s' "${2^^}"
 
 }
 
-cb_is_a () {
+cb_keep_nonempty () {
 
-    [[ "${1:-}" == "a" ]]
+    [[ -n "${2:-}" ]]
+
+}
+
+cb_key_is_name () {
+
+    [[ "${1:-}" == "name" ]]
+
+}
+
+cb_value_is_admin () {
+
+    [[ "${2:-}" == "admin" ]]
+
+}
+
+cb_fail_on_email () {
+
+    [[ "${1:-}" != "email" ]]
 
 }
 
@@ -527,91 +510,119 @@ cb_never () {
 
 }
 
-cb_fail_on_b () {
+map::from_pairs cb \
+    name ali \
+    email a@test.com \
+    role admin \
+    empty ""
 
-    [[ "${1:-}" != "b" ]]
+ok "each collect" rc map::each cb cb_collect
 
-}
+seen_sorted="$(printf '%s\n' "${cb_seen[@]}" | LC_ALL=C sort)"
+eq "each collected all" $'email=a@test.com\nempty=\nname=ali\nrole=admin' "${seen_sorted}"
 
-list::from_args cb "a" "b" "" "c"
+no "each stops on callback failure" rc map::each cb cb_fail_on_email
 
-ok "each collect" rc list::each cb cb_collect
-same_list cb_seen $'<a>\n<b>\n<>\n<c>'
+ok "map upper values" rc map::map cb cb_upper cb_upper_value
+same_map cb_upper $'<email>=<A@TEST.COM>\n<empty>=<>\n<name>=<ALI>\n<role>=<ADMIN>'
 
-no "each stops on failure" rc list::each cb cb_fail_on_b
+ok "map self-reference safe" rc map::map cb cb cb_upper_value
+same_map cb $'<email>=<A@TEST.COM>\n<empty>=<>\n<name>=<ALI>\n<role>=<ADMIN>'
 
-ok "map upper" rc list::map cb mapped cb_upper
-same_list mapped $'<A>\n<B>\n<>\n<C>'
+map::from_pairs cb2 \
+    name ali \
+    email a@test.com \
+    role admin \
+    empty ""
 
-ok "filter nonempty" rc list::filter cb filtered cb_nonempty
-same_list filtered $'<a>\n<b>\n<c>'
+ok "filter nonempty values" rc map::filter cb2 cb_filtered cb_keep_nonempty
+same_map cb_filtered $'<email>=<a@test.com>\n<name>=<ali>\n<role>=<admin>'
 
-no "missing callback each fails" rc list::each cb missing_callback
-no "missing callback map fails" rc list::map cb out_missing missing_callback
-no "missing callback filter fails" rc list::filter cb out_missing missing_callback
+ok "filter self-reference safe" rc map::filter cb2 cb2 cb_keep_nonempty
+same_map cb2 $'<email>=<a@test.com>\n<name>=<ali>\n<role>=<admin>'
 
-list::from_args all_ok a b c
-ok "all nonempty true" rc list::all all_ok cb_nonempty
+no "missing callback each fails" rc map::each cb2 missing_callback
+no "missing callback map fails" rc map::map cb2 out_missing missing_callback
+no "missing callback filter fails" rc map::filter cb2 out_missing missing_callback
 
-no "all nonempty false" rc list::all cb cb_nonempty
-ok "any is a true" rc list::any cb cb_is_a
-no "any missing false" rc list::any cb cb_never
+map::from_pairs pred name ali role admin
+ok "all nonempty true" rc map::all pred cb_keep_nonempty
 
-list::from_args none_ok b c
-ok "none missing true" rc list::none none_ok cb_is_a
+map::from_pairs pred2 name ali empty ""
+no "all nonempty false" rc map::all pred2 cb_keep_nonempty
 
-no "none is a false" rc list::none cb cb_is_a
+ok "any key is name true" rc map::any pred2 cb_key_is_name
+no "any never false" rc map::any pred2 cb_never
 
-section "failure paths / non arrays"
+ok "none never true" rc map::none pred2 cb_never
+no "none key is name false" rc map::none pred2 cb_key_is_name
+
+ok "any value is admin true" rc map::any pred cb_value_is_admin
+
+section "failure paths / non maps"
 
 bad_scalar="x"
 
-no "len scalar fails" rc list::len bad_scalar
-no "push scalar fails" rc list::push bad_scalar x
-no "get scalar fails" rc list::get bad_scalar 0
-no "set scalar fails" rc list::set bad_scalar 0 x
-no "insert scalar fails" rc list::insert bad_scalar 0 x
-no "remove scalar fails" rc list::remove bad_scalar x
-no "concat scalar fails" rc list::concat bad_scalar cb
-no "copy bad target fails" rc list::copy cb "bad-name"
+no "len scalar fails" rc map::len bad_scalar
+no "empty scalar fails" rc map::empty bad_scalar
+no "filled scalar fails" rc map::filled bad_scalar
+no "has scalar fails" rc map::has bad_scalar a
+no "get scalar fails" rc map::get bad_scalar a
+no "set scalar fails" rc map::set bad_scalar a 1
+no "del scalar fails" rc map::del bad_scalar a
+no "set_once scalar fails" rc map::set_once bad_scalar a 1
+no "replace scalar fails" rc map::replace bad_scalar a 1
+no "clear scalar fails" rc map::clear bad_scalar
+no "keys0 scalar fails" rc map::keys0 bad_scalar
+no "values0 scalar fails" rc map::values0 bad_scalar
+no "items0 scalar fails" rc map::items0 bad_scalar
+no "copy scalar fails" rc map::copy bad_scalar out_map
+no "merge scalar left fails" rc map::merge bad_scalar fp
+no "merge scalar right fails" rc map::merge fp bad_scalar
+no "only scalar fails" rc map::only bad_scalar out_map a
+no "without scalar fails" rc map::without bad_scalar out_map a
+no "each scalar fails" rc map::each bad_scalar cb_collect
+no "map scalar fails" rc map::map bad_scalar out_map cb_upper_value
+no "filter scalar fails" rc map::filter bad_scalar out_map cb_keep_nonempty
+no "all scalar fails" rc map::all bad_scalar cb_keep_nonempty
+no "any scalar fails" rc map::any bad_scalar cb_keep_nonempty
+no "str scalar fails" rc map::str bad_scalar
+
+no "copy bad target fails" rc map::copy fp "bad-name"
+no "only bad target fails" rc map::only fp "bad-name" a
+no "without bad target fails" rc map::without fp "bad-name" a
+no "map bad target fails" rc map::map fp "bad-name" cb_upper_value
+no "filter bad target fails" rc map::filter fp "bad-name" cb_keep_nonempty
 
 section "property / invariants"
 
-list::from_args prop "  a  " "" "b/c" "*" "z z"
+map::from_pairs prop \
+    "  a  " "  1  " \
+    "b/c" "x/y" \
+    "*" "star" \
+    "z z" "space" \
+    empty ""
 
-before="$(out list::join prop $'\037')"
-ok "reverse twice returns original" rc list::reverse prop
-ok "reverse twice second" rc list::reverse prop
-after="$(out list::join prop $'\037')"
-eq "reverse twice invariant" "${before}" "${after}"
+before="$(dump_map prop)"
 
-ok "copy then join equal" rc list::copy prop prop_copy
-eq "copy content invariant" "$(out list::join prop $'\037')" "$(out list::join prop_copy $'\037')"
+ok "copy invariant" rc map::copy prop prop_copy
+eq "copy dump equals original" "${before}" "$(dump_map prop_copy)"
 
-ok "slice full equals original" rc list::slice prop prop_slice 0
-eq "slice full invariant" "$(out list::join prop $'\037')" "$(out list::join prop_slice $'\037')"
+text_prop="$(out map::str prop $'\037' $'\036')"
+ok "str/from roundtrip with rare separators" rc map::from prop_round "${text_prop}" $'\037' $'\036'
+eq "roundtrip dump equals original" "${before}" "$(dump_map prop_round)"
 
-section "self reference safety"
+ok "merge empty into prop" rc map::from_pairs empty_merge
+ok "merge empty does not change" rc map::merge prop empty_merge
+eq "merge empty invariant" "${before}" "$(dump_map prop)"
 
-list::from_args self_copy "a" "b" "c"
-ok "copy to self preserves" rc list::copy self_copy self_copy
-same_list self_copy $'<a>\n<b>\n<c>'
+ok "only all keys equals original" rc map::only prop prop_only "  a  " "b/c" "*" "z z" empty
+eq "only all invariant" "${before}" "$(dump_map prop_only)"
 
-list::from_args self_slice "a" "b" "c"
-ok "slice to self preserves selected" rc list::slice self_slice self_slice 1
-same_list self_slice $'<b>\n<c>'
+ok "without no keys equals original" rc map::without prop prop_without
+eq "without none invariant" "${before}" "$(dump_map prop_without)"
 
-list::from_args self_map "a" "b" ""
-ok "map to self works" rc list::map self_map self_map cb_upper
-same_list self_map $'<A>\n<B>\n<>'
-
-list::from_args self_filter "a" "" "b"
-ok "filter to self works" rc list::filter self_filter self_filter cb_nonempty
-same_list self_filter $'<a>\n<b>'
-
-list::from_args self_concat "a" "b"
-ok "concat self duplicates once" rc list::concat self_concat self_concat
-same_list self_concat $'<a>\n<b>\n<a>\n<b>'
+section "result"
 
 printf '\n%s== result ==%s\n' "${yellow}" "${reset}"
 printf 'total: %s\n' "${TOTAL}"

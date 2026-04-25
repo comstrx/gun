@@ -660,7 +660,7 @@ list::print () {
     printf '%s\n' "${ref[@]}"
 
 }
-list::args () {
+list::str () {
 
     local name="${1:-}"
     list::print "${name}"

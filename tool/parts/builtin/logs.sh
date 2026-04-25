@@ -1,105 +1,85 @@
-codingmaster@codingmstr:/var/www/projects/gun$ bash -n tool/parts/builtin/list.sh
-codingmaster@codingmstr:/var/www/projects/gun$ shellcheck tool/parts/builtin/list.sh
+codingmaster@codingmstr:/var/www/projects/gun$ bash -n tool/parts/builtin/map.sh
+codingmaster@codingmstr:/var/www/projects/gun$ shellcheck tool/parts/builtin/map.sh
 codingmaster@codingmstr:/var/www/projects/gun$ time bash tool/parts/builtin/test.sh
 
 == existence / public api ==
-list::init
-[PASS] function exists: list::init
-list::valid
-[PASS] function exists: list::valid
-list::len
-[PASS] function exists: list::len
-list::has
-[PASS] function exists: list::has
-list::count
-[PASS] function exists: list::count
-list::empty
-[PASS] function exists: list::empty
-list::filled
-[PASS] function exists: list::filled
-list::push
-[PASS] function exists: list::push
-list::pop
-[PASS] function exists: list::pop
-list::unshift
-[PASS] function exists: list::unshift
-list::shift
-[PASS] function exists: list::shift
-list::clear
-[PASS] function exists: list::clear
-list::get
-[PASS] function exists: list::get
-list::set
-[PASS] function exists: list::set
-list::put
-[PASS] function exists: list::put
-list::insert
-[PASS] function exists: list::insert
-list::first
-[PASS] function exists: list::first
-list::last
-[PASS] function exists: list::last
-list::index
-[PASS] function exists: list::index
-list::last_index
-[PASS] function exists: list::last_index
-list::remove
-[PASS] function exists: list::remove
-list::remove_at
-[PASS] function exists: list::remove_at
-list::remove_first
-[PASS] function exists: list::remove_first
-list::remove_last
-[PASS] function exists: list::remove_last
-list::replace
-[PASS] function exists: list::replace
-list::replace_first
-[PASS] function exists: list::replace_first
-list::replace_last
-[PASS] function exists: list::replace_last
-list::concat
-[PASS] function exists: list::concat
-list::copy
-[PASS] function exists: list::copy
-list::slice
-[PASS] function exists: list::slice
-list::reverse
-[PASS] function exists: list::reverse
-list::reversed
-[PASS] function exists: list::reversed
-list::unique
-[PASS] function exists: list::unique
-list::sort
-[PASS] function exists: list::sort
-list::each
-[PASS] function exists: list::each
-list::map
-[PASS] function exists: list::map
-list::filter
-[PASS] function exists: list::filter
-list::all
-[PASS] function exists: list::all
-list::any
-[PASS] function exists: list::any
-list::none
-[PASS] function exists: list::none
-list::from
-[PASS] function exists: list::from
-list::from_lines
-[PASS] function exists: list::from_lines
-list::from_args
-[PASS] function exists: list::from_args
-list::join
-[PASS] function exists: list::join
-list::print
-[PASS] function exists: list::print
-list::args
-[PASS] function exists: list::args
+map::init
+[PASS] function exists: map::init
+map::valid
+[PASS] function exists: map::valid
+map::len
+[PASS] function exists: map::len
+map::empty
+[PASS] function exists: map::empty
+map::filled
+[PASS] function exists: map::filled
+map::has
+[PASS] function exists: map::has
+map::get
+[PASS] function exists: map::get
+map::set
+[PASS] function exists: map::set
+map::put
+[PASS] function exists: map::put
+map::del
+[PASS] function exists: map::del
+map::delete
+[PASS] function exists: map::delete
+map::set_once
+[PASS] function exists: map::set_once
+map::replace
+[PASS] function exists: map::replace
+map::clear
+[PASS] function exists: map::clear
+map::keys0
+[PASS] function exists: map::keys0
+map::values0
+[PASS] function exists: map::values0
+map::items0
+[PASS] function exists: map::items0
+map::keys
+[PASS] function exists: map::keys
+map::values
+[PASS] function exists: map::values
+map::items
+[PASS] function exists: map::items
+map::merge
+[PASS] function exists: map::merge
+map::concat
+[PASS] function exists: map::concat
+map::copy
+[PASS] function exists: map::copy
+map::only
+[PASS] function exists: map::only
+map::without
+[PASS] function exists: map::without
+map::each
+[PASS] function exists: map::each
+map::map
+[PASS] function exists: map::map
+map::filter
+[PASS] function exists: map::filter
+map::all
+[PASS] function exists: map::all
+map::any
+[PASS] function exists: map::any
+map::none
+[PASS] function exists: map::none
+map::print
+[PASS] function exists: map::print
+map::str
+[PASS] function exists: map::str
+map::from
+[PASS] function exists: map::from
+map::from_pairs
+[PASS] function exists: map::from_pairs
+map::from_lines
+[PASS] function exists: map::from_lines
 
 == init / valid / invalid names ==
-[PASS] init creates array
-[PASS] valid existing array
-[PASS] init len empty
+[PASS] init creates assoc map
+[PASS] valid existing assoc map
+[PASS] len empty
 [PASS] empty true
 [PASS] filled false
 [PASS] valid scalar false
@@ -109,244 +89,204 @@ list::args
 [PASS] init invalid dash
 [PASS] valid missing false
 
-== push / len / empty / filled / count / has ==
-[PASS] len initial
+== set / put / get / has / len / empty / filled ==
+[PASS] set name
+[PASS] set empty value
+[PASS] set key with spaces
+[PASS] set key with star
+[PASS] set key with equals
+[PASS] set empty key fails
+[PASS] get name
+[PASS] get empty value
+[PASS] get missing default
+[PASS] get empty key returns default
+[PASS] has name
+[PASS] has empty value key
+[PASS] has missing false
+[PASS] has empty key false
+[PASS] len after set
 [PASS] empty false
 [PASS] filled true
-[PASS] has b
-[PASS] has empty item
-[PASS] has z false
-[PASS] count a
-[PASS] count empty
-[PASS] count missing
-[PASS] items
+[PASS] put alias set
+[PASS] put alias get
 
-== first / last / get ==
-[PASS] first value
-[PASS] last value
-[PASS] first default ignored
-[PASS] last default ignored
-[PASS] first empty default
-[PASS] last empty default
-[PASS] get 0
-[PASS] get 1
-[PASS] get -1
-[PASS] get -2
-[PASS] get bad index default
-[PASS] get out default
-[PASS] get negative out default
-
-== set / put / insert ==
-[PASS] set middle
-[PASS] a
-[PASS] set negative last
-[PASS] a
-[PASS] set index == len fails
-[PASS] set out fails
-[PASS] set bad index fails
-[PASS] put index == len appends sparse-safe
-[PASS] a
-[PASS] put existing replaces
-[PASS] a
-[PASS] put gap fails
-[PASS] put negative fails
-[PASS] insert middle multiple
-[PASS] a
-[PASS] insert start
-[PASS] a
-[PASS] insert end
-[PASS] a
-[PASS] insert negative before last
-[PASS] a
-[PASS] insert bad index fails
-[PASS] insert out positive fails
-[PASS] insert out negative fails
-
-== pop / shift / unshift / clear ==
-[PASS] pop into target
-[PASS] pop target value
-[PASS] q
-[PASS] pop into target again
-[PASS] pop target value again
-[PASS] q
-[PASS] shift into target
-[PASS] shift target value
-[PASS] q
-[PASS] pop empty fails
-[PASS] shift empty fails
-[PASS] unshift multiple
-[PASS] q
-[PASS] shift into target again
-[PASS] shift target value again
-[PASS] q
-[PASS] pop invalid target fails
-[PASS] shift invalid target fails
-[PASS] clear list
-[PASS] clear len zero
-[PASS] q
-
-== index / last_index / remove_at ==
-[PASS] index first a
-[PASS] last_index a
-[PASS] index empty
-[PASS] last_index empty
-[PASS] index missing fails
-[PASS] last_index missing fails
-[PASS] remove_at target
-[PASS] remove_at target value
-[PASS] idx
-[PASS] remove_at negative target
-[PASS] remove_at target value empty
-[PASS] idx
-[PASS] remove_at out fails
-[PASS] remove_at bad index fails
-[PASS] remove_at invalid target fails
-
-== remove / remove_first / remove_last ==
-[PASS] remove all a
-[PASS] r
-[PASS] remove all empty
-[PASS] r
-[PASS] remove_first a
-[PASS] r
-[PASS] remove_last a
-[PASS] r
-[PASS] remove_first missing fails
-[PASS] remove_last missing fails
-
-== replace / replace_first / replace_last ==
-[PASS] replace all a
-[PASS] rp
-[PASS] replace empty
-[PASS] rp
+== set_once / replace / del / delete / clear ==
+[PASS] set_once existing returns ok
+[PASS] set_once existing unchanged
+[PASS] set_once missing writes
+[PASS] set_once missing value
+[PASS] set_once empty key fails
+[PASS] replace existing
+[PASS] replace existing value
 [PASS] replace missing fails
-[PASS] replace_first
-[PASS] rp
-[PASS] replace_last
-[PASS] rp
-[PASS] replace_first missing fails
-[PASS] replace_last missing fails
+[PASS] replace empty key fails
+[PASS] del existing
+[PASS] del removed missing
+[PASS] del missing fails
+[PASS] del empty key fails
+[PASS] delete alias existing
+[PASS] delete removed missing
+[PASS] clear map
+[PASS] clear len zero
+[PASS] clear empty true
 
-== concat / copy / slice ==
-[PASS] concat
+== from_pairs ==
+[PASS] from_pairs creates map
+[PASS] fp
+[PASS] from_pairs duplicate last wins
+[PASS] duplicate value
+[PASS] duplicate len
+[PASS] from_pairs zero pairs creates empty
+[PASS] from_pairs zero len
+[PASS] from_pairs odd args fails
+[PASS] from_pairs empty key fails
+
+== from / from_lines / str ==
+[PASS] from default newline
+[PASS] mf
+[PASS] from custom separators
+[PASS] mf2
+[PASS] from duplicate last wins
+[PASS] from duplicate value
+[PASS] from trailing item sep
+[PASS] mf4
+[PASS] from empty string creates empty
+[PASS] from empty len
+[PASS] from empty item_sep fails
+[PASS] from empty pair_sep fails
+[PASS] from empty key fails
+[PASS] from_lines default
+[PASS] ml
+[PASS] from_lines custom sep
+[PASS] ml2
+[PASS] from_lines no final newline
+[PASS] from_lines no final newline value
+[PASS] from_lines empty sep fails
+[PASS] from_lines empty key fails
+[PASS] str returns parseable text
+[PASS] str_dst
+[PASS] str default newline parseable
+[PASS] str_dst2
+[PASS] str empty item sep fails
+[PASS] str empty pair sep fails
+
+== keys0 / values0 / items0 ==
+[PASS] kv:keys0
+[PASS] kv:values0
+[PASS] kv:items0
+[PASS] keys0 supports newline key
+[PASS] values0 supports newline value
+[PASS] weird:items0
+
+== keys / values / items / print ==
+[PASS] keys printable
+[PASS] values printable
+[PASS] items printable
+[PASS] print alias items
+
+== copy / merge / concat ==
+[PASS] copy src dst
+[PASS] dst
+[PASS] copy is independent
+[PASS] copy changed dst
+[PASS] copy source unchanged
+[PASS] copy to self safe
+[PASS] src
+[PASS] merge overwrites and adds
 [PASS] left
 [PASS] right
-[PASS] copy
-[PASS] copied
-[PASS] left
-[PASS] copied
-[PASS] slice from 1 count 3
-[PASS] sliced
-[PASS] slice negative start
-[PASS] sliced2
-[PASS] slice start beyond len empty
-[PASS] sliced3
-[PASS] slice negative far clamps zero
-[PASS] sliced4
-[PASS] slice bad target fails
-[PASS] slice bad start fails
-[PASS] slice bad count fails
+[PASS] merge self safe
+[PASS] self_merge
+[PASS] concat alias merge
+[PASS] concat_left
 
-== reverse / reversed ==
-[PASS] reverse in-place
-[PASS] rev
-[PASS] reversed copy
-[PASS] rev
-[PASS] rev2
-[PASS] reverse empty
-[PASS] empty_list
-[PASS] reversed bad target fails
-
-== unique ==
-[PASS] unique preserves first occurrence including empty
-[PASS] u
-[PASS] unique all empty
-[PASS] u2
-
-== sort ==
-[PASS] sort asc
-[PASS] s
-[PASS] sort desc
-[PASS] s
-[PASS] sort bad order fails
-
-== join / print / args ==
-[PASS] join comma
-[PASS] join empty sep
-[PASS] print lines
-[PASS] args alias lines
-[PASS] print empty no output
-[PASS] args empty no output
-
-== from / from_args / from_lines ==
-[PASS] fa
-[PASS] from comma
-[PASS] ff
-[PASS] from multi sep
-[PASS] fm
-[PASS] from default newline
-[PASS] fl
-[PASS] from empty string gives one empty item
-[PASS] fe
-[PASS] from empty separator fails
-[PASS] stdin_lines
-[PASS] no_final_newline
+== only / without ==
+[PASS] only selected keys
+[PASS] public
+[PASS] user
+[PASS] only self-reference safe
+[PASS] user
+[PASS] without removes selected
+[PASS] safe_user
+[PASS] secret_user
+[PASS] without self-reference safe
+[PASS] secret_user
 
 == callbacks each / map / filter / all / any / none ==
 [PASS] each collect
-[PASS] cb_seen
-[PASS] each stops on failure
-[PASS] map upper
-[PASS] mapped
-[PASS] filter nonempty
-[PASS] filtered
+[PASS] each collected all
+[PASS] each stops on callback failure
+[PASS] map upper values
+[PASS] cb_upper
+[PASS] map self-reference safe
+[PASS] cb
+[PASS] filter nonempty values
+[PASS] cb_filtered
+[PASS] filter self-reference safe
+[PASS] cb2
 [PASS] missing callback each fails
 [PASS] missing callback map fails
 [PASS] missing callback filter fails
 [PASS] all nonempty true
 [PASS] all nonempty false
-[PASS] any is a true
-[PASS] any missing false
-[PASS] none missing true
-[PASS] none is a false
+[PASS] any key is name true
+[PASS] any never false
+[PASS] none never true
+[PASS] none key is name false
+[PASS] any value is admin true
 
-== failure paths / non arrays ==
+== failure paths / non maps ==
 [PASS] len scalar fails
-[PASS] push scalar fails
+[PASS] empty scalar fails
+[PASS] filled scalar fails
+[PASS] has scalar fails
 [PASS] get scalar fails
 [PASS] set scalar fails
-[PASS] insert scalar fails
-[PASS] remove scalar fails
-[PASS] concat scalar fails
+[PASS] del scalar fails
+[PASS] set_once scalar fails
+[PASS] replace scalar fails
+[PASS] clear scalar fails
+[PASS] keys0 scalar fails
+[PASS] values0 scalar fails
+[PASS] items0 scalar fails
+[PASS] copy scalar fails
+[PASS] merge scalar left fails
+[PASS] merge scalar right fails
+[PASS] only scalar fails
+[PASS] without scalar fails
+[PASS] each scalar fails
+[PASS] map scalar fails
+[PASS] filter scalar fails
+[PASS] all scalar fails
+[PASS] any scalar fails
+[PASS] str scalar fails
 [PASS] copy bad target fails
+[PASS] only bad target fails
+[PASS] without bad target fails
+[PASS] map bad target fails
+[PASS] filter bad target fails
 
 == property / invariants ==
-[PASS] reverse twice returns original
-[PASS] reverse twice second
-[PASS] reverse twice invariant
-[PASS] copy then join equal
-[PASS] copy content invariant
-[PASS] slice full equals original
-[PASS] slice full invariant
-
-== self reference safety ==
-[PASS] copy to self preserves
-[PASS] self_copy
-[PASS] slice to self preserves selected
-[PASS] self_slice
-[PASS] map to self works
-[PASS] self_map
-[PASS] filter to self works
-[PASS] self_filter
-[PASS] concat self duplicates once
-[PASS] self_concat
+[PASS] copy invariant
+[PASS] copy dump equals original
+[PASS] str/from roundtrip with rare separators
+[PASS] roundtrip dump equals original
+[PASS] merge empty into prop
+[PASS] merge empty does not change
+[PASS] merge empty invariant
+[PASS] only all keys equals original
+[PASS] only all invariant
+[PASS] without no keys equals original
+[PASS] without none invariant
 
 == result ==
-total: 255
-pass : 255
+
+== result ==
+total: 215
+pass : 215
 fail : 0
 
-real    0m0.246s
-user    0m0.174s
-sys     0m0.070s
+real    0m0.559s
+user    0m0.372s
+sys     0m0.073s
 codingmaster@codingmstr:/var/www/projects/gun$
