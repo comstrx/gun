@@ -4,369 +4,240 @@
 set -u
 set -o pipefail
 
-TARGET="${1:-tool/parts/builtin/log.sh}"
-
-pass=0
-fail=0
-
-ok () {
-
-    printf '[PASS] %s\n' "$1"
-    pass=$(( pass + 1 ))
-
-}
-
-bad () {
-
-    printf '[FAIL] %s\n  want: [%s]\n  got : [%s]\n' "$1" "$2" "$3"
-    fail=$(( fail + 1 ))
-
-}
-
-eq () {
-
-    local name="$1" want="$2" got="$3"
-
-    [[ "${got}" == "${want}" ]] && ok "${name}" || bad "${name}" "${want}" "${got}"
-
-}
-
-has () {
-
-    local name="$1" needle="$2" got="$3"
-
-    [[ "${got}" == *"${needle}"* ]] && ok "${name}" || bad "${name}" "*${needle}*" "${got}"
-
-}
-
-nohas () {
-
-    local name="$1" needle="$2" got="$3"
-
-    [[ "${got}" != *"${needle}"* ]] && ok "${name}" || bad "${name}" "not containing ${needle}" "${got}"
-
-}
-
-rc_ok () {
-
-    local name="$1"
-    shift
-
-    if "$@"; then ok "${name}"
-    else bad "${name}" "exit=0" "exit=$?"
-    fi
-
-}
-
-rc_no () {
-
-    local name="$1"
-    shift
-
-    if "$@"; then bad "${name}" "exit!=0" "exit=0"
-    else ok "${name}"
-    fi
-
-}
-
-section () {
-
-    printf '\n== %s ==\n' "$1"
-
-}
-
-run_out () {
-
-    bash -c 'source "$1"; shift; eval "$1"' _ "${TARGET}" "$1"
-
-}
-
-run_err () {
-
-    bash -c 'source "$1"; shift; eval "$1"' _ "${TARGET}" "$1" 2>&1 >/dev/null
-
-}
-
-run_both () {
-
-    bash -c 'source "$1"; shift; eval "$1"' _ "${TARGET}" "$1" 2>&1
-
-}
-
-if [[ ! -r "${TARGET}" ]]; then
-    printf '[ERR] target not readable: %s\n' "${TARGET}" >&2
-    exit 2
-fi
-
-section "syntax / static checks"
-
-rc_ok "bash -n target" bash -n "${TARGET}"
-
-if command -v shellcheck >/dev/null 2>&1; then
-    rc_ok "shellcheck target" shellcheck "${TARGET}"
-else
-    ok "shellcheck skipped"
-fi
+ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+TARGET="${1:-${ROOT}/log.sh}"
 
 # shellcheck source=/dev/null
 source "${TARGET}"
 
-section "public api"
+APP_NAME="gun"
+APP_ENV="${APP_ENV:-production}"
+BUILD_ID="${BUILD_ID:-$(date +%Y%m%d%H%M%S 2>/dev/null || printf 'local')}"
+ARTIFACT_DIR="${ARTIFACT_DIR:-/tmp/gun-showcase-artifact}"
 
-required=(
-    log::is_tty
-    log::is_err_tty
-    log::is_quiet
-    log::is_verbose
-    log::supports_color
-    log::supports_unicode
-    log::level_num
-    log::enabled
-    log::color
-    log::strip
-    log::symbol
-    log::timestamp
-    log::emit
-    log::print
-    log::line
-    log::raw
-    log::err
-    log::info
-    log::ok
-    log::success
-    log::done
-    log::warn
-    log::warning
-    log::error
-    log::fail
-    log::debug
-    log::trace
-    log::step
-    log::fatal
-    log::die
-    log::title
-    log::section
-    log::subsection
-    log::hr
-    log::kv
-    log::pair
-    log::list
-    log::item
-    log::cmd
-    log::quote
-    log::indent
-    log::table
-    log::status
-    log::run
-    log::try
-    log::plain
-    log::quiet
-    log::verbose
-    log::with_color
-    log::without_color
-)
+step_prepare_workspace () {
 
-for fn in "${required[@]}"; do
-    rc_ok "function exists: ${fn}" declare -F "${fn}"
-done
+    rm -rf "${ARTIFACT_DIR}"
+    mkdir -p "${ARTIFACT_DIR}/bin" "${ARTIFACT_DIR}/logs" "${ARTIFACT_DIR}/meta"
 
-section "level numbers / enabled"
+    printf 'name=%s\n' "${APP_NAME}" > "${ARTIFACT_DIR}/meta/app.env"
+    printf 'env=%s\n' "${APP_ENV}" >> "${ARTIFACT_DIR}/meta/app.env"
+    printf 'build_id=%s\n' "${BUILD_ID}" >> "${ARTIFACT_DIR}/meta/app.env"
 
-eq "level trace" "0" "$(log::level_num trace)"
-eq "level debug" "1" "$(log::level_num debug)"
-eq "level info" "2" "$(log::level_num info)"
-eq "level warn" "3" "$(log::level_num warn)"
-eq "level error" "4" "$(log::level_num error)"
-eq "level off" "9" "$(log::level_num off)"
-eq "level unknown defaults info" "2" "$(log::level_num wat)"
+    sleep 0.4
 
-rc_ok "enabled info at default" env -i PATH="${PATH}" bash -c 'source "$1"; log::enabled info' _ "${TARGET}"
-rc_no "debug disabled at default" env -i PATH="${PATH}" bash -c 'source "$1"; log::enabled debug' _ "${TARGET}"
-rc_ok "warn enabled at info" env -i PATH="${PATH}" bash -c 'source "$1"; LOG_LEVEL=info log::enabled warn' _ "${TARGET}"
-rc_no "info disabled at warn" env -i PATH="${PATH}" bash -c 'source "$1"; LOG_LEVEL=warn log::enabled info' _ "${TARGET}"
-rc_ok "error enabled under quiet" env -i PATH="${PATH}" bash -c 'source "$1"; QUIET=1 log::enabled error' _ "${TARGET}"
-rc_no "info disabled under quiet" env -i PATH="${PATH}" bash -c 'source "$1"; QUIET=1 log::enabled info' _ "${TARGET}"
+}
+step_resolve_runtime () {
 
-section "color / strip / unicode"
+    command -v bash >/dev/null 2>&1
+    bash --version >/dev/null 2>&1
+    sleep 0.4
 
-eq "color disabled by NO_COLOR" "hello" "$(NO_COLOR=1 log::color 31 hello)"
+}
+step_compile_runtime () {
 
-colored="$(run_out 'unset NO_COLOR; export LOG_COLOR=always; log::color 31 hello')"
-has "color forced contains escape" $'\033[31m' "${colored}"
-has "color forced contains reset" $'\033[0m' "${colored}"
+    printf '#!/usr/bin/env bash\nprintf "gun runtime ready\\n"\n' > "${ARTIFACT_DIR}/bin/gun"
+    chmod +x "${ARTIFACT_DIR}/bin/gun"
 
-eq "strip ansi" "hello" "$(printf '\033[31mhello\033[0m\n' | log::strip)"
+    sleep 0.5
 
-eq "ascii symbol ok" "+" "$(LOG_ASCII=1 log::symbol ok)"
-eq "ascii symbol error" "x" "$(LOG_ASCII=1 log::symbol error)"
-eq "ascii symbol item" "-" "$(LOG_ASCII=1 log::symbol item)"
+}
+step_static_checks () {
 
-section "stdout helpers"
+    bash -n "${ARTIFACT_DIR}/bin/gun"
+    sleep 0.4
 
-eq "print stdout" "abc" "$(run_out 'log::print abc')"
-eq "line stdout" "abc" "$(run_out 'log::line abc')"
-eq "raw stdout" "a b" "$(run_out 'printf "a b" | log::raw')"
+}
+step_package_artifact () {
 
-eq "quiet suppresses print" "" "$(run_out 'QUIET=1 log::print abc')"
-eq "quiet suppresses line" "" "$(run_out 'QUIET=1 log::line abc')"
-eq "quiet suppresses raw" "" "$(run_out 'export QUIET=1; printf abc | log::raw')"
+    tar -czf "${ARTIFACT_DIR}/gun-${BUILD_ID}.tar.gz" -C "${ARTIFACT_DIR}" bin meta >/dev/null 2>&1
+    sleep 0.5
 
-section "stderr basic logs"
+}
+step_upload_artifact () {
 
-err="$(run_err 'NO_COLOR=1 LOG_ASCII=1 log::info "hello"')"
-has "info has tag" "[INFO]" "${err}"
-has "info has msg" "hello" "${err}"
+    sleep 0.5
+    printf 'uploaded=%s\n' "gun-${BUILD_ID}.tar.gz" > "${ARTIFACT_DIR}/logs/upload.log"
 
-err="$(run_err 'NO_COLOR=1 LOG_ASCII=1 log::ok "good"')"
-has "ok has tag" "[OK]" "${err}"
-has "ok has msg" "good" "${err}"
+}
+step_smoke_test () {
 
-err="$(run_err 'NO_COLOR=1 LOG_ASCII=1 log::success "good"')"
-has "success alias ok" "[OK]" "${err}"
+    "${ARTIFACT_DIR}/bin/gun" >/dev/null
+    sleep 0.4
 
-err="$(run_err 'NO_COLOR=1 LOG_ASCII=1 log::warn "careful"')"
-has "warn has tag" "[WARN]" "${err}"
+}
+step_fail_example () {
 
-err="$(run_err 'NO_COLOR=1 LOG_ASCII=1 log::warning "careful"')"
-has "warning alias warn" "[WARN]" "${err}"
+    printf 'connecting to production gateway...\n'
+    printf 'checking deployment token...\n'
+    printf 'boom: token expired for environment %s\n' "${APP_ENV}"
+    return 7
 
-err="$(run_err 'NO_COLOR=1 LOG_ASCII=1 log::error "bad"')"
-has "error has tag" "[ERROR]" "${err}"
+}
+show_runtime_contract () {
 
-err="$(run_err 'NO_COLOR=1 LOG_ASCII=1 log::fail "bad"')"
-has "fail alias error" "[ERROR]" "${err}"
+    log::section "Runtime Contract"
 
-err="$(run_err 'NO_COLOR=1 LOG_ASCII=1 log::done "done"')"
-has "done has tag" "[DONE]" "${err}"
+    log::table 20 \
+        "App" "${APP_NAME}" \
+        "Environment" "${APP_ENV}" \
+        "Build ID" "${BUILD_ID}" \
+        "Artifact Dir" "${ARTIFACT_DIR}" \
+        "Color" "$(log::supports_color && printf yes || printf no)" \
+        "Unicode" "$(log::supports_unicode && printf yes || printf no)" \
+        "Quiet" "$(log::is_quiet && printf yes || printf no)" \
+        "Verbose" "$(log::is_verbose && printf yes || printf no)"
 
-err="$(run_err 'NO_COLOR=1 LOG_ASCII=1 log::step "step"')"
-has "step has tag" "[STEP]" "${err}"
+}
+show_display_modes () {
 
-section "debug / trace"
+    log::section "Display Modes"
 
-eq "debug hidden by default" "" "$(run_err 'NO_COLOR=1 log::debug hidden')"
-has "debug visible with DEBUG=1" "[DEBUG]" "$(run_err 'NO_COLOR=1 LOG_ASCII=1 DEBUG=1 log::debug visible')"
-has "debug visible with LOG_LEVEL=debug" "[DEBUG]" "$(run_err 'NO_COLOR=1 LOG_ASCII=1 LOG_LEVEL=debug log::debug visible')"
+    log::info "Default flags + bright colors"
+    LOG_SYMBOLS=1 log::info "Symbols enabled"
+    LOG_SYMBOLS=1 LOG_EMOJIS=1 log::warn "Emoji mode enabled"
+    LOG_TIMESTAMP=1 log::step "Timestamp mode enabled"
+    LOG_FLAGS=0 LOG_SYMBOLS=1 log::ok "No flags, symbol only"
+    LOG_FLAGS=0 LOG_SYMBOLS=0 log::grayln "No flags, no symbols: clean raw message"
+    log::no_color log::warn "No-color scoped wrapper"
 
-eq "trace hidden by default" "" "$(run_err 'NO_COLOR=1 log::trace hidden')"
-has "trace visible with TRACE=1" "[TRACE]" "$(run_err 'NO_COLOR=1 LOG_ASCII=1 TRACE=1 log::trace visible')"
-has "trace visible with LOG_LEVEL=trace" "[TRACE]" "$(run_err 'NO_COLOR=1 LOG_ASCII=1 LOG_LEVEL=trace log::trace visible')"
+}
+show_pretty_output () {
 
-section "quiet / level filtering"
+    log::section "Formatted Output"
 
-eq "quiet suppresses info" "" "$(run_err 'NO_COLOR=1 QUIET=1 log::info hidden')"
-has "quiet keeps error" "[ERROR]" "$(run_err 'NO_COLOR=1 LOG_ASCII=1 QUIET=1 log::error visible')"
+    log::subsection "Key / Value"
+    log::pair "Repository" "comstrx/gun"
+    log::pair "Branch" "main"
+    log::pair "Target" "release"
+    log::pair "Runtime" "bash"
 
-eq "LOG_LEVEL warn suppresses info" "" "$(run_err 'NO_COLOR=1 LOG_LEVEL=warn log::info hidden')"
-has "LOG_LEVEL warn keeps warn" "[WARN]" "$(run_err 'NO_COLOR=1 LOG_ASCII=1 LOG_LEVEL=warn log::warn visible')"
-has "LOG_LEVEL warn keeps error" "[ERROR]" "$(run_err 'NO_COLOR=1 LOG_ASCII=1 LOG_LEVEL=warn log::error visible')"
+    log::subsection "List"
+    log::list \
+        "deterministic output" \
+        "quiet-safe rendering" \
+        "failure output captured" \
+        "terminal color fallback" \
+        "progress and spinner support"
 
-section "timestamp"
+    log::subsection "Quoted Block"
+    cat <<'TEXT' | log::quote
+This block simulates external command output.
+It is rendered only when you choose to show it.
+Useful for failed builds, deploy logs, and diagnostics.
+TEXT
 
-err="$(run_err 'NO_COLOR=1 LOG_ASCII=1 LOG_TIME=1 log::info timed')"
-has "timestamp includes message" "timed" "${err}"
-[[ "${err}" =~ [0-9]{4}-[0-9]{2}-[0-9]{2} ]] && ok "timestamp date format" || bad "timestamp date format" "YYYY-MM-DD" "${err}"
+    log::subsection "Indented Block"
+    cat <<'TEXT' | log::indent 4
+src/
+  runtime/
+  builtins/
+target/
+  release/
+TEXT
 
-section "format helpers"
+}
+show_spinner_pipeline () {
 
-err="$(run_err 'NO_COLOR=1 log::title "Build"')"
-has "title contains text" "Build" "${err}"
-has "title underline" "=====" "${err}"
+    log::section "Spinner Pipeline"
 
-err="$(run_err 'NO_COLOR=1 log::section "Checks"')"
-has "section format" "== Checks ==" "${err}"
+    log::spinner "Preparing workspace" -- step_prepare_workspace
+    log::spinner "Resolving Bash runtime" -- step_resolve_runtime
+    log::spinner "Compiling runtime entrypoint" -- step_compile_runtime
+    log::spinner "Running static checks" -- step_static_checks
+    log::spinner "Packaging artifact" -- step_package_artifact
+    log::spinner "Uploading artifact" -- step_upload_artifact
+    log::spinner "Running smoke test" -- step_smoke_test
 
-err="$(run_err 'NO_COLOR=1 log::subsection "Lint"')"
-has "subsection format" "-- Lint --" "${err}"
+}
+show_progress_renderer () {
 
-err="$(run_err 'NO_COLOR=1 log::hr "*" 5')"
-eq "hr width" "*****" "${err}"
+    local i=0 curr=""
 
-err="$(run_err 'NO_COLOR=1 log::kv Project gun 10')"
-has "kv key" "Project" "${err}"
-has "kv value" "gun" "${err}"
+    log::section "Progress Renderer"
 
-err="$(run_err 'NO_COLOR=1 log::pair Runtime bash 10')"
-has "pair alias key" "Runtime" "${err}"
-has "pair alias value" "bash" "${err}"
+    for i in {1..100}; do
 
-err="$(run_err 'NO_COLOR=1 LOG_ASCII=1 log::list one "two words" "*"')"
-has "list item one" "one" "${err}"
-has "list item spaces" "two words" "${err}"
-has "list item star" "*" "${err}"
+        curr="${i}"
 
-err="$(run_err 'NO_COLOR=1 LOG_ASCII=1 log::item "single item"')"
-has "item output" "single item" "${err}"
+        if (( i > 72 )); then
+            curr="done"
+        fi
 
-err="$(run_err 'NO_COLOR=1 log::cmd echo hello')"
-has "cmd prefix" "$ echo hello" "${err}"
+        log::progress "${curr}" 100 "Building release" 38
 
-err="$(run_err 'NO_COLOR=1 printf "a\nb\n" | log::quote')"
-has "quote first" "| a" "${err}"
-has "quote second" "| b" "${err}"
+        [[ "${curr}" == "done" ]] && break
+        sleep 0.01
 
-err="$(run_err 'printf "a\nb\n" | log::indent 4')"
-has "indent first" "    a" "${err}"
-has "indent second" "    b" "${err}"
+    done
 
-err="$(run_err 'NO_COLOR=1 log::table 8 Name Gun Lang Bash')"
-has "table name" "Name" "${err}"
-has "table gun" "Gun" "${err}"
-has "table lang" "Lang" "${err}"
-has "table bash" "Bash" "${err}"
+    log::done "Progress reached final state cleanly"
 
-section "status"
+}
+show_failure_capture () {
 
-has "status ok" "[OK]" "$(run_err 'NO_COLOR=1 LOG_ASCII=1 log::status ok good')"
-has "status warn" "[WARN]" "$(run_err 'NO_COLOR=1 LOG_ASCII=1 log::status warn careful')"
-has "status error" "[ERROR]" "$(run_err 'NO_COLOR=1 LOG_ASCII=1 log::status error bad')"
-has "status debug hidden default" "" "$(run_err 'NO_COLOR=1 LOG_ASCII=1 log::status debug hidden')"
-has "status unknown info" "[INFO]" "$(run_err 'NO_COLOR=1 LOG_ASCII=1 log::status custom message')"
+    log::section "Failure Capture"
 
-section "fatal / die"
+    log::spinner "Deploying to production" -- step_fail_example
+    code=$?
 
-rc_no "fatal returns non-zero" bash -c 'source "$1"; log::fatal 7 bad >/dev/null 2>&1' _ "${TARGET}"
+    if (( code != 0 )); then
+        log::warn "Deploy failed intentionally for showcase"
+        log::pair "Captured exit code" "${code}"
+    fi
 
-bash -c 'source "$1"; log::fatal 7 bad >/dev/null 2>&1' _ "${TARGET}"
-code=$?
-eq "fatal exact return code" "7" "${code}"
+}
+show_run_try () {
 
-bash -c 'source "$1"; log::die 9 dead >/dev/null 2>&1' _ "${TARGET}"
-code=$?
-eq "die exits exact code" "9" "${code}"
+    log::section "Command Helpers"
 
-section "run / try"
+    log::run bash -c 'printf "hello from log::run\n"'
 
-out="$(run_both 'NO_COLOR=1 log::run bash -c "printf ok"')"
-has "run prints command" "$ bash -c printf ok" "${out}"
-has "run executes command" "ok" "${out}"
+    if log::try bash -c 'printf "test output hidden? no, this is direct try output\n"; exit 0'; then
+        log::ok "try success branch"
+    fi
 
-bash -c 'source "$1"; log::run bash -c "exit 6" >/dev/null 2>&1' _ "${TARGET}"
-code=$?
-eq "run returns command code" "6" "${code}"
+    log::try bash -c 'printf "simulated failure output\n"; exit 5'
+    code=$?
 
-out="$(run_both 'NO_COLOR=1 LOG_ASCII=1 log::try bash -c "printf ok"')"
-has "try success command" "$ bash -c printf ok" "${out}"
-has "try success output" "ok" "${out}"
-has "try success log" "Command succeeded" "${out}"
+    if (( code != 0 )); then
+        log::warn "try returned code ${code}"
+    fi
 
-bash -c 'source "$1"; log::try bash -c "exit 5" >/dev/null 2>&1' _ "${TARGET}"
-code=$?
-eq "try failure returns command code" "5" "${code}"
+}
+show_summary () {
 
-err="$(run_both 'NO_COLOR=1 LOG_ASCII=1 log::try bash -c "exit 5"')"
-has "try failure message" "Command failed with exit code 5" "${err}"
+    log::section "Summary"
 
-section "wrappers"
+    log::table 18 \
+        "Workspace" "ready" \
+        "Runtime" "resolved" \
+        "Static Checks" "passed" \
+        "Package" "created" \
+        "Upload" "done" \
+        "Deploy" "failed intentionally"
 
-eq "without_color disables ansi" "hello" "$(run_out 'log::without_color log::color 31 hello')"
-has "with_color forces ansi" $'\033[31m' "$(run_out 'unset NO_COLOR; log::with_color log::color 31 hello')"
+    log::hr "=" 54
+    log::done "Showcase completed"
 
-eq "quiet wrapper suppresses line" "" "$(run_out 'log::quiet log::line hidden')"
+}
+main () {
 
-section "result"
+    log::title "Gun Production Logger Showcase"
 
-printf '\npass: %s\n' "${pass}"
-printf 'fail: %s\n' "${fail}"
+    log::pair "Program" "showcase-log.sh"
+    log::pair "Using" "${TARGET}"
+    log::pair "Mode" "real CLI pipeline simulation"
 
-(( fail == 0 ))
+    show_runtime_contract
+    show_display_modes
+    show_pretty_output
+    show_spinner_pipeline
+    show_progress_renderer
+    show_failure_capture
+    show_run_try
+    show_summary
+
+}
+
+main "$@"

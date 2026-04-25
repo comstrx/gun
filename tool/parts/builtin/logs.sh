@@ -1,700 +1,385 @@
-[LINUX]
-Run "bash" tool/parts/builtin/test.sh
+codingmaster@codingmstr:/var/www/projects/gun$ bash tool/parts/builtin/test.sh
 
-== syntax / static checks ==
-[PASS] bash -n target
-[PASS] shellcheck target
+▸ Gun Production Logger Showcase
+================================
+Program            : showcase-log.sh
+Using              : /var/www/projects/gun/tool/parts/builtin/log.sh
+Mode               : real CLI pipeline simulation
 
-== public api ==
-log::is_tty
-[PASS] function exists: log::is_tty
-log::is_err_tty
-[PASS] function exists: log::is_err_tty
-log::is_quiet
-[PASS] function exists: log::is_quiet
-log::is_verbose
-[PASS] function exists: log::is_verbose
-log::supports_color
-[PASS] function exists: log::supports_color
-log::supports_unicode
-[PASS] function exists: log::supports_unicode
-log::level_num
-[PASS] function exists: log::level_num
-log::enabled
-[PASS] function exists: log::enabled
-log::color
-[PASS] function exists: log::color
-log::strip
-[PASS] function exists: log::strip
-log::symbol
-[PASS] function exists: log::symbol
-log::timestamp
-[PASS] function exists: log::timestamp
-log::emit
-[PASS] function exists: log::emit
-log::print
-[PASS] function exists: log::print
-log::line
-[PASS] function exists: log::line
-log::raw
-[PASS] function exists: log::raw
-log::err
-[PASS] function exists: log::err
-log::info
-[PASS] function exists: log::info
-log::ok
-[PASS] function exists: log::ok
-log::success
-[PASS] function exists: log::success
-log::done
-[PASS] function exists: log::done
-log::warn
-[PASS] function exists: log::warn
-log::warning
-[PASS] function exists: log::warning
-log::error
-[PASS] function exists: log::error
-log::fail
-[PASS] function exists: log::fail
-log::debug
-[PASS] function exists: log::debug
-log::trace
-[PASS] function exists: log::trace
-log::step
-[PASS] function exists: log::step
-log::fatal
-[PASS] function exists: log::fatal
-log::die
-[PASS] function exists: log::die
-log::title
-[PASS] function exists: log::title
-log::section
-[PASS] function exists: log::section
-log::subsection
-[PASS] function exists: log::subsection
-log::hr
-[PASS] function exists: log::hr
-log::kv
-[PASS] function exists: log::kv
-log::pair
-[PASS] function exists: log::pair
-log::list
-[PASS] function exists: log::list
-log::item
-[PASS] function exists: log::item
-log::cmd
-[PASS] function exists: log::cmd
-log::quote
-[PASS] function exists: log::quote
-log::indent
-[PASS] function exists: log::indent
-log::table
-[PASS] function exists: log::table
-log::status
-[PASS] function exists: log::status
-log::run
-[PASS] function exists: log::run
-log::try
-[PASS] function exists: log::try
-log::plain
-[PASS] function exists: log::plain
-log::quiet
-[PASS] function exists: log::quiet
-log::verbose
-[PASS] function exists: log::verbose
-log::with_color
-[PASS] function exists: log::with_color
-log::without_color
-[PASS] function exists: log::without_color
+== Runtime Contract ==
+App                  : gun
+Environment          : production
+Build ID             : 20260425143903
+Artifact Dir         : /tmp/gun-showcase-artifact
+Color                : yes
+Unicode              : yes
+Quiet                : no
+Verbose              : no
 
-== level numbers / enabled ==
-[PASS] level trace
-[PASS] level debug
-[PASS] level info
-[PASS] level warn
-[PASS] level error
-[PASS] level off
-[PASS] level unknown defaults info
-[PASS] enabled info at default
-[PASS] debug disabled at default
-[PASS] warn enabled at info
-[PASS] info disabled at warn
-[PASS] error enabled under quiet
-[PASS] info disabled under quiet
+== Display Modes ==
+[INFO] Default flags + bright colors
+[INFO] i Symbols enabled
+[WARN] ⚠️ Emoji mode enabled
+[2026-04-25 14:39:04] [STEP] Timestamp mode enabled
++ No flags, symbol only
+No flags, no symbols: clean raw message
+[WARN] No-color scoped wrapper
 
-== color / strip / unicode ==
-[PASS] color disabled by NO_COLOR
-[FAIL] color forced contains escape
-  want: [**]
-  got : [hello]
-[FAIL] color forced contains reset
-  want: [**]
-  got : [hello]
-[PASS] strip ansi
-[PASS] ascii symbol ok
-[PASS] ascii symbol error
-[PASS] ascii symbol item
+== Formatted Output ==
 
-== stdout helpers ==
-[PASS] print stdout
-[PASS] line stdout
-[PASS] raw stdout
-[PASS] quiet suppresses print
-[PASS] quiet suppresses line
-[PASS] quiet suppresses raw
+-- Key / Value --
+Repository         : comstrx/gun
+Branch             : main
+Target             : release
+Runtime            : bash
 
-== stderr basic logs ==
-[PASS] info has tag
-[PASS] info has msg
-[PASS] ok has tag
-[PASS] ok has msg
-[PASS] success alias ok
-[PASS] warn has tag
-[PASS] warning alias warn
-[PASS] error has tag
-[PASS] fail alias error
-[PASS] done has tag
-[PASS] step has tag
+-- List --
+  - deterministic output
+  - quiet-safe rendering
+  - failure output captured
+  - terminal color fallback
+  - progress and spinner support
 
-== debug / trace ==
-[PASS] debug hidden by default
-[PASS] debug visible with DEBUG=1
-[PASS] debug visible with LOG_LEVEL=debug
-[PASS] trace hidden by default
-[PASS] trace visible with TRACE=1
-[PASS] trace visible with LOG_LEVEL=trace
+-- Quoted Block --
+│ This block simulates external command output.
+│ It is rendered only when you choose to show it.
+│ Useful for failed builds, deploy logs, and diagnostics.
 
-== quiet / level filtering ==
-[PASS] quiet suppresses info
-[PASS] quiet keeps error
-[PASS] LOG_LEVEL warn suppresses info
-[PASS] LOG_LEVEL warn keeps warn
-[PASS] LOG_LEVEL warn keeps error
+-- Indented Block --
+    src/
+      runtime/
+      builtins/
+    target/
+      release/
 
-== timestamp ==
-[PASS] timestamp includes message
-[PASS] timestamp date format
+== Spinner Pipeline ==
+[OK] Preparing workspace
+[OK] Resolving Bash runtime
+[OK] Compiling runtime entrypoint
+[OK] Running static checks
+[OK] Packaging artifact
+[OK] Uploading artifact
+[OK] Running smoke test
 
-== format helpers ==
-[PASS] title contains text
-[PASS] title underline
-[PASS] section format
-[PASS] subsection format
-[PASS] hr width
-[PASS] kv key
-[PASS] kv value
-[PASS] pair alias key
-[PASS] pair alias value
-[PASS] list item one
-[PASS] list item spaces
-[PASS] list item star
-[PASS] item output
-[PASS] cmd prefix
-[PASS] quote first
-[PASS] quote second
-[PASS] indent first
-[PASS] indent second
-[PASS] table name
-[PASS] table gun
-[PASS] table lang
-[PASS] table bash
+== Progress Renderer ==
+Building release [██████████████████████████████████████] 100%
+[DONE] Progress reached final state cleanly
 
-== status ==
-[PASS] status ok
-[PASS] status warn
-[PASS] status error
-[PASS] status debug hidden default
-[PASS] status unknown info
+== Failure Capture ==
+[ERR] Deploying to production
+│ connecting to production gateway...
+│ checking deployment token...
+│ boom: token expired for environment production
+[WARN] Deploy failed intentionally for showcase
+Captured exit code : 7
 
-== fatal / die ==
-[PASS] fatal returns non-zero
-[PASS] fatal exact return code
-[PASS] die exits exact code
+== Command Helpers ==
+$ bash -c printf\ \"hello\ from\ log::run\\n\"
+hello from log::run
+$ bash -c printf\ \"test\ output\ hidden\?\ no\,\ this\ is\ direct\ try\ output\\n\"\;\ exit\ 0
+test output hidden? no, this is direct try output
+[OK] Command succeeded
+[OK] try success branch
+$ bash -c printf\ \"simulated\ failure\ output\\n\"\;\ exit\ 5
+simulated failure output
+[ERR] Command failed with exit code 5
+[WARN] try returned code 5
 
-== run / try ==
-[PASS] run prints command
-[PASS] run executes command
-[PASS] run returns command code
-[PASS] try success command
-[PASS] try success output
-[PASS] try success log
-[PASS] try failure returns command code
-[PASS] try failure message
+== Summary ==
+Workspace          : ready
+Runtime            : resolved
+Static Checks      : passed
+Package            : created
+Upload             : done
+Deploy             : failed intentionally
+======================================================
+[DONE] Showcase completed
+codingmaster@codingmstr:/var/www/projects/gun$ NO_COLOR=1 bash tool/parts/builtin/test.sh
 
-== wrappers ==
-[PASS] without_color disables ansi
-[FAIL] with_color forces ansi
-  want: [**]
-  got : [hello]
-[PASS] quiet wrapper suppresses line
+▸ Gun Production Logger Showcase
+================================
+Program            : showcase-log.sh
+Using              : /var/www/projects/gun/tool/parts/builtin/log.sh
+Mode               : real CLI pipeline simulation
 
-== result ==
+== Runtime Contract ==
+App                  : gun
+Environment          : production
+Build ID             : 20260425143915
+Artifact Dir         : /tmp/gun-showcase-artifact
+Color                : no
+Unicode              : yes
+Quiet                : no
+Verbose              : no
 
-pass: 140
-fail: 3
-Error: Process completed with exit code 1.
+== Display Modes ==
+[INFO] Default flags + bright colors
+[INFO] i Symbols enabled
+[WARN] ⚠️ Emoji mode enabled
+[2026-04-25 14:39:15] [STEP] Timestamp mode enabled
++ No flags, symbol only
+No flags, no symbols: clean raw message
+[WARN] No-color scoped wrapper
 
-[MACOS]
-Run "/opt/homebrew/bin/bash" tool/parts/builtin/test.sh
+== Formatted Output ==
 
-== syntax / static checks ==
-[PASS] bash -n target
-[PASS] shellcheck skipped
+-- Key / Value --
+Repository         : comstrx/gun
+Branch             : main
+Target             : release
+Runtime            : bash
 
-== public api ==
-log::is_tty
-[PASS] function exists: log::is_tty
-log::is_err_tty
-[PASS] function exists: log::is_err_tty
-log::is_quiet
-[PASS] function exists: log::is_quiet
-log::is_verbose
-[PASS] function exists: log::is_verbose
-log::supports_color
-[PASS] function exists: log::supports_color
-log::supports_unicode
-[PASS] function exists: log::supports_unicode
-log::level_num
-[PASS] function exists: log::level_num
-log::enabled
-[PASS] function exists: log::enabled
-log::color
-[PASS] function exists: log::color
-log::strip
-[PASS] function exists: log::strip
-log::symbol
-[PASS] function exists: log::symbol
-log::timestamp
-[PASS] function exists: log::timestamp
-log::emit
-[PASS] function exists: log::emit
-log::print
-[PASS] function exists: log::print
-log::line
-[PASS] function exists: log::line
-log::raw
-[PASS] function exists: log::raw
-log::err
-[PASS] function exists: log::err
-log::info
-[PASS] function exists: log::info
-log::ok
-[PASS] function exists: log::ok
-log::success
-[PASS] function exists: log::success
-log::done
-[PASS] function exists: log::done
-log::warn
-[PASS] function exists: log::warn
-log::warning
-[PASS] function exists: log::warning
-log::error
-[PASS] function exists: log::error
-log::fail
-[PASS] function exists: log::fail
-log::debug
-[PASS] function exists: log::debug
-log::trace
-[PASS] function exists: log::trace
-log::step
-[PASS] function exists: log::step
-log::fatal
-[PASS] function exists: log::fatal
-log::die
-[PASS] function exists: log::die
-log::title
-[PASS] function exists: log::title
-log::section
-[PASS] function exists: log::section
-log::subsection
-[PASS] function exists: log::subsection
-log::hr
-[PASS] function exists: log::hr
-log::kv
-[PASS] function exists: log::kv
-log::pair
-[PASS] function exists: log::pair
-log::list
-[PASS] function exists: log::list
-log::item
-[PASS] function exists: log::item
-log::cmd
-[PASS] function exists: log::cmd
-log::quote
-[PASS] function exists: log::quote
-log::indent
-[PASS] function exists: log::indent
-log::table
-[PASS] function exists: log::table
-log::status
-[PASS] function exists: log::status
-log::run
-[PASS] function exists: log::run
-log::try
-[PASS] function exists: log::try
-log::plain
-[PASS] function exists: log::plain
-log::quiet
-[PASS] function exists: log::quiet
-log::verbose
-[PASS] function exists: log::verbose
-log::with_color
-[PASS] function exists: log::with_color
-log::without_color
-[PASS] function exists: log::without_color
+-- List --
+  - deterministic output
+  - quiet-safe rendering
+  - failure output captured
+  - terminal color fallback
+  - progress and spinner support
 
-== level numbers / enabled ==
-[PASS] level trace
-[PASS] level debug
-[PASS] level info
-[PASS] level warn
-[PASS] level error
-[PASS] level off
-[PASS] level unknown defaults info
-[PASS] enabled info at default
-[PASS] debug disabled at default
-[PASS] warn enabled at info
-[PASS] info disabled at warn
-[PASS] error enabled under quiet
-[PASS] info disabled under quiet
+-- Quoted Block --
+| This block simulates external command output.
+| It is rendered only when you choose to show it.
+| Useful for failed builds, deploy logs, and diagnostics.
 
-== color / strip / unicode ==
-[PASS] color disabled by NO_COLOR
-[FAIL] color forced contains escape
-  want: [**]
-  got : [hello]
-[FAIL] color forced contains reset
-  want: [**]
-  got : [hello]
-[PASS] strip ansi
-[PASS] ascii symbol ok
-[PASS] ascii symbol error
-[PASS] ascii symbol item
+-- Indented Block --
+    src/
+      runtime/
+      builtins/
+    target/
+      release/
 
-== stdout helpers ==
-[PASS] print stdout
-[PASS] line stdout
-[PASS] raw stdout
-[PASS] quiet suppresses print
-[PASS] quiet suppresses line
-[PASS] quiet suppresses raw
+== Spinner Pipeline ==
+[OK] Preparing workspace
+[OK] Resolving Bash runtime
+[OK] Compiling runtime entrypoint
+[OK] Running static checks
+[OK] Packaging artifact
+[OK] Uploading artifact
+[OK] Running smoke test
 
-== stderr basic logs ==
-[PASS] info has tag
-[PASS] info has msg
-[PASS] ok has tag
-[PASS] ok has msg
-[PASS] success alias ok
-[PASS] warn has tag
-[PASS] warning alias warn
-[PASS] error has tag
-[PASS] fail alias error
-[PASS] done has tag
-[PASS] step has tag
+== Progress Renderer ==
+Building release [██████████████████████████████████████] 100%
+[DONE] Progress reached final state cleanly
 
-== debug / trace ==
-[PASS] debug hidden by default
-[PASS] debug visible with DEBUG=1
-[PASS] debug visible with LOG_LEVEL=debug
-[PASS] trace hidden by default
-[PASS] trace visible with TRACE=1
-[PASS] trace visible with LOG_LEVEL=trace
+== Failure Capture ==
+[ERR] Deploying to production
+| connecting to production gateway...
+| checking deployment token...
+| boom: token expired for environment production
+[WARN] Deploy failed intentionally for showcase
+Captured exit code : 7
 
-== quiet / level filtering ==
-[PASS] quiet suppresses info
-[PASS] quiet keeps error
-[PASS] LOG_LEVEL warn suppresses info
-[PASS] LOG_LEVEL warn keeps warn
-[PASS] LOG_LEVEL warn keeps error
+== Command Helpers ==
+$ bash -c printf\ \"hello\ from\ log::run\\n\"
+hello from log::run
+$ bash -c printf\ \"test\ output\ hidden\?\ no\,\ this\ is\ direct\ try\ output\\n\"\;\ exit\ 0
+test output hidden? no, this is direct try output
+[OK] Command succeeded
+[OK] try success branch
+$ bash -c printf\ \"simulated\ failure\ output\\n\"\;\ exit\ 5
+simulated failure output
+[ERR] Command failed with exit code 5
+[WARN] try returned code 5
 
-== timestamp ==
-[PASS] timestamp includes message
-[PASS] timestamp date format
+== Summary ==
+Workspace          : ready
+Runtime            : resolved
+Static Checks      : passed
+Package            : created
+Upload             : done
+Deploy             : failed intentionally
+======================================================
+[DONE] Showcase completed
+codingmaster@codingmstr:/var/www/projects/gun$ LOG_COLOR=always LOG_SYMBOLS=1 bash tool/parts/builtin/test.sh
 
-== format helpers ==
-[PASS] title contains text
-[PASS] title underline
-[PASS] section format
-[PASS] subsection format
-[PASS] hr width
-[PASS] kv key
-[PASS] kv value
-[PASS] pair alias key
-[PASS] pair alias value
-[PASS] list item one
-[PASS] list item spaces
-[PASS] list item star
-[PASS] item output
-[PASS] cmd prefix
-[PASS] quote first
-[PASS] quote second
-[PASS] indent first
-[PASS] indent second
-[PASS] table name
-[PASS] table gun
-[PASS] table lang
-[PASS] table bash
+▸ Gun Production Logger Showcase
+================================
+Program            : showcase-log.sh
+Using              : /var/www/projects/gun/tool/parts/builtin/log.sh
+Mode               : real CLI pipeline simulation
 
-== status ==
-[PASS] status ok
-[PASS] status warn
-[PASS] status error
-[PASS] status debug hidden default
-[PASS] status unknown info
+== Runtime Contract ==
+App                  : gun
+Environment          : production
+Build ID             : 20260425143926
+Artifact Dir         : /tmp/gun-showcase-artifact
+Color                : yes
+Unicode              : yes
+Quiet                : no
+Verbose              : no
 
-== fatal / die ==
-[PASS] fatal returns non-zero
-[PASS] fatal exact return code
-[PASS] die exits exact code
+== Display Modes ==
+[INFO] i Default flags + bright colors
+[INFO] i Symbols enabled
+[WARN] ⚠️ Emoji mode enabled
+[2026-04-25 14:39:26] [STEP] > Timestamp mode enabled
++ No flags, symbol only
+No flags, no symbols: clean raw message
+[WARN] ! No-color scoped wrapper
 
-== run / try ==
-[PASS] run prints command
-[PASS] run executes command
-[PASS] run returns command code
-[PASS] try success command
-[PASS] try success output
-[PASS] try success log
-[PASS] try failure returns command code
-[PASS] try failure message
+== Formatted Output ==
 
-== wrappers ==
-[PASS] without_color disables ansi
-[FAIL] with_color forces ansi
-  want: [**]
-  got : [hello]
-[PASS] quiet wrapper suppresses line
+-- Key / Value --
+Repository         : comstrx/gun
+Branch             : main
+Target             : release
+Runtime            : bash
 
-== result ==
+-- List --
+  - deterministic output
+  - quiet-safe rendering
+  - failure output captured
+  - terminal color fallback
+  - progress and spinner support
 
-pass: 140
-fail: 3
-Error: Process completed with exit code 1.
+-- Quoted Block --
+│ This block simulates external command output.
+│ It is rendered only when you choose to show it.
+│ Useful for failed builds, deploy logs, and diagnostics.
 
-[WINDOWS]
-Run "bash" tool/parts/builtin/test.sh
+-- Indented Block --
+    src/
+      runtime/
+      builtins/
+    target/
+      release/
 
-== syntax / static checks ==
-[PASS] bash -n target
-[PASS] shellcheck skipped
+== Spinner Pipeline ==
+[OK] + Preparing workspace
+[OK] + Resolving Bash runtime
+[OK] + Compiling runtime entrypoint
+[OK] + Running static checks
+[OK] + Packaging artifact
+[OK] + Uploading artifact
+[OK] + Running smoke test
 
-== public api ==
-log::is_tty
-[PASS] function exists: log::is_tty
-log::is_err_tty
-[PASS] function exists: log::is_err_tty
-log::is_quiet
-[PASS] function exists: log::is_quiet
-log::is_verbose
-[PASS] function exists: log::is_verbose
-log::supports_color
-[PASS] function exists: log::supports_color
-log::supports_unicode
-[PASS] function exists: log::supports_unicode
-log::level_num
-[PASS] function exists: log::level_num
-log::enabled
-[PASS] function exists: log::enabled
-log::color
-[PASS] function exists: log::color
-log::strip
-[PASS] function exists: log::strip
-log::symbol
-[PASS] function exists: log::symbol
-log::timestamp
-[PASS] function exists: log::timestamp
-log::emit
-[PASS] function exists: log::emit
-log::print
-[PASS] function exists: log::print
-log::line
-[PASS] function exists: log::line
-log::raw
-[PASS] function exists: log::raw
-log::err
-[PASS] function exists: log::err
-log::info
-[PASS] function exists: log::info
-log::ok
-[PASS] function exists: log::ok
-log::success
-[PASS] function exists: log::success
-log::done
-[PASS] function exists: log::done
-log::warn
-[PASS] function exists: log::warn
-log::warning
-[PASS] function exists: log::warning
-log::error
-[PASS] function exists: log::error
-log::fail
-[PASS] function exists: log::fail
-log::debug
-[PASS] function exists: log::debug
-log::trace
-[PASS] function exists: log::trace
-log::step
-[PASS] function exists: log::step
-log::fatal
-[PASS] function exists: log::fatal
-log::die
-[PASS] function exists: log::die
-log::title
-[PASS] function exists: log::title
-log::section
-[PASS] function exists: log::section
-log::subsection
-[PASS] function exists: log::subsection
-log::hr
-[PASS] function exists: log::hr
-log::kv
-[PASS] function exists: log::kv
-log::pair
-[PASS] function exists: log::pair
-log::list
-[PASS] function exists: log::list
-log::item
-[PASS] function exists: log::item
-log::cmd
-[PASS] function exists: log::cmd
-log::quote
-[PASS] function exists: log::quote
-log::indent
-[PASS] function exists: log::indent
-log::table
-[PASS] function exists: log::table
-log::status
-[PASS] function exists: log::status
-log::run
-[PASS] function exists: log::run
-log::try
-[PASS] function exists: log::try
-log::plain
-[PASS] function exists: log::plain
-log::quiet
-[PASS] function exists: log::quiet
-log::verbose
-[PASS] function exists: log::verbose
-log::with_color
-[PASS] function exists: log::with_color
-log::without_color
-[PASS] function exists: log::without_color
+== Progress Renderer ==
+Building release [██████████████████████████████████████] 100%
+[DONE] + Progress reached final state cleanly
 
-== level numbers / enabled ==
-[PASS] level trace
-[PASS] level debug
-[PASS] level info
-[PASS] level warn
-[PASS] level error
-[PASS] level off
-[PASS] level unknown defaults info
-[PASS] enabled info at default
-[PASS] debug disabled at default
-[PASS] warn enabled at info
-[PASS] info disabled at warn
-[PASS] error enabled under quiet
-[PASS] info disabled under quiet
+== Failure Capture ==
+[ERR] x Deploying to production
+│ connecting to production gateway...
+│ checking deployment token...
+│ boom: token expired for environment production
+[WARN] ! Deploy failed intentionally for showcase
+Captured exit code : 7
 
-== color / strip / unicode ==
-[PASS] color disabled by NO_COLOR
-[PASS] color forced contains escape
-[PASS] color forced contains reset
-[PASS] strip ansi
-[PASS] ascii symbol ok
-[PASS] ascii symbol error
-[PASS] ascii symbol item
+== Command Helpers ==
+$ bash -c printf\ \"hello\ from\ log::run\\n\"
+hello from log::run
+$ bash -c printf\ \"test\ output\ hidden\?\ no\,\ this\ is\ direct\ try\ output\\n\"\;\ exit\ 0
+test output hidden? no, this is direct try output
+[OK] + Command succeeded
+[OK] + try success branch
+$ bash -c printf\ \"simulated\ failure\ output\\n\"\;\ exit\ 5
+simulated failure output
+[ERR] x Command failed with exit code 5
+[WARN] ! try returned code 5
 
-== stdout helpers ==
-[PASS] print stdout
-[PASS] line stdout
-[PASS] raw stdout
-[PASS] quiet suppresses print
-[PASS] quiet suppresses line
-[PASS] quiet suppresses raw
+== Summary ==
+Workspace          : ready
+Runtime            : resolved
+Static Checks      : passed
+Package            : created
+Upload             : done
+Deploy             : failed intentionally
+======================================================
+[DONE] + Showcase completed
+codingmaster@codingmstr:/var/www/projects/gun$ LOG_COLOR=always LOG_SYMBOLS=1 LOG_EMOJIS=1 bash tool/parts/builtin/test.sh
 
-== stderr basic logs ==
-[PASS] info has tag
-[PASS] info has msg
-[PASS] ok has tag
-[PASS] ok has msg
-[PASS] success alias ok
-[PASS] warn has tag
-[PASS] warning alias warn
-[PASS] error has tag
-[PASS] fail alias error
-[PASS] done has tag
-[PASS] step has tag
+▸ Gun Production Logger Showcase
+================================
+Program            : showcase-log.sh
+Using              : /var/www/projects/gun/tool/parts/builtin/log.sh
+Mode               : real CLI pipeline simulation
 
-== debug / trace ==
-[PASS] debug hidden by default
-[PASS] debug visible with DEBUG=1
-[PASS] debug visible with LOG_LEVEL=debug
-[PASS] trace hidden by default
-[PASS] trace visible with TRACE=1
-[PASS] trace visible with LOG_LEVEL=trace
+== Runtime Contract ==
+App                  : gun
+Environment          : production
+Build ID             : 20260425143935
+Artifact Dir         : /tmp/gun-showcase-artifact
+Color                : yes
+Unicode              : yes
+Quiet                : no
+Verbose              : no
 
-== quiet / level filtering ==
-[PASS] quiet suppresses info
-[PASS] quiet keeps error
-[PASS] LOG_LEVEL warn suppresses info
-[PASS] LOG_LEVEL warn keeps warn
-[PASS] LOG_LEVEL warn keeps error
+== Display Modes ==
+[INFO] ℹ  Default flags + bright colors
+[INFO] ℹ  Symbols enabled
+[WARN] ⚠️ Emoji mode enabled
+[2026-04-25 14:39:35] [STEP] 🚀 Timestamp mode enabled
+✅ No flags, symbol only
+No flags, no symbols: clean raw message
+[WARN] ⚠️ No-color scoped wrapper
 
-== timestamp ==
-[PASS] timestamp includes message
-[PASS] timestamp date format
+== Formatted Output ==
 
-== format helpers ==
-[PASS] title contains text
-[PASS] title underline
-[PASS] section format
-[PASS] subsection format
-[PASS] hr width
-[PASS] kv key
-[PASS] kv value
-[PASS] pair alias key
-[PASS] pair alias value
-[PASS] list item one
-[PASS] list item spaces
-[PASS] list item star
-[PASS] item output
-[PASS] cmd prefix
-[PASS] quote first
-[PASS] quote second
-[PASS] indent first
-[PASS] indent second
-[PASS] table name
-[PASS] table gun
-[PASS] table lang
-[PASS] table bash
+-- Key / Value --
+Repository         : comstrx/gun
+Branch             : main
+Target             : release
+Runtime            : bash
 
-== status ==
-[PASS] status ok
-[PASS] status warn
-[PASS] status error
-[PASS] status debug hidden default
-[PASS] status unknown info
+-- List --
+  • deterministic output
+  • quiet-safe rendering
+  • failure output captured
+  • terminal color fallback
+  • progress and spinner support
 
-== fatal / die ==
-[PASS] fatal returns non-zero
-[PASS] fatal exact return code
-[PASS] die exits exact code
+-- Quoted Block --
+│ This block simulates external command output.
+│ It is rendered only when you choose to show it.
+│ Useful for failed builds, deploy logs, and diagnostics.
 
-== run / try ==
-[PASS] run prints command
-[PASS] run executes command
-[PASS] run returns command code
-[PASS] try success command
-[PASS] try success output
-[PASS] try success log
-[PASS] try failure returns command code
-[PASS] try failure message
+-- Indented Block --
+    src/
+      runtime/
+      builtins/
+    target/
+      release/
 
-== wrappers ==
-[PASS] without_color disables ansi
-[PASS] with_color forces ansi
-[PASS] quiet wrapper suppresses line
+== Spinner Pipeline ==
+[OK] ✅ Preparing workspace
+[OK] ✅ Resolving Bash runtime
+[OK] ✅ Compiling runtime entrypoint
+[OK] ✅ Running static checks
+[OK] ✅ Packaging artifact
+[OK] ✅ Uploading artifact
+[OK] ✅ Running smoke test
 
-== result ==
+== Progress Renderer ==
+Building release [██████████████████████████████████████] 100%
+[DONE] ✅ Progress reached final state cleanly
 
-pass: 143
-fail: 0
+== Failure Capture ==
+[ERR] ❌ Deploying to production
+│ connecting to production gateway...
+│ checking deployment token...
+│ boom: token expired for environment production
+[WARN] ⚠️ Deploy failed intentionally for showcase
+Captured exit code : 7
+
+== Command Helpers ==
+$ bash -c printf\ \"hello\ from\ log::run\\n\"
+hello from log::run
+$ bash -c printf\ \"test\ output\ hidden\?\ no\,\ this\ is\ direct\ try\ output\\n\"\;\ exit\ 0
+test output hidden? no, this is direct try output
+[OK] ✅ Command succeeded
+[OK] ✅ try success branch
+$ bash -c printf\ \"simulated\ failure\ output\\n\"\;\ exit\ 5
+simulated failure output
+[ERR] ❌ Command failed with exit code 5
+[WARN] ⚠️ try returned code 5
+
+== Summary ==
+Workspace          : ready
+Runtime            : resolved
+Static Checks      : passed
+Package            : created
+Upload             : done
+Deploy             : failed intentionally
+======================================================
+[DONE] ✅ Showcase completed
+codingmaster@codingmstr:/var/www/projects/gun$
