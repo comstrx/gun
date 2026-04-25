@@ -490,26 +490,57 @@ log::try () {
 
 log::plain () {
 
-    NO_COLOR=1 "$@"
+    (
+        # shellcheck disable=SC2030,SC2031
+        export NO_COLOR=1
+        # shellcheck disable=SC2030,SC2031
+        export LOG_COLOR=never
+        "$@"
+    )
 
 }
 log::quiet () {
 
-    QUIET=1 LOG_QUIET=1 "$@"
+    (
+        # shellcheck disable=SC2030,SC2031
+        export QUIET=1
+        # shellcheck disable=SC2030,SC2031
+        export LOG_QUIET=1
+        "$@"
+    )
 
 }
 log::verbose () {
 
-    VERBOSE=1 LOG_VERBOSE=1 "$@"
+    (
+        # shellcheck disable=SC2030,SC2031
+        export VERBOSE=1
+        # shellcheck disable=SC2030,SC2031
+        export LOG_VERBOSE=1
+        "$@"
+    )
 
 }
 log::with_color () {
 
-    LOG_COLOR=always "$@"
+    (
+        # shellcheck disable=SC2030,SC2031
+        unset NO_COLOR
+        # shellcheck disable=SC2030,SC2031
+        export LOG_COLOR=always
+        "$@"
+    )
 
 }
 log::without_color () {
 
-    NO_COLOR=1 LOG_COLOR=never "$@"
+    (
+        # shellcheck disable=SC2030,SC2031
+        export NO_COLOR=1
+        # shellcheck disable=SC2030,SC2031
+        export LOG_COLOR=never
+        "$@"
+    )
 
 }
+
