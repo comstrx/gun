@@ -622,6 +622,84 @@ eq "only all invariant" "${before}" "$(dump_map prop_only)"
 ok "without no keys equals original" rc map::without prop prop_without
 eq "without none invariant" "${before}" "$(dump_map prop_without)"
 
+section "transactional from failures"
+
+map::from_pairs tx_keep a 1 b 2
+before="$(dump_map tx_keep)"
+no "from_pairs failure keeps old map" rc map::from_pairs tx_keep a 1 "" bad b 2
+eq "from_pairs transactional invariant" "${before}" "$(dump_map tx_keep)"
+
+map::from_pairs tx_from a old
+before="$(dump_map tx_from)"
+no "from failure keeps old map" rc map::from tx_from "x=1,=bad,y=2" "," "="
+eq "from transactional invariant" "${before}" "$(dump_map tx_from)"
+
+map::from_pairs tx_lines a old
+before="$(dump_map tx_lines)"
+no "from_lines failure keeps old map" rc map::from_lines tx_lines < <(printf '%s\n' "x=1" "=bad" "y=2")
+eq "from_lines transactional invariant" "${before}" "$(dump_map tx_lines)"
+
+section "unset weird keys"
+
+map::from_pairs weird_del \
+    'a]b' 1 \
+    'x y' 2 \
+    '*' 3 \
+    $'line\nkey' 4
+
+ok "del key with bracket" rc map::del weird_del 'a]b'
+no "bracket key removed" rc map::has weird_del 'a]b'
+
+ok "del key with space" rc map::del weird_del 'x y'
+no "space key removed" rc map::has weird_del 'x y'
+
+ok "del key with star" rc map::del weird_del '*'
+no "star key removed" rc map::has weird_del '*'
+
+ok "del key with newline" rc map::del weird_del $'line\nkey'
+no "newline key removed" rc map::has weird_del $'line\nkey'
+
+section "transactional failures"
+
+map::from_pairs tx_keep a 1 b 2
+before="$(dump_map tx_keep)"
+no "from_pairs failure keeps old map" rc map::from_pairs tx_keep a 1 "" bad b 2
+eq "from_pairs transactional invariant" "${before}" "$(dump_map tx_keep)"
+
+map::from_pairs tx_from a old
+before="$(dump_map tx_from)"
+no "from failure keeps old map" rc map::from tx_from "x=1,=bad,y=2" "," "="
+eq "from transactional invariant" "${before}" "$(dump_map tx_from)"
+
+map::from_pairs tx_lines a old
+before="$(dump_map tx_lines)"
+no "from_lines failure keeps old map" rc map::from_lines tx_lines < <(printf '%s\n' "x=1" "=bad" "y=2")
+eq "from_lines transactional invariant" "${before}" "$(dump_map tx_lines)"
+
+section "delete weird keys"
+
+map::from_pairs weird_del \
+    'a]b' 1 \
+    'x y' 2 \
+    '*' 3 \
+    '$key' 4 \
+    $'line\nkey' 5
+
+ok "del bracket key" rc map::del weird_del 'a]b'
+no "bracket key removed" rc map::has weird_del 'a]b'
+
+ok "del space key" rc map::del weird_del 'x y'
+no "space key removed" rc map::has weird_del 'x y'
+
+ok "del star key" rc map::del weird_del '*'
+no "star key removed" rc map::has weird_del '*'
+
+ok "del dollar key" rc map::del weird_del '$key'
+no "dollar key removed" rc map::has weird_del '$key'
+
+ok "del newline key" rc map::del weird_del $'line\nkey'
+no "newline key removed" rc map::has weird_del $'line\nkey'
+
 section "result"
 
 printf '\n%s== result ==%s\n' "${yellow}" "${reset}"

@@ -279,14 +279,52 @@ map::from_lines
 [PASS] without no keys equals original
 [PASS] without none invariant
 
+== transactional from failures ==
+[PASS] from_pairs failure keeps old map
+[PASS] from_pairs transactional invariant
+[PASS] from failure keeps old map
+[PASS] from transactional invariant
+[PASS] from_lines failure keeps old map
+[PASS] from_lines transactional invariant
+
+== unset weird keys ==
+[PASS] del key with bracket
+[PASS] bracket key removed
+[PASS] del key with space
+[PASS] space key removed
+[PASS] del key with star
+[PASS] star key removed
+[PASS] del key with newline
+[PASS] newline key removed
+
+== transactional failures ==
+[PASS] from_pairs failure keeps old map
+[PASS] from_pairs transactional invariant
+[PASS] from failure keeps old map
+[PASS] from transactional invariant
+[PASS] from_lines failure keeps old map
+[PASS] from_lines transactional invariant
+
+== delete weird keys ==
+[PASS] del bracket key
+[PASS] bracket key removed
+[PASS] del space key
+[PASS] space key removed
+[PASS] del star key
+[PASS] star key removed
+[PASS] del dollar key
+[PASS] dollar key removed
+[PASS] del newline key
+[PASS] newline key removed
+
 == result ==
 
 == result ==
-total: 215
-pass : 215
+total: 245
+pass : 245
 fail : 0
 
-real    0m0.559s
-user    0m0.372s
-sys     0m0.073s
+real    0m0.702s
+user    0m0.431s
+sys     0m0.118s
 codingmaster@codingmstr:/var/www/projects/gun$

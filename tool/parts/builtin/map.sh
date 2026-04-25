@@ -161,7 +161,6 @@ map::keys0 () {
     map::init "${name}" || return 1
 
     local -n ref="${name}"
-
     (( ${#ref[@]} > 0 )) || return 0
 
     if command -v sort >/dev/null 2>&1 && printf 'x\0' | LC_ALL=C sort -z >/dev/null 2>&1; then
@@ -355,6 +354,7 @@ map::map () {
     local -a values=()
 
     map::init "${name}" || return 1
+
     [[ "${target}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
     declare -F "${fn}" >/dev/null 2>&1 || return 1
 
@@ -381,6 +381,7 @@ map::filter () {
     local -a values=()
 
     map::init "${name}" || return 1
+
     [[ "${target}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
     declare -F "${fn}" >/dev/null 2>&1 || return 1
 
@@ -471,13 +472,12 @@ map::str () {
 
 map::from () {
 
-    local name="${1:-}" s="${2:-}" item_sep="${3-$'\n'}" pair_sep="${4-=}" item="" key="" value=""
+    local name="${1:-}" s="${2:-}" item_sep="${3-$'\n'}" pair_sep="${4-=}" item="" key="" value="" i=0
+    local -a keys=()
+    local -a values=()
 
     [[ "${name}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
     [[ -n "${item_sep}" && -n "${pair_sep}" ]] || return 1
-
-    declare -g -A "${name}=()"
-    local -n ref="${name}"
 
     while [[ "${s}" == *"${item_sep}"* ]]; do
 
@@ -490,8 +490,8 @@ map::from () {
         value="${item#*"${pair_sep}"}"
 
         [[ -n "${key}" ]] || return 1
-
-        ref["${key}"]="${value}"
+        keys+=( "${key}" )
+        values+=( "${value}" )
 
     done
 
@@ -503,23 +503,29 @@ map::from () {
         value="${item#*"${pair_sep}"}"
 
         [[ -n "${key}" ]] || return 1
-
-        ref["${key}"]="${value}"
+        keys+=( "${key}" )
+        values+=( "${value}" )
 
     fi
+
+    declare -g -A "${name}=()"
+    local -n ref="${name}"
+
+    for (( i=0; i<${#keys[@]}; i++ )); do
+        ref["${keys[$i]}"]="${values[$i]}"
+    done
 
 }
 map::from_pairs () {
 
-    local name="${1:-}" key="" value=""
+    local name="${1:-}" key="" value="" i=0
+    local -a keys=()
+    local -a values=()
 
     [[ "${name}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
     shift || true
 
     (( $# % 2 == 0 )) || return 1
-
-    declare -g -A "${name}=()"
-    local -n ref="${name}"
 
     while (( $# > 0 )); do
 
@@ -527,22 +533,29 @@ map::from_pairs () {
         value="${2-}"
 
         [[ -n "${key}" ]] || return 1
+        keys+=( "${key}" )
+        values+=( "${value}" )
 
-        ref["${key}"]="${value}"
         shift 2 || true
 
+    done
+
+    declare -g -A "${name}=()"
+    local -n ref="${name}"
+
+    for (( i=0; i<${#keys[@]}; i++ )); do
+        ref["${keys[$i]}"]="${values[$i]}"
     done
 
 }
 map::from_lines () {
 
-    local name="${1:-}" sep="${2-=}" line="" key="" value=""
+    local name="${1:-}" sep="${2-=}" line="" key="" value="" i=0
+    local -a keys=()
+    local -a values=()
 
     [[ "${name}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
     [[ -n "${sep}" ]] || return 1
-
-    declare -g -A "${name}=()"
-    local -n ref="${name}"
 
     while IFS= read -r line || [[ -n "${line}" ]]; do
 
@@ -552,9 +565,16 @@ map::from_lines () {
         value="${line#*"${sep}"}"
 
         [[ -n "${key}" ]] || return 1
+        keys+=( "${key}" )
+        values+=( "${value}" )
 
-        ref["${key}"]="${value}"
+    done
 
+    declare -g -A "${name}=()"
+    local -n ref="${name}"
+
+    for (( i=0; i<${#keys[@]}; i++ )); do
+        ref["${keys[$i]}"]="${values[$i]}"
     done
 
 }
