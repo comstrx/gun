@@ -1,4 +1,3 @@
-# shellcheck shell=bash
 # shellcheck disable=SC2178,SC2034
 
 map::init () {

@@ -4,711 +4,684 @@
 set -u
 set -o pipefail
 
-TARGET="${1:-tool/parts/builtin/map.sh}"
+TARGET="${1:-tool/parts/builtin/input.sh}"
 
-PASS=0
-FAIL=0
-TOTAL=0
+pass=0
+fail=0
 
-red=""
-green=""
-yellow=""
-reset=""
+ok () {
 
-if [[ -t 1 ]]; then
-    red=$'\033[31m'
-    green=$'\033[32m'
-    yellow=$'\033[33m'
-    reset=$'\033[0m'
-fi
-
-fail () {
-
-    local name="${1:-}" want="${2:-}" got="${3:-}"
-
-    FAIL=$(( FAIL + 1 ))
-    TOTAL=$(( TOTAL + 1 ))
-
-    printf '%s[FAIL]%s %s\n' "${red}" "${reset}" "${name}"
-    printf '  want: [%s]\n' "${want}"
-    printf '  got : [%s]\n' "${got}"
+    printf '[PASS] %s\n' "$1"
+    pass=$(( pass + 1 ))
 
 }
 
-pass () {
+bad () {
 
-    local name="${1:-}"
-
-    PASS=$(( PASS + 1 ))
-    TOTAL=$(( TOTAL + 1 ))
-
-    printf '%s[PASS]%s %s\n' "${green}" "${reset}" "${name}"
+    printf '[FAIL] %s\n  want: [%s]\n  got : [%s]\n' "$1" "$2" "$3"
+    fail=$(( fail + 1 ))
 
 }
 
 eq () {
 
-    local name="${1:-}" want="${2:-}" got="${3:-}"
+    local name="$1" want="$2" got="$3"
 
-    if [[ "${got}" == "${want}" ]]; then
-        pass "${name}"
-    else
-        fail "${name}" "${want}" "${got}"
-    fi
-
-}
-
-ok () {
-
-    local name="${1:-}"
-    shift || true
-
-    if "$@"; then
-        pass "${name}"
-    else
-        fail "${name}" "exit=0" "exit=$?"
-    fi
+    [[ "${got}" == "${want}" ]] && ok "${name}" || bad "${name}" "${want}" "${got}"
 
 }
 
 no () {
 
-    local name="${1:-}"
-    shift || true
+    local name="$1"
+    shift
 
-    if "$@"; then
-        fail "${name}" "exit!=0" "exit=0"
-    else
-        pass "${name}"
+    if "$@"; then bad "${name}" "exit!=0" "exit=0"
+    else ok "${name}"
     fi
 
 }
 
-out () {
+run_no_tty () {
 
-    "$@"
+    local code="$1"
 
-}
-
-rc () {
-
-    "$@" >/dev/null 2>&1
-
-}
-
-section () {
-
-    printf '\n%s== %s ==%s\n' "${yellow}" "${1:-}" "${reset}"
+    if command -v setsid >/dev/null 2>&1; then
+        setsid bash -c 'source "$1"; shift; eval "$1"' _ "${TARGET}" "${code}" 2>/dev/null
+    else
+        bash -c 'source "$1"; shift; eval "$1"' _ "${TARGET}" "${code}" 2>/dev/null
+    fi
 
 }
+dump_list () {
 
-dump_map () {
-
-    local name="${1:-}" key=""
-
+    local name="${1:-}" item=""
     local -n ref="${name}"
 
-    for key in "${!ref[@]}"; do
-        printf '<%s>=<%s>\n' "${key}" "${ref[$key]}"
-    done | LC_ALL=C sort
+    for item in "${ref[@]}"; do
+        printf '[%q]\n' "${item}"
+    done
 
 }
-
-dump_keys0 () {
-
-    local name="${1:-}" key=""
-
-    while IFS= read -r -d '' key; do
-        printf '<%s>\n' "${key}"
-    done < <(map::keys0 "${name}") | LC_ALL=C sort
-
-}
-
-dump_values0 () {
-
-    local name="${1:-}" value=""
-
-    while IFS= read -r -d '' value; do
-        printf '<%s>\n' "${value}"
-    done < <(map::values0 "${name}") | LC_ALL=C sort
-
-}
-
-dump_items0 () {
-
-    local name="${1:-}" key="" value=""
-
-    while IFS= read -r -d '' key && IFS= read -r -d '' value; do
-        printf '[%q]=[%q]\n' "${key}" "${value}"
-    done < <(map::items0 "${name}") | LC_ALL=C sort
-
-}
-
-same_map () {
+same_list () {
 
     local name="${1:-}" want="${2:-}" got=""
 
-    got="$(dump_map "${name}")"
+    got="$(dump_list "${name}")"
     eq "${name}" "${want}" "${got}"
 
 }
 
-same_keys0 () {
-
-    local name="${1:-}" want="${2:-}" got=""
-
-    got="$(dump_keys0 "${name}")"
-    eq "${name}:keys0" "${want}" "${got}"
-
-}
-
-same_values0 () {
-
-    local name="${1:-}" want="${2:-}" got=""
-
-    got="$(dump_values0 "${name}")"
-    eq "${name}:values0" "${want}" "${got}"
-
-}
-
-same_items0 () {
-
-    local name="${1:-}" want="${2:-}" got=""
-
-    got="$(dump_items0 "${name}")"
-    eq "${name}:items0" "${want}" "${got}"
-
-}
-
-if [[ ! -r "${TARGET}" ]]; then
-    printf '%s[ERR]%s target not readable: %s\n' "${red}" "${reset}" "${TARGET}" >&2
-    exit 2
-fi
-
 source "${TARGET}"
 
-section "existence / public api"
-
-required=(
-    map::init
-    map::valid
-    map::len
-    map::empty
-    map::filled
-    map::has
-    map::get
-    map::set
-    map::put
-    map::del
-    map::delete
-    map::set_once
-    map::replace
-    map::clear
-    map::keys0
-    map::values0
-    map::items0
-    map::keys
-    map::values
-    map::items
-    map::merge
-    map::concat
-    map::copy
-    map::only
-    map::without
-    map::each
-    map::map
-    map::filter
-    map::all
-    map::any
-    map::none
-    map::print
-    map::str
-    map::from
-    map::from_pairs
-    map::from_lines
-)
-
-for fn in "${required[@]}"; do
-    ok "function exists: ${fn}" declare -F "${fn}"
-done
-
-section "init / valid / invalid names"
-
-unset m scalar __bad 2>/dev/null || true
-
-ok "init creates assoc map" rc map::init m
-ok "valid existing assoc map" rc map::valid m
-eq "len empty" "0" "$(out map::len m)"
-ok "empty true" rc map::empty m
-no "filled false" rc map::filled m
-
-scalar="x"
-no "valid scalar false" rc map::valid scalar
-no "init scalar false" rc map::init scalar
-no "init invalid empty" rc map::init ""
-no "init invalid starts digit" rc map::init "1bad"
-no "init invalid dash" rc map::init "bad-name"
-no "valid missing false" rc map::valid missing_map_name
-
-section "set / put / get / has / len / empty / filled"
-
-ok "set name" rc map::set m name "Gun"
-ok "set empty value" rc map::set m empty ""
-ok "set key with spaces" rc map::set m "hello world" "space"
-ok "set key with star" rc map::set m "*" "star"
-ok "set key with equals" rc map::set m "a=b" "eq"
-no "set empty key fails" rc map::set m "" "x"
-
-eq "get name" "Gun" "$(out map::get m name)"
-eq "get empty value" "" "$(out map::get m empty DEF)"
-eq "get missing default" "DEF" "$(out map::get m missing DEF)"
-eq "get empty key returns default" "DEF" "$(out map::get m "" DEF)"
-
-ok "has name" rc map::has m name
-ok "has empty value key" rc map::has m empty
-no "has missing false" rc map::has m missing
-no "has empty key false" rc map::has m ""
-
-eq "len after set" "5" "$(out map::len m)"
-no "empty false" rc map::empty m
-ok "filled true" rc map::filled m
-
-ok "put alias set" rc map::put m role admin
-eq "put alias get" "admin" "$(out map::get m role)"
-
-section "set_once / replace / del / delete / clear"
-
-map::from_pairs once a 1 b 2
-
-ok "set_once existing returns ok" rc map::set_once once a 999
-eq "set_once existing unchanged" "1" "$(out map::get once a)"
-ok "set_once missing writes" rc map::set_once once c 3
-eq "set_once missing value" "3" "$(out map::get once c)"
-no "set_once empty key fails" rc map::set_once once "" x
-
-ok "replace existing" rc map::replace once b 22
-eq "replace existing value" "22" "$(out map::get once b)"
-no "replace missing fails" rc map::replace once z 9
-no "replace empty key fails" rc map::replace once "" x
+echo "== input::get automated no-tty tests =="
 
-ok "del existing" rc map::del once c
-no "del removed missing" rc map::has once c
-no "del missing fails" rc map::del once z
-no "del empty key fails" rc map::del once ""
+eq "read plain line" \
+    "hello" \
+    "$(run_no_tty 'printf "hello\n" | input::get')"
 
-ok "delete alias existing" rc map::delete once b
-no "delete removed missing" rc map::has once b
+eq "preserve spaces" \
+    "  hello world  " \
+    "$(run_no_tty 'printf "  hello world  \n" | input::get')"
 
-ok "clear map" rc map::clear once
-eq "clear len zero" "0" "$(out map::len once)"
-ok "clear empty true" rc map::empty once
+eq "empty line without default" \
+    "" \
+    "$(run_no_tty 'printf "\n" | input::get')"
 
-section "from_pairs"
+eq "empty line uses default" \
+    "DEF" \
+    "$(run_no_tty 'printf "\n" | input::get "" "DEF"')"
 
-ok "from_pairs creates map" rc map::from_pairs fp \
-    name "Ali" \
-    email "a@test.com" \
-    empty "" \
-    "space key" "space value" \
-    "*" "star"
+eq "EOF uses default" \
+    "DEF" \
+    "$(run_no_tty 'printf "" | input::get "" "DEF"')"
 
-same_map fp $'<*>=<star>\n<email>=<a@test.com>\n<empty>=<>\n<name>=<Ali>\n<space key>=<space value>'
+no "EOF without default fails" \
+    bash -c '
+        source "$1"
+        if command -v setsid >/dev/null 2>&1; then
+            setsid bash -c "source \"\$1\"; printf \"\" | input::get >/dev/null" _ "$1" 2>/dev/null
+        else
+            printf "" | input::get >/dev/null 2>&1
+        fi
+    ' _ "${TARGET}"
 
-ok "from_pairs duplicate last wins" rc map::from_pairs dup a 1 a 2 b 3
-eq "duplicate value" "2" "$(out map::get dup a)"
-eq "duplicate len" "2" "$(out map::len dup)"
+eq "prompt does not pollute stdout" \
+    "hello" \
+    "$(run_no_tty 'printf "hello\n" | input::get "Name: "')"
 
-ok "from_pairs zero pairs creates empty" rc map::from_pairs empty_pairs
-eq "from_pairs zero len" "0" "$(out map::len empty_pairs)"
+echo
+echo "== input::read tests =="
 
-no "from_pairs odd args fails" rc map::from_pairs bad_pairs a 1 b
-no "from_pairs empty key fails" rc map::from_pairs bad_pairs2 "" x
+eq "read plain text" \
+    "hello" \
+    "$(printf 'hello' | input::read)"
 
-section "from / from_lines / str"
+eq "read multiline text via command substitution trims final newline" \
+    $'line1\nline2' \
+    "$(printf 'line1\nline2\n' | input::read)"
 
-ok "from default newline" rc map::from mf $'a=1\nb=2\nempty=\nignored\nc=3'
-same_map mf $'<a>=<1>\n<b>=<2>\n<c>=<3>\n<empty>=<>'
+bytes="$(printf 'line1\nline2\n' | input::read | wc -c | tr -d ' ')"
+eq "read preserves final newline by byte count" \
+    "12" \
+    "${bytes}"
 
-ok "from custom separators" rc map::from mf2 "a:1;b:2;empty:;bad;c:3" ";" ":"
-same_map mf2 $'<a>=<1>\n<b>=<2>\n<c>=<3>\n<empty>=<>'
+eq "read empty stdin" \
+    "" \
+    "$(printf '' | input::read)"
 
-ok "from duplicate last wins" rc map::from mf3 "a=1,a=2,b=3" "," "="
-eq "from duplicate value" "2" "$(out map::get mf3 a)"
+tmp_read_file="$(mktemp)"
+printf 'file-line-1\nfile-line-2\n' > "${tmp_read_file}"
 
-ok "from trailing item sep" rc map::from mf4 "a=1,b=2," "," "="
-same_map mf4 $'<a>=<1>\n<b>=<2>'
+file_bytes="$(input::read < "${tmp_read_file}" | wc -c | tr -d ' ')"
+eq "read file redirect preserves bytes" \
+    "24" \
+    "${file_bytes}"
 
-ok "from empty string creates empty" rc map::from mf_empty ""
-eq "from empty len" "0" "$(out map::len mf_empty)"
+file_text="$(input::read < "${tmp_read_file}")"
+eq "read file redirect text via command substitution trims final newline" \
+    $'file-line-1\nfile-line-2' \
+    "${file_text}"
 
-no "from empty item_sep fails" rc map::from mf_bad "a=1" "" "="
-no "from empty pair_sep fails" rc map::from mf_bad "a=1" "," ""
-no "from empty key fails" rc map::from mf_bad "=x" "," "="
+rm -f "${tmp_read_file}"
 
-ok "from_lines default" rc map::from_lines ml < <(printf '%s\n' "a=1" "b=2" "ignored" "empty=")
-same_map ml $'<a>=<1>\n<b>=<2>\n<empty>=<>'
+echo
+echo "== input::lines tests =="
 
-ok "from_lines custom sep" rc map::from_lines ml2 ":" < <(printf '%s\n' "a:1" "b:2" "bad" "empty:")
-same_map ml2 $'<a>=<1>\n<b>=<2>\n<empty>=<>'
+input::lines rows < <(printf 'a\n\nb c\n*\n')
+same_list rows $'[a]\n[\'\']\n[b\\ c]\n[\\*]'
 
-ok "from_lines no final newline" rc map::from_lines ml3 < <(printf '%s' "last=value")
-eq "from_lines no final newline value" "value" "$(out map::get ml3 last)"
+input::lines rows_no_final < <(printf 'no-final-newline')
+same_list rows_no_final $'[no-final-newline]'
 
-no "from_lines empty sep fails" rc map::from_lines ml_bad ""
-no "from_lines empty key fails" rc map::from_lines ml_bad2 < <(printf '%s\n' "=x")
+input::lines rows_empty < <(printf '')
+same_list rows_empty ""
 
-map::from_pairs str_src a 1 b 2 empty ""
-text="$(out map::str str_src "," "=")"
-ok "str returns parseable text" rc map::from str_dst "${text}" "," "="
-same_map str_dst $'<a>=<1>\n<b>=<2>\n<empty>=<>'
+tmp_lines_file="$(mktemp)"
+printf 'file-1\n\nfile 2\n*\n' > "${tmp_lines_file}"
 
-text2="$(out map::str str_src $'\n' "=")"
-ok "str default newline parseable" rc map::from str_dst2 "${text2}"
-same_map str_dst2 $'<a>=<1>\n<b>=<2>\n<empty>=<>'
+input::lines rows_file < "${tmp_lines_file}"
+same_list rows_file $'[file-1]\n[\'\']\n[file\\ 2]\n[\\*]'
 
-no "str empty item sep fails" rc map::str str_src "" "="
-no "str empty pair sep fails" rc map::str str_src "," ""
+rm -f "${tmp_lines_file}"
 
-section "keys0 / values0 / items0"
+no "lines invalid target fails" \
+    input::lines "bad-name"
 
-map::from_pairs kv \
-    b 2 \
-    a 1 \
-    c 3 \
-    empty "" \
-    "space key" "space value" \
-    "*" "star"
+scalar_rows="x"
 
-same_keys0 kv $'<*>\n<a>\n<b>\n<c>\n<empty>\n<space key>'
-same_values0 kv $'<1>\n<2>\n<3>\n<>\n<space value>\n<star>'
-same_items0 kv $'[\\*]=[star]\n[a]=[1]\n[b]=[2]\n[c]=[3]\n[empty]=[\'\']\n[space\\ key]=[space\\ value]'
+no "lines scalar target fails" \
+    input::lines scalar_rows < <(printf 'a\nb\n')
 
-map::from_pairs weird $'line\nkey' $'line\nvalue' $'tab\tkey' $'tab\tvalue'
-ok "keys0 supports newline key" rc map::has weird $'line\nkey'
-ok "values0 supports newline value" rc map::has weird $'tab\tkey'
-same_items0 weird $'[$\'line\\nkey\']=[$\'line\\nvalue\']\n[$\'tab\\tkey\']=[$\'tab\\tvalue\']'
+unset rows_tx 2>/dev/null || true
+rows_tx=( "old" "data" )
+before="$(dump_list rows_tx)"
 
-section "keys / values / items / print"
+no "lines invalid target keeps old array untouched" \
+    input::lines "bad-name" < <(printf 'new\nvalue\n')
 
-map::from_pairs printable b 2 a 1 c 3
+eq "lines transactional invariant" \
+    "${before}" \
+    "$(dump_list rows_tx)"
 
-keys_text="$(out map::keys printable | LC_ALL=C sort)"
-eq "keys printable" $'a\nb\nc' "${keys_text}"
+echo
+echo "== input::bool tests =="
 
-values_text="$(out map::values printable | LC_ALL=C sort)"
-eq "values printable" $'1\n2\n3' "${values_text}"
+eq "bool yes: y" \
+    "1" \
+    "$(run_no_tty 'printf "y\n" | input::bool')"
 
-items_text="$(out map::items printable | LC_ALL=C sort)"
-eq "items printable" $'a\t1\nb\t2\nc\t3' "${items_text}"
+eq "bool yes: yes" \
+    "1" \
+    "$(run_no_tty 'printf "yes\n" | input::bool')"
 
-print_text="$(out map::print printable | LC_ALL=C sort)"
-eq "print alias items" "${items_text}" "${print_text}"
+eq "bool yes: true" \
+    "1" \
+    "$(run_no_tty 'printf "true\n" | input::bool')"
 
-section "copy / merge / concat"
+eq "bool yes: on" \
+    "1" \
+    "$(run_no_tty 'printf "on\n" | input::bool')"
 
-map::from_pairs src a 1 b 2 empty ""
-ok "copy src dst" rc map::copy src dst
-same_map dst $'<a>=<1>\n<b>=<2>\n<empty>=<>'
+eq "bool yes: 1" \
+    "1" \
+    "$(run_no_tty 'printf "1\n" | input::bool')"
 
-ok "copy is independent" rc map::set dst a 999
-eq "copy changed dst" "999" "$(out map::get dst a)"
-eq "copy source unchanged" "1" "$(out map::get src a)"
+eq "bool yes uppercase" \
+    "1" \
+    "$(run_no_tty 'printf "YES\n" | input::bool')"
 
-ok "copy to self safe" rc map::copy src src
-same_map src $'<a>=<1>\n<b>=<2>\n<empty>=<>'
+eq "bool no: n" \
+    "0" \
+    "$(run_no_tty 'printf "n\n" | input::bool')"
 
-map::from_pairs left a 1 b 2
-map::from_pairs right b 22 c 3
-ok "merge overwrites and adds" rc map::merge left right
-same_map left $'<a>=<1>\n<b>=<22>\n<c>=<3>'
-same_map right $'<b>=<22>\n<c>=<3>'
+eq "bool no: no" \
+    "0" \
+    "$(run_no_tty 'printf "no\n" | input::bool')"
 
-map::from_pairs self_merge a 1 b 2
-ok "merge self safe" rc map::merge self_merge self_merge
-same_map self_merge $'<a>=<1>\n<b>=<2>'
+eq "bool no: false" \
+    "0" \
+    "$(run_no_tty 'printf "false\n" | input::bool')"
 
-map::from_pairs concat_left a 1
-map::from_pairs concat_right b 2
-ok "concat alias merge" rc map::concat concat_left concat_right
-same_map concat_left $'<a>=<1>\n<b>=<2>'
+eq "bool no: off" \
+    "0" \
+    "$(run_no_tty 'printf "off\n" | input::bool')"
 
-section "only / without"
+eq "bool no: 0" \
+    "0" \
+    "$(run_no_tty 'printf "0\n" | input::bool')"
 
-map::from_pairs user \
-    name Ali \
-    email a@test.com \
-    password secret \
-    token xyz \
-    empty ""
+eq "bool no uppercase" \
+    "0" \
+    "$(run_no_tty 'printf "NO\n" | input::bool')"
 
-ok "only selected keys" rc map::only user public name email missing empty ""
-same_map public $'<email>=<a@test.com>\n<empty>=<>\n<name>=<Ali>'
+eq "bool empty uses default yes" \
+    "1" \
+    "$(run_no_tty 'printf "\n" | input::bool "" "yes" 1')"
 
-same_map user $'<email>=<a@test.com>\n<empty>=<>\n<name>=<Ali>\n<password>=<secret>\n<token>=<xyz>'
+eq "bool empty uses default no" \
+    "0" \
+    "$(run_no_tty 'printf "\n" | input::bool "" "no" 1')"
 
-ok "only self-reference safe" rc map::only user user name email
-same_map user $'<email>=<a@test.com>\n<name>=<Ali>'
+eq "bool EOF uses default true" \
+    "1" \
+    "$(run_no_tty 'printf "" | input::bool "" "true" 1')"
 
-map::from_pairs secret_user \
-    name Ali \
-    email a@test.com \
-    password secret \
-    token xyz \
-    empty ""
+eq "bool retries then success" \
+    "1" \
+    "$(run_no_tty 'printf "bad\nwrong\ny\n" | input::bool "" "" 3')"
 
-ok "without removes selected" rc map::without secret_user safe_user password token missing ""
-same_map safe_user $'<email>=<a@test.com>\n<empty>=<>\n<name>=<Ali>'
+no "bool invalid fails after tries" \
+    bash -c 'source "$1"; out="$(setsid bash -c "source \"\$1\"; printf \"bad\nwrong\nextra\n\" | input::bool \"\" \"\" 2 >/dev/null" _ "$1" 2>/dev/null)"' _ "${TARGET}"
 
-same_map secret_user $'<email>=<a@test.com>\n<empty>=<>\n<name>=<Ali>\n<password>=<secret>\n<token>=<xyz>'
+no "bool zero tries normalized then invalid fails" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"bad\nbad\nbad\nbad\n\" | input::bool \"\" \"\" 0 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
 
-ok "without self-reference safe" rc map::without secret_user secret_user password token
-same_map secret_user $'<email>=<a@test.com>\n<empty>=<>\n<name>=<Ali>'
+no "bool non-numeric tries normalized then invalid fails" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"bad\nbad\nbad\nbad\n\" | input::bool \"\" \"\" nope >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
 
-section "callbacks each / map / filter / all / any / none"
+echo
+echo "== input::confirm tests =="
 
-cb_seen=()
+ok "confirm yes: y" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"y\n\" | input::confirm >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
 
-cb_collect () {
+ok "confirm yes: yes" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"yes\n\" | input::confirm >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
 
-    cb_seen+=( "${1}=${2}" )
+ok "confirm yes: true" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"true\n\" | input::confirm >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
 
-}
+ok "confirm yes: on" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"on\n\" | input::confirm >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
 
-cb_upper_value () {
+ok "confirm yes: 1" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"1\n\" | input::confirm >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
 
-    printf '%s' "${2^^}"
+no "confirm no: n" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"n\n\" | input::confirm >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
 
-}
+no "confirm no: no" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"no\n\" | input::confirm >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
 
-cb_keep_nonempty () {
+no "confirm no: false" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"false\n\" | input::confirm >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
 
-    [[ -n "${2:-}" ]]
+no "confirm no: off" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"off\n\" | input::confirm >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
 
-}
+no "confirm no: 0" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"0\n\" | input::confirm >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
 
-cb_key_is_name () {
+ok "confirm uppercase yes" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"YES\n\" | input::confirm >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
 
-    [[ "${1:-}" == "name" ]]
+no "confirm uppercase no" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"NO\n\" | input::confirm >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
 
-}
+ok "confirm default yes on empty" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"\n\" | input::confirm \"Continue?\" \"Y\" 1 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
 
-cb_value_is_admin () {
+no "confirm default no on empty" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"\n\" | input::confirm \"Continue?\" \"N\" 1 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
 
-    [[ "${2:-}" == "admin" ]]
+ok "confirm retries then yes" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"bad\nwrong\ny\n\" | input::confirm \"Continue?\" \"N\" 3 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
 
-}
+no "confirm invalid fails after tries" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"bad\nwrong\nextra\n\" | input::confirm \"Continue?\" \"N\" 2 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
 
-cb_fail_on_email () {
+no "confirm zero tries normalized then invalid fails" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"bad\nbad\nbad\nbad\n\" | input::confirm \"Continue?\" \"N\" 0 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
 
-    [[ "${1:-}" != "email" ]]
+no "confirm non-numeric tries normalized then invalid fails" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"bad\nbad\nbad\nbad\n\" | input::confirm \"Continue?\" \"N\" nope >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
 
-}
+echo
+echo "== input::password tests =="
 
-cb_never () {
+no "password fails without tty" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; input::password \"Password: \" >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
 
-    return 1
+echo
+echo "== input::number tests =="
 
-}
+eq "int positive" \
+    "12" \
+    "$(run_no_tty 'printf "12\n" | input::int')"
 
-map::from_pairs cb \
-    name ali \
-    email a@test.com \
-    role admin \
-    empty ""
+eq "int negative" \
+    "-7" \
+    "$(run_no_tty 'printf -- "-7\n" | input::int')"
 
-ok "each collect" rc map::each cb cb_collect
+eq "int zero" \
+    "0" \
+    "$(run_no_tty 'printf "0\n" | input::int')"
 
-seen_sorted="$(printf '%s\n' "${cb_seen[@]}" | LC_ALL=C sort)"
-eq "each collected all" $'email=a@test.com\nempty=\nname=ali\nrole=admin' "${seen_sorted}"
+eq "int default" \
+    "42" \
+    "$(run_no_tty 'printf "\n" | input::int "" "42" 1')"
 
-no "each stops on callback failure" rc map::each cb cb_fail_on_email
+eq "int retries then success" \
+    "9" \
+    "$(run_no_tty 'printf "bad\n9\n" | input::int "" "" 2')"
 
-ok "map upper values" rc map::map cb cb_upper cb_upper_value
-same_map cb_upper $'<email>=<A@TEST.COM>\n<empty>=<>\n<name>=<ALI>\n<role>=<ADMIN>'
+no "int rejects float" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"1.2\n\" | input::int \"\" \"\" 1 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
 
-ok "map self-reference safe" rc map::map cb cb cb_upper_value
-same_map cb $'<email>=<A@TEST.COM>\n<empty>=<>\n<name>=<ALI>\n<role>=<ADMIN>'
+no "int rejects alpha" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"abc\n\" | input::int \"\" \"\" 1 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
 
-map::from_pairs cb2 \
-    name ali \
-    email a@test.com \
-    role admin \
-    empty ""
+no "int rejects empty without valid default" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"\n\" | input::int \"\" \"\" 1 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
 
-ok "filter nonempty values" rc map::filter cb2 cb_filtered cb_keep_nonempty
-same_map cb_filtered $'<email>=<a@test.com>\n<name>=<ali>\n<role>=<admin>'
 
-ok "filter self-reference safe" rc map::filter cb2 cb2 cb_keep_nonempty
-same_map cb2 $'<email>=<a@test.com>\n<name>=<ali>\n<role>=<admin>'
+eq "uint positive" \
+    "12" \
+    "$(run_no_tty 'printf "12\n" | input::uint')"
 
-no "missing callback each fails" rc map::each cb2 missing_callback
-no "missing callback map fails" rc map::map cb2 out_missing missing_callback
-no "missing callback filter fails" rc map::filter cb2 out_missing missing_callback
+eq "uint zero" \
+    "0" \
+    "$(run_no_tty 'printf "0\n" | input::uint')"
 
-map::from_pairs pred name ali role admin
-ok "all nonempty true" rc map::all pred cb_keep_nonempty
+eq "uint default" \
+    "42" \
+    "$(run_no_tty 'printf "\n" | input::uint "" "42" 1')"
 
-map::from_pairs pred2 name ali empty ""
-no "all nonempty false" rc map::all pred2 cb_keep_nonempty
+eq "uint retries then success" \
+    "9" \
+    "$(run_no_tty 'printf "bad\n9\n" | input::uint "" "" 2')"
 
-ok "any key is name true" rc map::any pred2 cb_key_is_name
-no "any never false" rc map::any pred2 cb_never
+no "uint rejects negative" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf -- \"-1\n\" | input::uint \"\" \"\" 1 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
 
-ok "none never true" rc map::none pred2 cb_never
-no "none key is name false" rc map::none pred2 cb_key_is_name
+no "uint rejects float" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"1.2\n\" | input::uint \"\" \"\" 1 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
 
-ok "any value is admin true" rc map::any pred cb_value_is_admin
+no "uint rejects alpha" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"abc\n\" | input::uint \"\" \"\" 1 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
 
-section "failure paths / non maps"
 
-bad_scalar="x"
+eq "float integer" \
+    "12" \
+    "$(run_no_tty 'printf "12\n" | input::float')"
 
-no "len scalar fails" rc map::len bad_scalar
-no "empty scalar fails" rc map::empty bad_scalar
-no "filled scalar fails" rc map::filled bad_scalar
-no "has scalar fails" rc map::has bad_scalar a
-no "get scalar fails" rc map::get bad_scalar a
-no "set scalar fails" rc map::set bad_scalar a 1
-no "del scalar fails" rc map::del bad_scalar a
-no "set_once scalar fails" rc map::set_once bad_scalar a 1
-no "replace scalar fails" rc map::replace bad_scalar a 1
-no "clear scalar fails" rc map::clear bad_scalar
-no "keys0 scalar fails" rc map::keys0 bad_scalar
-no "values0 scalar fails" rc map::values0 bad_scalar
-no "items0 scalar fails" rc map::items0 bad_scalar
-no "copy scalar fails" rc map::copy bad_scalar out_map
-no "merge scalar left fails" rc map::merge bad_scalar fp
-no "merge scalar right fails" rc map::merge fp bad_scalar
-no "only scalar fails" rc map::only bad_scalar out_map a
-no "without scalar fails" rc map::without bad_scalar out_map a
-no "each scalar fails" rc map::each bad_scalar cb_collect
-no "map scalar fails" rc map::map bad_scalar out_map cb_upper_value
-no "filter scalar fails" rc map::filter bad_scalar out_map cb_keep_nonempty
-no "all scalar fails" rc map::all bad_scalar cb_keep_nonempty
-no "any scalar fails" rc map::any bad_scalar cb_keep_nonempty
-no "str scalar fails" rc map::str bad_scalar
+eq "float decimal" \
+    "12.5" \
+    "$(run_no_tty 'printf "12.5\n" | input::float')"
 
-no "copy bad target fails" rc map::copy fp "bad-name"
-no "only bad target fails" rc map::only fp "bad-name" a
-no "without bad target fails" rc map::without fp "bad-name" a
-no "map bad target fails" rc map::map fp "bad-name" cb_upper_value
-no "filter bad target fails" rc map::filter fp "bad-name" cb_keep_nonempty
+eq "float negative integer" \
+    "-7" \
+    "$(run_no_tty 'printf -- "-7\n" | input::float')"
 
-section "property / invariants"
+eq "float negative decimal" \
+    "-7.5" \
+    "$(run_no_tty 'printf -- "-7.5\n" | input::float')"
 
-map::from_pairs prop \
-    "  a  " "  1  " \
-    "b/c" "x/y" \
-    "*" "star" \
-    "z z" "space" \
-    empty ""
+eq "float plus sign" \
+    "+3.14" \
+    "$(run_no_tty 'printf "+3.14\n" | input::float')"
 
-before="$(dump_map prop)"
+eq "float leading dot" \
+    ".3" \
+    "$(run_no_tty 'printf ".3\n" | input::float')"
 
-ok "copy invariant" rc map::copy prop prop_copy
-eq "copy dump equals original" "${before}" "$(dump_map prop_copy)"
+eq "float trailing dot" \
+    "3." \
+    "$(run_no_tty 'printf "3.\n" | input::float')"
 
-text_prop="$(out map::str prop $'\037' $'\036')"
-ok "str/from roundtrip with rare separators" rc map::from prop_round "${text_prop}" $'\037' $'\036'
-eq "roundtrip dump equals original" "${before}" "$(dump_map prop_round)"
+eq "float default" \
+    "1.5" \
+    "$(run_no_tty 'printf "\n" | input::float "" "1.5" 1')"
 
-ok "merge empty into prop" rc map::from_pairs empty_merge
-ok "merge empty does not change" rc map::merge prop empty_merge
-eq "merge empty invariant" "${before}" "$(dump_map prop)"
+eq "float retries then success" \
+    "2.5" \
+    "$(run_no_tty 'printf "bad\n2.5\n" | input::float "" "" 2')"
 
-ok "only all keys equals original" rc map::only prop prop_only "  a  " "b/c" "*" "z z" empty
-eq "only all invariant" "${before}" "$(dump_map prop_only)"
+no "float rejects alpha" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"abc\n\" | input::float \"\" \"\" 1 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
 
-ok "without no keys equals original" rc map::without prop prop_without
-eq "without none invariant" "${before}" "$(dump_map prop_without)"
+no "float rejects double dot" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"1.2.3\n\" | input::float \"\" \"\" 1 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
 
-section "transactional from failures"
+no "float rejects sign only" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"-\n\" | input::float \"\" \"\" 1 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
 
-map::from_pairs tx_keep a 1 b 2
-before="$(dump_map tx_keep)"
-no "from_pairs failure keeps old map" rc map::from_pairs tx_keep a 1 "" bad b 2
-eq "from_pairs transactional invariant" "${before}" "$(dump_map tx_keep)"
 
-map::from_pairs tx_from a old
-before="$(dump_map tx_from)"
-no "from failure keeps old map" rc map::from tx_from "x=1,=bad,y=2" "," "="
-eq "from transactional invariant" "${before}" "$(dump_map tx_from)"
+eq "number alias integer" \
+    "8" \
+    "$(run_no_tty 'printf "8\n" | input::number')"
 
-map::from_pairs tx_lines a old
-before="$(dump_map tx_lines)"
-no "from_lines failure keeps old map" rc map::from_lines tx_lines < <(printf '%s\n' "x=1" "=bad" "y=2")
-eq "from_lines transactional invariant" "${before}" "$(dump_map tx_lines)"
+eq "number alias float" \
+    "8.5" \
+    "$(run_no_tty 'printf "8.5\n" | input::number')"
 
-section "unset weird keys"
+eq "number alias leading dot" \
+    ".8" \
+    "$(run_no_tty 'printf ".8\n" | input::number')"
 
-map::from_pairs weird_del \
-    'a]b' 1 \
-    'x y' 2 \
-    '*' 3 \
-    $'line\nkey' 4
+no "number alias rejects alpha" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"abc\n\" | input::number \"\" \"\" 1 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
 
-ok "del key with bracket" rc map::del weird_del 'a]b'
-no "bracket key removed" rc map::has weird_del 'a]b'
+echo
+echo "== input::char / required / match / select tests =="
 
-ok "del key with space" rc map::del weird_del 'x y'
-no "space key removed" rc map::has weird_del 'x y'
+eq "char accepts ascii" \
+    "a" \
+    "$(run_no_tty 'printf "a\n" | input::char')"
 
-ok "del key with star" rc map::del weird_del '*'
-no "star key removed" rc map::has weird_del '*'
+eq "char accepts star" \
+    "*" \
+    "$(run_no_tty 'printf "*\n" | input::char')"
 
-ok "del key with newline" rc map::del weird_del $'line\nkey'
-no "newline key removed" rc map::has weird_del $'line\nkey'
+eq "char accepts digit" \
+    "7" \
+    "$(run_no_tty 'printf "7\n" | input::char')"
 
-section "transactional failures"
+eq "char accepts arabic glyph" \
+    "ش" \
+    "$(run_no_tty 'printf "ش\n" | input::char')"
 
-map::from_pairs tx_keep a 1 b 2
-before="$(dump_map tx_keep)"
-no "from_pairs failure keeps old map" rc map::from_pairs tx_keep a 1 "" bad b 2
-eq "from_pairs transactional invariant" "${before}" "$(dump_map tx_keep)"
+eq "char default" \
+    "Z" \
+    "$(run_no_tty 'printf "\n" | input::char "" "Z" 1')"
 
-map::from_pairs tx_from a old
-before="$(dump_map tx_from)"
-no "from failure keeps old map" rc map::from tx_from "x=1,=bad,y=2" "," "="
-eq "from transactional invariant" "${before}" "$(dump_map tx_from)"
+no "char rejects empty without default" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"\n\" | input::char \"\" \"\" 1 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
 
-map::from_pairs tx_lines a old
-before="$(dump_map tx_lines)"
-no "from_lines failure keeps old map" rc map::from_lines tx_lines < <(printf '%s\n' "x=1" "=bad" "y=2")
-eq "from_lines transactional invariant" "${before}" "$(dump_map tx_lines)"
+no "char rejects multi ascii" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"ab\n\" | input::char \"\" \"\" 1 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
 
-section "delete weird keys"
+no "char rejects multi words" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"hello\n\" | input::char \"\" \"\" 1 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
 
-map::from_pairs weird_del \
-    'a]b' 1 \
-    'x y' 2 \
-    '*' 3 \
-    '$key' 4 \
-    $'line\nkey' 5
 
-ok "del bracket key" rc map::del weird_del 'a]b'
-no "bracket key removed" rc map::has weird_del 'a]b'
+eq "required accepts value" \
+    "Core Master" \
+    "$(run_no_tty 'printf "Core Master\n" | input::required')"
 
-ok "del space key" rc map::del weird_del 'x y'
-no "space key removed" rc map::has weird_del 'x y'
+eq "required preserves spaces" \
+    "  Core Master  " \
+    "$(run_no_tty 'printf "  Core Master  \n" | input::required')"
 
-ok "del star key" rc map::del weird_del '*'
-no "star key removed" rc map::has weird_del '*'
+eq "required default" \
+    "DEF" \
+    "$(run_no_tty 'printf "\n" | input::required "" "DEF" 1')"
 
-ok "del dollar key" rc map::del weird_del '$key'
-no "dollar key removed" rc map::has weird_del '$key'
+eq "required retries then success" \
+    "ok" \
+    "$(run_no_tty 'printf "\n\nok\n" | input::required "" "" 3')"
 
-ok "del newline key" rc map::del weird_del $'line\nkey'
-no "newline key removed" rc map::has weird_del $'line\nkey'
+no "required rejects empty after tries" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"\n\n\n\" | input::required \"\" \"\" 2 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
 
-section "result"
 
-printf '\n%s== result ==%s\n' "${yellow}" "${reset}"
-printf 'total: %s\n' "${TOTAL}"
-printf '%spass : %s%s\n' "${green}" "${PASS}" "${reset}"
-printf '%sfail : %s%s\n' "${red}" "${FAIL}" "${reset}"
+eq "match accepts slug" \
+    "hi-there-123" \
+    "$(run_no_tty 'printf "hi-there-123\n" | input::match "" "^[a-z0-9-]+$"')"
 
-if (( FAIL > 0 )); then
-    exit 1
-fi
+eq "match accepts email-ish" \
+    "a@test.com" \
+    "$(run_no_tty 'printf "a@test.com\n" | input::match "" "^[^@[:space:]]+@[^@[:space:]]+[.][^@[:space:]]+$"')"
 
-exit 0
+eq "match default valid" \
+    "abc123" \
+    "$(run_no_tty 'printf "\n" | input::match "" "^[a-z]+[0-9]+$" "abc123" 1')"
+
+eq "match retries then success" \
+    "abc123" \
+    "$(run_no_tty 'printf "BAD!\nabc123\n" | input::match "" "^[a-z]+[0-9]+$" "" 2')"
+
+no "match rejects invalid after tries" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"bad!\nwrong!\n\" | input::match \"\" \"^[a-z]+[0-9]+$\" \"\" 2 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
+
+no "match empty pattern fails" \
+    input::match "" ""
+
+
+eq "select picks first" \
+    "dev" \
+    "$(run_no_tty 'printf "1\n" | input::select "Pick:" 1 dev stage prod')"
+
+eq "select picks middle" \
+    "stage" \
+    "$(run_no_tty 'printf "2\n" | input::select "Pick:" 1 dev stage prod')"
+
+eq "select picks last" \
+    "prod" \
+    "$(run_no_tty 'printf "3\n" | input::select "Pick:" 1 dev stage prod')"
+
+eq "select retries then success" \
+    "stage" \
+    "$(run_no_tty 'printf "9\n0\n2\n" | input::select "Pick:" 3 dev stage prod')"
+
+eq "select supports spaces" \
+    "two words" \
+    "$(run_no_tty 'printf "2\n" | input::select "Pick:" 1 one "two words" three')"
+
+eq "select supports empty item" \
+    "" \
+    "$(run_no_tty 'printf "2\n" | input::select "Pick:" 1 one "" three')"
+
+eq "select supports star" \
+    "*" \
+    "$(run_no_tty 'printf "2\n" | input::select "Pick:" 1 one "*" three')"
+
+no "select missing items fails" \
+    input::select "Pick:" 1
+
+no "select invalid choice fails after tries" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"9\n8\n\" | input::select \"Pick:\" 2 dev stage >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
+
+no "select non-number fails after tries" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"x\ny\n\" | input::select \"Pick:\" 2 dev stage >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
+
+echo
+echo "== input::path / file / dir tests =="
+
+tmp_dir="$(mktemp -d)"
+tmp_file="${tmp_dir}/file.txt"
+tmp_exec="${tmp_dir}/run.sh"
+tmp_missing="${tmp_dir}/missing"
+tmp_space_file="${tmp_dir}/file with spaces.txt"
+tmp_space_dir="${tmp_dir}/dir with spaces"
+
+mkdir -p "${tmp_space_dir}"
+printf 'data\n' > "${tmp_file}"
+printf 'space data\n' > "${tmp_space_file}"
+printf '#!/usr/bin/env bash\nexit 0\n' > "${tmp_exec}"
+chmod +x "${tmp_exec}"
+
+eq "path any accepts missing" \
+    "${tmp_missing}" \
+    "$(run_no_tty "printf '%s\n' '${tmp_missing}' | input::path '' '' any 1")"
+
+eq "path exists accepts file" \
+    "${tmp_file}" \
+    "$(run_no_tty "printf '%s\n' '${tmp_file}' | input::path '' '' exists 1")"
+
+eq "path exists accepts dir" \
+    "${tmp_dir}" \
+    "$(run_no_tty "printf '%s\n' '${tmp_dir}' | input::path '' '' exists 1")"
+
+eq "path file accepts file" \
+    "${tmp_file}" \
+    "$(run_no_tty "printf '%s\n' '${tmp_file}' | input::path '' '' file 1")"
+
+eq "path dir accepts dir" \
+    "${tmp_dir}" \
+    "$(run_no_tty "printf '%s\n' '${tmp_dir}' | input::path '' '' dir 1")"
+
+eq "path readable accepts file" \
+    "${tmp_file}" \
+    "$(run_no_tty "printf '%s\n' '${tmp_file}' | input::path '' '' readable 1")"
+
+eq "path writable accepts dir" \
+    "${tmp_dir}" \
+    "$(run_no_tty "printf '%s\n' '${tmp_dir}' | input::path '' '' writable 1")"
+
+eq "path executable accepts executable" \
+    "${tmp_exec}" \
+    "$(run_no_tty "printf '%s\n' '${tmp_exec}' | input::path '' '' executable 1")"
+
+eq "path supports file with spaces" \
+    "${tmp_space_file}" \
+    "$(run_no_tty "printf '%s\n' '${tmp_space_file}' | input::path '' '' file 1")"
+
+eq "path supports dir with spaces" \
+    "${tmp_space_dir}" \
+    "$(run_no_tty "printf '%s\n' '${tmp_space_dir}' | input::path '' '' dir 1")"
+
+eq "path empty input uses valid default" \
+    "${tmp_file}" \
+    "$(run_no_tty "printf '\n' | input::path '' '${tmp_file}' file 1")"
+
+eq "path retries then success" \
+    "${tmp_file}" \
+    "$(run_no_tty "printf '%s\n%s\n' '${tmp_missing}' '${tmp_file}' | input::path '' '' file 2")"
+
+no "path invalid mode fails" \
+    input::path "" "" bad 1
+
+no "path empty fails" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"\n\" | input::path \"\" \"\" any 1 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
+
+no "path file rejects missing" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"%s\n\" \"\$2\" | input::path \"\" \"\" file 1 >/dev/null" _ "$1" "$2" 2>/dev/null' _ "${TARGET}" "${tmp_missing}"
+
+no "path file rejects dir" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"%s\n\" \"\$2\" | input::path \"\" \"\" file 1 >/dev/null" _ "$1" "$2" 2>/dev/null' _ "${TARGET}" "${tmp_dir}"
+
+no "path dir rejects file" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"%s\n\" \"\$2\" | input::path \"\" \"\" dir 1 >/dev/null" _ "$1" "$2" 2>/dev/null' _ "${TARGET}" "${tmp_file}"
+
+no "path exists rejects missing" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"%s\n\" \"\$2\" | input::path \"\" \"\" exists 1 >/dev/null" _ "$1" "$2" 2>/dev/null' _ "${TARGET}" "${tmp_missing}"
+
+no "path executable rejects normal file" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"%s\n\" \"\$2\" | input::path \"\" \"\" executable 1 >/dev/null" _ "$1" "$2" 2>/dev/null' _ "${TARGET}" "${tmp_file}"
+
+eq "file wrapper accepts file" \
+    "${tmp_file}" \
+    "$(run_no_tty "printf '%s\n' '${tmp_file}' | input::file '' '' 1")"
+
+eq "file wrapper supports default" \
+    "${tmp_file}" \
+    "$(run_no_tty "printf '\n' | input::file '' '${tmp_file}' 1")"
+
+eq "file wrapper retries then success" \
+    "${tmp_file}" \
+    "$(run_no_tty "printf '%s\n%s\n' '${tmp_missing}' '${tmp_file}' | input::file '' '' 2")"
+
+no "file wrapper rejects dir" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"%s\n\" \"\$2\" | input::file \"\" \"\" 1 >/dev/null" _ "$1" "$2" 2>/dev/null' _ "${TARGET}" "${tmp_dir}"
+
+no "file wrapper rejects missing" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"%s\n\" \"\$2\" | input::file \"\" \"\" 1 >/dev/null" _ "$1" "$2" 2>/dev/null' _ "${TARGET}" "${tmp_missing}"
+
+eq "dir wrapper accepts dir" \
+    "${tmp_dir}" \
+    "$(run_no_tty "printf '%s\n' '${tmp_dir}' | input::dir '' '' 1")"
+
+eq "dir wrapper supports default" \
+    "${tmp_dir}" \
+    "$(run_no_tty "printf '\n' | input::dir '' '${tmp_dir}' 1")"
+
+eq "dir wrapper retries then success" \
+    "${tmp_dir}" \
+    "$(run_no_tty "printf '%s\n%s\n' '${tmp_missing}' '${tmp_dir}' | input::dir '' '' 2")"
+
+no "dir wrapper rejects file" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"%s\n\" \"\$2\" | input::dir \"\" \"\" 1 >/dev/null" _ "$1" "$2" 2>/dev/null' _ "${TARGET}" "${tmp_file}"
+
+no "dir wrapper rejects missing" \
+    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"%s\n\" \"\$2\" | input::dir \"\" \"\" 1 >/dev/null" _ "$1" "$2" 2>/dev/null' _ "${TARGET}" "${tmp_missing}"
+
+rm -rf "${tmp_dir}"
+
+echo
+echo "== result =="
+echo "pass: ${pass}"
+echo "fail: ${fail}"
+
+(( fail == 0 ))
