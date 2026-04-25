@@ -191,7 +191,7 @@ section "color / strip / unicode"
 
 eq "color disabled by NO_COLOR" "hello" "$(NO_COLOR=1 log::color 31 hello)"
 
-colored="$(run_out 'export LOG_COLOR=always; unset NO_COLOR; log::color 31 hello')"
+colored="$(run_out 'unset NO_COLOR; LOG_COLOR=always; log::color 31 hello')"
 has "color forced contains escape" $'\033[31m' "${colored}"
 has "color forced contains reset" $'\033[0m' "${colored}"
 

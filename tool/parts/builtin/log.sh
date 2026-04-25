@@ -543,4 +543,3 @@ log::without_color () {
     )
 
 }
-
