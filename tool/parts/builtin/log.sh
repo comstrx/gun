@@ -182,15 +182,15 @@ log::ln () {
     printf '\n'
 
 }
-log::err () {
-
-    printf '%s' "$*" >&2
-
-}
 log::print () {
 
     log::is_quiet && return 0
     printf '%s' "$*"
+
+}
+log::eprint () {
+
+    printf '%s' "$*" >&2
 
 }
 log::green () {
@@ -213,15 +213,16 @@ log::gray () {
     printf '%s' "$(log::color "2;37" "$*")"
 
 }
-log::errln () {
 
-    printf '%s\n' "$*" >&2
-
-}
 log::println () {
 
     log::is_quiet && return 0
     printf '%s\n' "$*"
+
+}
+log::eprintln () {
+
+    printf '%s\n' "$*" >&2
 
 }
 log::greenln () {
@@ -565,9 +566,8 @@ log::spinner () {
     local color="${LOG_SPINNER_COLOR:-96}" lock="${LOG_SPINNER_LOCK:-1}" line="${LOG_SPINNER_LINE:-0}"
     local interval="${LOG_SPINNER_INTERVAL:-0.08}"
 
-    local -a frames=()
-
     shift || true
+    local -a frames=()
 
     [[ "${1:-}" == "--" ]] && { shift || true; }
     [[ "${interval}" =~ ^[0-9]+([.][0-9]+)?$ ]] || interval="0.08"
