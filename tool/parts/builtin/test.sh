@@ -191,7 +191,7 @@ section "color / strip / unicode"
 
 eq "color disabled by NO_COLOR" "hello" "$(NO_COLOR=1 log::color 31 hello)"
 
-colored="$(run_out 'unset NO_COLOR; LOG_COLOR=always; log::color 31 hello')"
+colored="$(run_out 'unset NO_COLOR; export LOG_COLOR=always; log::color 31 hello')"
 has "color forced contains escape" $'\033[31m' "${colored}"
 has "color forced contains reset" $'\033[0m' "${colored}"
 
@@ -360,7 +360,7 @@ has "try failure message" "Command failed with exit code 5" "${err}"
 section "wrappers"
 
 eq "without_color disables ansi" "hello" "$(run_out 'log::without_color log::color 31 hello')"
-has "with_color forces ansi" $'\033[31m' "$(run_out 'log::with_color log::color 31 hello')"
+has "with_color forces ansi" $'\033[31m' "$(run_out 'unset NO_COLOR; log::with_color log::color 31 hello')"
 
 eq "quiet wrapper suppresses line" "" "$(run_out 'log::quiet log::line hidden')"
 
