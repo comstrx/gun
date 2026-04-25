@@ -209,7 +209,7 @@ eq "raw stdout" "a b" "$(run_out 'printf "a b" | log::raw')"
 
 eq "quiet suppresses print" "" "$(run_out 'QUIET=1 log::print abc')"
 eq "quiet suppresses line" "" "$(run_out 'QUIET=1 log::line abc')"
-eq "quiet suppresses raw" "" "$(run_out 'QUIET=1 printf abc | log::raw')"
+eq "quiet suppresses raw" "" "$(run_out 'export QUIET=1; printf abc | log::raw')"
 
 section "stderr basic logs"
 

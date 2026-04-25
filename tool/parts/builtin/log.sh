@@ -229,13 +229,23 @@ log::fail () {
 }
 log::debug () {
 
-    [[ "${DEBUG:-0}" == "1" || "${LOG_LEVEL:-}" == "debug" || "${LOG_LEVEL:-}" == "trace" ]] || return 0
+    if [[ "${DEBUG:-0}" == "1" ]]; then
+        LOG_LEVEL=debug log::emit 2 "debug" "35" "debug" "$*"
+        return 0
+    fi
+
+    [[ "${LOG_LEVEL:-}" == "debug" || "${LOG_LEVEL:-}" == "trace" ]] || return 0
     log::emit 2 "debug" "35" "debug" "$*"
 
 }
 log::trace () {
 
-    [[ "${TRACE:-0}" == "1" || "${LOG_LEVEL:-}" == "trace" ]] || return 0
+    if [[ "${TRACE:-0}" == "1" ]]; then
+        LOG_LEVEL=trace log::emit 2 "trace" "90" "trace" "$*"
+        return 0
+    fi
+
+    [[ "${LOG_LEVEL:-}" == "trace" ]] || return 0
     log::emit 2 "trace" "90" "trace" "$*"
 
 }
