@@ -4,7 +4,7 @@
 set -u
 set -o pipefail
 
-TARGET="${1:-tool/parts/builtin/input.sh}"
+TARGET="${1:-tool/parts/builtin/log.sh}"
 
 pass=0
 fail=0
@@ -31,7 +31,34 @@ eq () {
 
 }
 
-no () {
+has () {
+
+    local name="$1" needle="$2" got="$3"
+
+    [[ "${got}" == *"${needle}"* ]] && ok "${name}" || bad "${name}" "*${needle}*" "${got}"
+
+}
+
+nohas () {
+
+    local name="$1" needle="$2" got="$3"
+
+    [[ "${got}" != *"${needle}"* ]] && ok "${name}" || bad "${name}" "not containing ${needle}" "${got}"
+
+}
+
+rc_ok () {
+
+    local name="$1"
+    shift
+
+    if "$@"; then ok "${name}"
+    else bad "${name}" "exit=0" "exit=$?"
+    fi
+
+}
+
+rc_no () {
 
     local name="$1"
     shift
@@ -42,646 +69,304 @@ no () {
 
 }
 
-run_no_tty () {
+section () {
 
-    local code="$1"
-
-    if command -v setsid >/dev/null 2>&1; then
-        setsid bash -c 'source "$1"; shift; eval "$1"' _ "${TARGET}" "${code}" 2>/dev/null
-    else
-        bash -c 'source "$1"; shift; eval "$1"' _ "${TARGET}" "${code}" 2>/dev/null
-    fi
-
-}
-dump_list () {
-
-    local name="${1:-}" item=""
-    local -n ref="${name}"
-
-    for item in "${ref[@]}"; do
-        printf '[%q]\n' "${item}"
-    done
-
-}
-same_list () {
-
-    local name="${1:-}" want="${2:-}" got=""
-
-    got="$(dump_list "${name}")"
-    eq "${name}" "${want}" "${got}"
+    printf '\n== %s ==\n' "$1"
 
 }
 
+run_out () {
+
+    bash -c 'source "$1"; shift; eval "$1"' _ "${TARGET}" "$1"
+
+}
+
+run_err () {
+
+    bash -c 'source "$1"; shift; eval "$1"' _ "${TARGET}" "$1" 2>&1 >/dev/null
+
+}
+
+run_both () {
+
+    bash -c 'source "$1"; shift; eval "$1"' _ "${TARGET}" "$1" 2>&1
+
+}
+
+if [[ ! -r "${TARGET}" ]]; then
+    printf '[ERR] target not readable: %s\n' "${TARGET}" >&2
+    exit 2
+fi
+
+section "syntax / static checks"
+
+rc_ok "bash -n target" bash -n "${TARGET}"
+
+if command -v shellcheck >/dev/null 2>&1; then
+    rc_ok "shellcheck target" shellcheck "${TARGET}"
+else
+    ok "shellcheck skipped"
+fi
+
+# shellcheck source=/dev/null
 source "${TARGET}"
 
-echo "== input::get automated no-tty tests =="
+section "public api"
+
+required=(
+    log::is_tty
+    log::is_err_tty
+    log::is_quiet
+    log::is_verbose
+    log::supports_color
+    log::supports_unicode
+    log::level_num
+    log::enabled
+    log::color
+    log::strip
+    log::symbol
+    log::timestamp
+    log::emit
+    log::print
+    log::line
+    log::raw
+    log::err
+    log::info
+    log::ok
+    log::success
+    log::done
+    log::warn
+    log::warning
+    log::error
+    log::fail
+    log::debug
+    log::trace
+    log::step
+    log::fatal
+    log::die
+    log::title
+    log::section
+    log::subsection
+    log::hr
+    log::kv
+    log::pair
+    log::list
+    log::item
+    log::cmd
+    log::quote
+    log::indent
+    log::table
+    log::status
+    log::run
+    log::try
+    log::plain
+    log::quiet
+    log::verbose
+    log::with_color
+    log::without_color
+)
+
+for fn in "${required[@]}"; do
+    rc_ok "function exists: ${fn}" declare -F "${fn}"
+done
+
+section "level numbers / enabled"
+
+eq "level trace" "0" "$(log::level_num trace)"
+eq "level debug" "1" "$(log::level_num debug)"
+eq "level info" "2" "$(log::level_num info)"
+eq "level warn" "3" "$(log::level_num warn)"
+eq "level error" "4" "$(log::level_num error)"
+eq "level off" "9" "$(log::level_num off)"
+eq "level unknown defaults info" "2" "$(log::level_num wat)"
+
+rc_ok "enabled info at default" env -i PATH="${PATH}" bash -c 'source "$1"; log::enabled info' _ "${TARGET}"
+rc_no "debug disabled at default" env -i PATH="${PATH}" bash -c 'source "$1"; log::enabled debug' _ "${TARGET}"
+rc_ok "warn enabled at info" env -i PATH="${PATH}" bash -c 'source "$1"; LOG_LEVEL=info log::enabled warn' _ "${TARGET}"
+rc_no "info disabled at warn" env -i PATH="${PATH}" bash -c 'source "$1"; LOG_LEVEL=warn log::enabled info' _ "${TARGET}"
+rc_ok "error enabled under quiet" env -i PATH="${PATH}" bash -c 'source "$1"; QUIET=1 log::enabled error' _ "${TARGET}"
+rc_no "info disabled under quiet" env -i PATH="${PATH}" bash -c 'source "$1"; QUIET=1 log::enabled info' _ "${TARGET}"
+
+section "color / strip / unicode"
+
+eq "color disabled by NO_COLOR" "hello" "$(NO_COLOR=1 log::color 31 hello)"
+
+colored="$(LOG_COLOR=always log::color 31 hello)"
+has "color forced contains escape" $'\033[31m' "${colored}"
+has "color forced contains reset" $'\033[0m' "${colored}"
+
+eq "strip ansi" "hello" "$(printf '\033[31mhello\033[0m\n' | log::strip)"
+
+eq "ascii symbol ok" "+" "$(LOG_ASCII=1 log::symbol ok)"
+eq "ascii symbol error" "x" "$(LOG_ASCII=1 log::symbol error)"
+eq "ascii symbol item" "-" "$(LOG_ASCII=1 log::symbol item)"
+
+section "stdout helpers"
+
+eq "print stdout" "abc" "$(run_out 'log::print abc')"
+eq "line stdout" "abc" "$(run_out 'log::line abc')"
+eq "raw stdout" "a b" "$(run_out 'printf "a b" | log::raw')"
+
+eq "quiet suppresses print" "" "$(run_out 'QUIET=1 log::print abc')"
+eq "quiet suppresses line" "" "$(run_out 'QUIET=1 log::line abc')"
+eq "quiet suppresses raw" "" "$(run_out 'QUIET=1 printf abc | log::raw')"
+
+section "stderr basic logs"
 
-eq "read plain line" \
-    "hello" \
-    "$(run_no_tty 'printf "hello\n" | input::get')"
+err="$(run_err 'NO_COLOR=1 LOG_ASCII=1 log::info "hello"')"
+has "info has tag" "[INFO]" "${err}"
+has "info has msg" "hello" "${err}"
 
-eq "preserve spaces" \
-    "  hello world  " \
-    "$(run_no_tty 'printf "  hello world  \n" | input::get')"
+err="$(run_err 'NO_COLOR=1 LOG_ASCII=1 log::ok "good"')"
+has "ok has tag" "[OK]" "${err}"
+has "ok has msg" "good" "${err}"
 
-eq "empty line without default" \
-    "" \
-    "$(run_no_tty 'printf "\n" | input::get')"
+err="$(run_err 'NO_COLOR=1 LOG_ASCII=1 log::success "good"')"
+has "success alias ok" "[OK]" "${err}"
 
-eq "empty line uses default" \
-    "DEF" \
-    "$(run_no_tty 'printf "\n" | input::get "" "DEF"')"
+err="$(run_err 'NO_COLOR=1 LOG_ASCII=1 log::warn "careful"')"
+has "warn has tag" "[WARN]" "${err}"
 
-eq "EOF uses default" \
-    "DEF" \
-    "$(run_no_tty 'printf "" | input::get "" "DEF"')"
+err="$(run_err 'NO_COLOR=1 LOG_ASCII=1 log::warning "careful"')"
+has "warning alias warn" "[WARN]" "${err}"
 
-no "EOF without default fails" \
-    bash -c '
-        source "$1"
-        if command -v setsid >/dev/null 2>&1; then
-            setsid bash -c "source \"\$1\"; printf \"\" | input::get >/dev/null" _ "$1" 2>/dev/null
-        else
-            printf "" | input::get >/dev/null 2>&1
-        fi
-    ' _ "${TARGET}"
+err="$(run_err 'NO_COLOR=1 LOG_ASCII=1 log::error "bad"')"
+has "error has tag" "[ERROR]" "${err}"
 
-eq "prompt does not pollute stdout" \
-    "hello" \
-    "$(run_no_tty 'printf "hello\n" | input::get "Name: "')"
+err="$(run_err 'NO_COLOR=1 LOG_ASCII=1 log::fail "bad"')"
+has "fail alias error" "[ERROR]" "${err}"
 
-echo
-echo "== input::read tests =="
+err="$(run_err 'NO_COLOR=1 LOG_ASCII=1 log::done "done"')"
+has "done has tag" "[DONE]" "${err}"
 
-eq "read plain text" \
-    "hello" \
-    "$(printf 'hello' | input::read)"
+err="$(run_err 'NO_COLOR=1 LOG_ASCII=1 log::step "step"')"
+has "step has tag" "[STEP]" "${err}"
 
-eq "read multiline text via command substitution trims final newline" \
-    $'line1\nline2' \
-    "$(printf 'line1\nline2\n' | input::read)"
+section "debug / trace"
 
-bytes="$(printf 'line1\nline2\n' | input::read | wc -c | tr -d ' ')"
-eq "read preserves final newline by byte count" \
-    "12" \
-    "${bytes}"
+eq "debug hidden by default" "" "$(run_err 'NO_COLOR=1 log::debug hidden')"
+has "debug visible with DEBUG=1" "[DEBUG]" "$(run_err 'NO_COLOR=1 LOG_ASCII=1 DEBUG=1 log::debug visible')"
+has "debug visible with LOG_LEVEL=debug" "[DEBUG]" "$(run_err 'NO_COLOR=1 LOG_ASCII=1 LOG_LEVEL=debug log::debug visible')"
 
-eq "read empty stdin" \
-    "" \
-    "$(printf '' | input::read)"
+eq "trace hidden by default" "" "$(run_err 'NO_COLOR=1 log::trace hidden')"
+has "trace visible with TRACE=1" "[TRACE]" "$(run_err 'NO_COLOR=1 LOG_ASCII=1 TRACE=1 log::trace visible')"
+has "trace visible with LOG_LEVEL=trace" "[TRACE]" "$(run_err 'NO_COLOR=1 LOG_ASCII=1 LOG_LEVEL=trace log::trace visible')"
 
-tmp_read_file="$(mktemp)"
-printf 'file-line-1\nfile-line-2\n' > "${tmp_read_file}"
+section "quiet / level filtering"
 
-file_bytes="$(input::read < "${tmp_read_file}" | wc -c | tr -d ' ')"
-eq "read file redirect preserves bytes" \
-    "24" \
-    "${file_bytes}"
+eq "quiet suppresses info" "" "$(run_err 'NO_COLOR=1 QUIET=1 log::info hidden')"
+has "quiet keeps error" "[ERROR]" "$(run_err 'NO_COLOR=1 LOG_ASCII=1 QUIET=1 log::error visible')"
 
-file_text="$(input::read < "${tmp_read_file}")"
-eq "read file redirect text via command substitution trims final newline" \
-    $'file-line-1\nfile-line-2' \
-    "${file_text}"
+eq "LOG_LEVEL warn suppresses info" "" "$(run_err 'NO_COLOR=1 LOG_LEVEL=warn log::info hidden')"
+has "LOG_LEVEL warn keeps warn" "[WARN]" "$(run_err 'NO_COLOR=1 LOG_ASCII=1 LOG_LEVEL=warn log::warn visible')"
+has "LOG_LEVEL warn keeps error" "[ERROR]" "$(run_err 'NO_COLOR=1 LOG_ASCII=1 LOG_LEVEL=warn log::error visible')"
 
-rm -f "${tmp_read_file}"
+section "timestamp"
 
-echo
-echo "== input::lines tests =="
+err="$(run_err 'NO_COLOR=1 LOG_ASCII=1 LOG_TIME=1 log::info timed')"
+has "timestamp includes message" "timed" "${err}"
+[[ "${err}" =~ [0-9]{4}-[0-9]{2}-[0-9]{2} ]] && ok "timestamp date format" || bad "timestamp date format" "YYYY-MM-DD" "${err}"
 
-input::lines rows < <(printf 'a\n\nb c\n*\n')
-same_list rows $'[a]\n[\'\']\n[b\\ c]\n[\\*]'
+section "format helpers"
 
-input::lines rows_no_final < <(printf 'no-final-newline')
-same_list rows_no_final $'[no-final-newline]'
+err="$(run_err 'NO_COLOR=1 log::title "Build"')"
+has "title contains text" "Build" "${err}"
+has "title underline" "=====" "${err}"
 
-input::lines rows_empty < <(printf '')
-same_list rows_empty ""
+err="$(run_err 'NO_COLOR=1 log::section "Checks"')"
+has "section format" "== Checks ==" "${err}"
 
-tmp_lines_file="$(mktemp)"
-printf 'file-1\n\nfile 2\n*\n' > "${tmp_lines_file}"
+err="$(run_err 'NO_COLOR=1 log::subsection "Lint"')"
+has "subsection format" "-- Lint --" "${err}"
 
-input::lines rows_file < "${tmp_lines_file}"
-same_list rows_file $'[file-1]\n[\'\']\n[file\\ 2]\n[\\*]'
+err="$(run_err 'NO_COLOR=1 log::hr "*" 5')"
+eq "hr width" "*****" "${err}"
 
-rm -f "${tmp_lines_file}"
+err="$(run_err 'NO_COLOR=1 log::kv Project gun 10')"
+has "kv key" "Project" "${err}"
+has "kv value" "gun" "${err}"
 
-no "lines invalid target fails" \
-    input::lines "bad-name"
+err="$(run_err 'NO_COLOR=1 log::pair Runtime bash 10')"
+has "pair alias key" "Runtime" "${err}"
+has "pair alias value" "bash" "${err}"
 
-scalar_rows="x"
+err="$(run_err 'NO_COLOR=1 LOG_ASCII=1 log::list one "two words" "*"')"
+has "list item one" "one" "${err}"
+has "list item spaces" "two words" "${err}"
+has "list item star" "*" "${err}"
 
-no "lines scalar target fails" \
-    input::lines scalar_rows < <(printf 'a\nb\n')
+err="$(run_err 'NO_COLOR=1 LOG_ASCII=1 log::item "single item"')"
+has "item output" "single item" "${err}"
 
-unset rows_tx 2>/dev/null || true
-rows_tx=( "old" "data" )
-before="$(dump_list rows_tx)"
+err="$(run_err 'NO_COLOR=1 log::cmd echo hello')"
+has "cmd prefix" "$ echo hello" "${err}"
 
-no "lines invalid target keeps old array untouched" \
-    input::lines "bad-name" < <(printf 'new\nvalue\n')
+err="$(run_err 'NO_COLOR=1 printf "a\nb\n" | log::quote')"
+has "quote first" "| a" "${err}"
+has "quote second" "| b" "${err}"
 
-eq "lines transactional invariant" \
-    "${before}" \
-    "$(dump_list rows_tx)"
+err="$(run_err 'printf "a\nb\n" | log::indent 4')"
+has "indent first" "    a" "${err}"
+has "indent second" "    b" "${err}"
 
-echo
-echo "== input::bool tests =="
+err="$(run_err 'NO_COLOR=1 log::table 8 Name Gun Lang Bash')"
+has "table name" "Name" "${err}"
+has "table gun" "Gun" "${err}"
+has "table lang" "Lang" "${err}"
+has "table bash" "Bash" "${err}"
 
-eq "bool yes: y" \
-    "1" \
-    "$(run_no_tty 'printf "y\n" | input::bool')"
+section "status"
 
-eq "bool yes: yes" \
-    "1" \
-    "$(run_no_tty 'printf "yes\n" | input::bool')"
+has "status ok" "[OK]" "$(run_err 'NO_COLOR=1 LOG_ASCII=1 log::status ok good')"
+has "status warn" "[WARN]" "$(run_err 'NO_COLOR=1 LOG_ASCII=1 log::status warn careful')"
+has "status error" "[ERROR]" "$(run_err 'NO_COLOR=1 LOG_ASCII=1 log::status error bad')"
+has "status debug hidden default" "" "$(run_err 'NO_COLOR=1 LOG_ASCII=1 log::status debug hidden')"
+has "status unknown info" "[INFO]" "$(run_err 'NO_COLOR=1 LOG_ASCII=1 log::status custom message')"
 
-eq "bool yes: true" \
-    "1" \
-    "$(run_no_tty 'printf "true\n" | input::bool')"
+section "fatal / die"
 
-eq "bool yes: on" \
-    "1" \
-    "$(run_no_tty 'printf "on\n" | input::bool')"
+rc_no "fatal returns non-zero" bash -c 'source "$1"; log::fatal 7 bad >/dev/null 2>&1' _ "${TARGET}"
 
-eq "bool yes: 1" \
-    "1" \
-    "$(run_no_tty 'printf "1\n" | input::bool')"
+bash -c 'source "$1"; log::fatal 7 bad >/dev/null 2>&1' _ "${TARGET}"
+code=$?
+eq "fatal exact return code" "7" "${code}"
 
-eq "bool yes uppercase" \
-    "1" \
-    "$(run_no_tty 'printf "YES\n" | input::bool')"
+bash -c 'source "$1"; log::die 9 dead >/dev/null 2>&1' _ "${TARGET}"
+code=$?
+eq "die exits exact code" "9" "${code}"
 
-eq "bool no: n" \
-    "0" \
-    "$(run_no_tty 'printf "n\n" | input::bool')"
+section "run / try"
 
-eq "bool no: no" \
-    "0" \
-    "$(run_no_tty 'printf "no\n" | input::bool')"
+out="$(run_both 'NO_COLOR=1 log::run bash -c "printf ok"')"
+has "run prints command" "$ bash -c printf ok" "${out}"
+has "run executes command" "ok" "${out}"
 
-eq "bool no: false" \
-    "0" \
-    "$(run_no_tty 'printf "false\n" | input::bool')"
+bash -c 'source "$1"; log::run bash -c "exit 6" >/dev/null 2>&1' _ "${TARGET}"
+code=$?
+eq "run returns command code" "6" "${code}"
 
-eq "bool no: off" \
-    "0" \
-    "$(run_no_tty 'printf "off\n" | input::bool')"
+out="$(run_both 'NO_COLOR=1 LOG_ASCII=1 log::try bash -c "printf ok"')"
+has "try success command" "$ bash -c printf ok" "${out}"
+has "try success output" "ok" "${out}"
+has "try success log" "Command succeeded" "${out}"
 
-eq "bool no: 0" \
-    "0" \
-    "$(run_no_tty 'printf "0\n" | input::bool')"
+bash -c 'source "$1"; log::try bash -c "exit 5" >/dev/null 2>&1' _ "${TARGET}"
+code=$?
+eq "try failure returns command code" "5" "${code}"
 
-eq "bool no uppercase" \
-    "0" \
-    "$(run_no_tty 'printf "NO\n" | input::bool')"
+err="$(run_both 'NO_COLOR=1 LOG_ASCII=1 log::try bash -c "exit 5"')"
+has "try failure message" "Command failed with exit code 5" "${err}"
 
-eq "bool empty uses default yes" \
-    "1" \
-    "$(run_no_tty 'printf "\n" | input::bool "" "yes" 1')"
+section "wrappers"
 
-eq "bool empty uses default no" \
-    "0" \
-    "$(run_no_tty 'printf "\n" | input::bool "" "no" 1')"
+eq "without_color disables ansi" "hello" "$(run_out 'log::without_color log::color 31 hello')"
+has "with_color forces ansi" $'\033[31m' "$(run_out 'log::with_color log::color 31 hello')"
 
-eq "bool EOF uses default true" \
-    "1" \
-    "$(run_no_tty 'printf "" | input::bool "" "true" 1')"
+eq "quiet wrapper suppresses line" "" "$(run_out 'log::quiet log::line hidden')"
 
-eq "bool retries then success" \
-    "1" \
-    "$(run_no_tty 'printf "bad\nwrong\ny\n" | input::bool "" "" 3')"
+section "result"
 
-no "bool invalid fails after tries" \
-    bash -c 'source "$1"; out="$(setsid bash -c "source \"\$1\"; printf \"bad\nwrong\nextra\n\" | input::bool \"\" \"\" 2 >/dev/null" _ "$1" 2>/dev/null)"' _ "${TARGET}"
-
-no "bool zero tries normalized then invalid fails" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"bad\nbad\nbad\nbad\n\" | input::bool \"\" \"\" 0 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-no "bool non-numeric tries normalized then invalid fails" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"bad\nbad\nbad\nbad\n\" | input::bool \"\" \"\" nope >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-echo
-echo "== input::confirm tests =="
-
-ok "confirm yes: y" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"y\n\" | input::confirm >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-ok "confirm yes: yes" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"yes\n\" | input::confirm >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-ok "confirm yes: true" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"true\n\" | input::confirm >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-ok "confirm yes: on" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"on\n\" | input::confirm >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-ok "confirm yes: 1" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"1\n\" | input::confirm >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-no "confirm no: n" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"n\n\" | input::confirm >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-no "confirm no: no" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"no\n\" | input::confirm >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-no "confirm no: false" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"false\n\" | input::confirm >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-no "confirm no: off" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"off\n\" | input::confirm >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-no "confirm no: 0" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"0\n\" | input::confirm >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-ok "confirm uppercase yes" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"YES\n\" | input::confirm >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-no "confirm uppercase no" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"NO\n\" | input::confirm >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-ok "confirm default yes on empty" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"\n\" | input::confirm \"Continue?\" \"Y\" 1 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-no "confirm default no on empty" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"\n\" | input::confirm \"Continue?\" \"N\" 1 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-ok "confirm retries then yes" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"bad\nwrong\ny\n\" | input::confirm \"Continue?\" \"N\" 3 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-no "confirm invalid fails after tries" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"bad\nwrong\nextra\n\" | input::confirm \"Continue?\" \"N\" 2 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-no "confirm zero tries normalized then invalid fails" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"bad\nbad\nbad\nbad\n\" | input::confirm \"Continue?\" \"N\" 0 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-no "confirm non-numeric tries normalized then invalid fails" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"bad\nbad\nbad\nbad\n\" | input::confirm \"Continue?\" \"N\" nope >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-echo
-echo "== input::password tests =="
-
-no "password fails without tty" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; input::password \"Password: \" >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-echo
-echo "== input::number tests =="
-
-eq "int positive" \
-    "12" \
-    "$(run_no_tty 'printf "12\n" | input::int')"
-
-eq "int negative" \
-    "-7" \
-    "$(run_no_tty 'printf -- "-7\n" | input::int')"
-
-eq "int zero" \
-    "0" \
-    "$(run_no_tty 'printf "0\n" | input::int')"
-
-eq "int default" \
-    "42" \
-    "$(run_no_tty 'printf "\n" | input::int "" "42" 1')"
-
-eq "int retries then success" \
-    "9" \
-    "$(run_no_tty 'printf "bad\n9\n" | input::int "" "" 2')"
-
-no "int rejects float" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"1.2\n\" | input::int \"\" \"\" 1 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-no "int rejects alpha" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"abc\n\" | input::int \"\" \"\" 1 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-no "int rejects empty without valid default" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"\n\" | input::int \"\" \"\" 1 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-
-eq "uint positive" \
-    "12" \
-    "$(run_no_tty 'printf "12\n" | input::uint')"
-
-eq "uint zero" \
-    "0" \
-    "$(run_no_tty 'printf "0\n" | input::uint')"
-
-eq "uint default" \
-    "42" \
-    "$(run_no_tty 'printf "\n" | input::uint "" "42" 1')"
-
-eq "uint retries then success" \
-    "9" \
-    "$(run_no_tty 'printf "bad\n9\n" | input::uint "" "" 2')"
-
-no "uint rejects negative" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf -- \"-1\n\" | input::uint \"\" \"\" 1 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-no "uint rejects float" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"1.2\n\" | input::uint \"\" \"\" 1 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-no "uint rejects alpha" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"abc\n\" | input::uint \"\" \"\" 1 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-
-eq "float integer" \
-    "12" \
-    "$(run_no_tty 'printf "12\n" | input::float')"
-
-eq "float decimal" \
-    "12.5" \
-    "$(run_no_tty 'printf "12.5\n" | input::float')"
-
-eq "float negative integer" \
-    "-7" \
-    "$(run_no_tty 'printf -- "-7\n" | input::float')"
-
-eq "float negative decimal" \
-    "-7.5" \
-    "$(run_no_tty 'printf -- "-7.5\n" | input::float')"
-
-eq "float plus sign" \
-    "+3.14" \
-    "$(run_no_tty 'printf "+3.14\n" | input::float')"
-
-eq "float leading dot" \
-    ".3" \
-    "$(run_no_tty 'printf ".3\n" | input::float')"
-
-eq "float trailing dot" \
-    "3." \
-    "$(run_no_tty 'printf "3.\n" | input::float')"
-
-eq "float default" \
-    "1.5" \
-    "$(run_no_tty 'printf "\n" | input::float "" "1.5" 1')"
-
-eq "float retries then success" \
-    "2.5" \
-    "$(run_no_tty 'printf "bad\n2.5\n" | input::float "" "" 2')"
-
-no "float rejects alpha" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"abc\n\" | input::float \"\" \"\" 1 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-no "float rejects double dot" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"1.2.3\n\" | input::float \"\" \"\" 1 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-no "float rejects sign only" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"-\n\" | input::float \"\" \"\" 1 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-
-eq "number alias integer" \
-    "8" \
-    "$(run_no_tty 'printf "8\n" | input::number')"
-
-eq "number alias float" \
-    "8.5" \
-    "$(run_no_tty 'printf "8.5\n" | input::number')"
-
-eq "number alias leading dot" \
-    ".8" \
-    "$(run_no_tty 'printf ".8\n" | input::number')"
-
-no "number alias rejects alpha" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"abc\n\" | input::number \"\" \"\" 1 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-echo
-echo "== input::char / required / match / select tests =="
-
-eq "char accepts ascii" \
-    "a" \
-    "$(run_no_tty 'printf "a\n" | input::char')"
-
-eq "char accepts star" \
-    "*" \
-    "$(run_no_tty 'printf "*\n" | input::char')"
-
-eq "char accepts digit" \
-    "7" \
-    "$(run_no_tty 'printf "7\n" | input::char')"
-
-eq "char accepts arabic glyph" \
-    "ش" \
-    "$(run_no_tty 'printf "ش\n" | input::char')"
-
-eq "char default" \
-    "Z" \
-    "$(run_no_tty 'printf "\n" | input::char "" "Z" 1')"
-
-no "char rejects empty without default" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"\n\" | input::char \"\" \"\" 1 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-no "char rejects multi ascii" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"ab\n\" | input::char \"\" \"\" 1 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-no "char rejects multi words" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"hello\n\" | input::char \"\" \"\" 1 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-
-eq "required accepts value" \
-    "Core Master" \
-    "$(run_no_tty 'printf "Core Master\n" | input::required')"
-
-eq "required preserves spaces" \
-    "  Core Master  " \
-    "$(run_no_tty 'printf "  Core Master  \n" | input::required')"
-
-eq "required default" \
-    "DEF" \
-    "$(run_no_tty 'printf "\n" | input::required "" "DEF" 1')"
-
-eq "required retries then success" \
-    "ok" \
-    "$(run_no_tty 'printf "\n\nok\n" | input::required "" "" 3')"
-
-no "required rejects empty after tries" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"\n\n\n\" | input::required \"\" \"\" 2 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-
-eq "match accepts slug" \
-    "hi-there-123" \
-    "$(run_no_tty 'printf "hi-there-123\n" | input::match "" "^[a-z0-9-]+$"')"
-
-eq "match accepts email-ish" \
-    "a@test.com" \
-    "$(run_no_tty 'printf "a@test.com\n" | input::match "" "^[^@[:space:]]+@[^@[:space:]]+[.][^@[:space:]]+$"')"
-
-eq "match default valid" \
-    "abc123" \
-    "$(run_no_tty 'printf "\n" | input::match "" "^[a-z]+[0-9]+$" "abc123" 1')"
-
-eq "match retries then success" \
-    "abc123" \
-    "$(run_no_tty 'printf "BAD!\nabc123\n" | input::match "" "^[a-z]+[0-9]+$" "" 2')"
-
-no "match rejects invalid after tries" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"bad!\nwrong!\n\" | input::match \"\" \"^[a-z]+[0-9]+$\" \"\" 2 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-no "match empty pattern fails" \
-    input::match "" ""
-
-
-eq "select picks first" \
-    "dev" \
-    "$(run_no_tty 'printf "1\n" | input::select "Pick:" 1 dev stage prod')"
-
-eq "select picks middle" \
-    "stage" \
-    "$(run_no_tty 'printf "2\n" | input::select "Pick:" 1 dev stage prod')"
-
-eq "select picks last" \
-    "prod" \
-    "$(run_no_tty 'printf "3\n" | input::select "Pick:" 1 dev stage prod')"
-
-eq "select retries then success" \
-    "stage" \
-    "$(run_no_tty 'printf "9\n0\n2\n" | input::select "Pick:" 3 dev stage prod')"
-
-eq "select supports spaces" \
-    "two words" \
-    "$(run_no_tty 'printf "2\n" | input::select "Pick:" 1 one "two words" three')"
-
-eq "select supports empty item" \
-    "" \
-    "$(run_no_tty 'printf "2\n" | input::select "Pick:" 1 one "" three')"
-
-eq "select supports star" \
-    "*" \
-    "$(run_no_tty 'printf "2\n" | input::select "Pick:" 1 one "*" three')"
-
-no "select missing items fails" \
-    input::select "Pick:" 1
-
-no "select invalid choice fails after tries" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"9\n8\n\" | input::select \"Pick:\" 2 dev stage >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-no "select non-number fails after tries" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"x\ny\n\" | input::select \"Pick:\" 2 dev stage >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-echo
-echo "== input::path / file / dir tests =="
-
-tmp_dir="$(mktemp -d)"
-tmp_file="${tmp_dir}/file.txt"
-tmp_exec="${tmp_dir}/run.sh"
-tmp_missing="${tmp_dir}/missing"
-tmp_space_file="${tmp_dir}/file with spaces.txt"
-tmp_space_dir="${tmp_dir}/dir with spaces"
-
-mkdir -p "${tmp_space_dir}"
-printf 'data\n' > "${tmp_file}"
-printf 'space data\n' > "${tmp_space_file}"
-printf '#!/usr/bin/env bash\nexit 0\n' > "${tmp_exec}"
-chmod +x "${tmp_exec}"
-
-eq "path any accepts missing" \
-    "${tmp_missing}" \
-    "$(run_no_tty "printf '%s\n' '${tmp_missing}' | input::path '' '' any 1")"
-
-eq "path exists accepts file" \
-    "${tmp_file}" \
-    "$(run_no_tty "printf '%s\n' '${tmp_file}' | input::path '' '' exists 1")"
-
-eq "path exists accepts dir" \
-    "${tmp_dir}" \
-    "$(run_no_tty "printf '%s\n' '${tmp_dir}' | input::path '' '' exists 1")"
-
-eq "path file accepts file" \
-    "${tmp_file}" \
-    "$(run_no_tty "printf '%s\n' '${tmp_file}' | input::path '' '' file 1")"
-
-eq "path dir accepts dir" \
-    "${tmp_dir}" \
-    "$(run_no_tty "printf '%s\n' '${tmp_dir}' | input::path '' '' dir 1")"
-
-eq "path readable accepts file" \
-    "${tmp_file}" \
-    "$(run_no_tty "printf '%s\n' '${tmp_file}' | input::path '' '' readable 1")"
-
-eq "path writable accepts dir" \
-    "${tmp_dir}" \
-    "$(run_no_tty "printf '%s\n' '${tmp_dir}' | input::path '' '' writable 1")"
-
-eq "path executable accepts executable" \
-    "${tmp_exec}" \
-    "$(run_no_tty "printf '%s\n' '${tmp_exec}' | input::path '' '' executable 1")"
-
-eq "path supports file with spaces" \
-    "${tmp_space_file}" \
-    "$(run_no_tty "printf '%s\n' '${tmp_space_file}' | input::path '' '' file 1")"
-
-eq "path supports dir with spaces" \
-    "${tmp_space_dir}" \
-    "$(run_no_tty "printf '%s\n' '${tmp_space_dir}' | input::path '' '' dir 1")"
-
-eq "path empty input uses valid default" \
-    "${tmp_file}" \
-    "$(run_no_tty "printf '\n' | input::path '' '${tmp_file}' file 1")"
-
-eq "path retries then success" \
-    "${tmp_file}" \
-    "$(run_no_tty "printf '%s\n%s\n' '${tmp_missing}' '${tmp_file}' | input::path '' '' file 2")"
-
-no "path invalid mode fails" \
-    input::path "" "" bad 1
-
-no "path empty fails" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"\n\" | input::path \"\" \"\" any 1 >/dev/null" _ "$1" 2>/dev/null' _ "${TARGET}"
-
-no "path file rejects missing" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"%s\n\" \"\$2\" | input::path \"\" \"\" file 1 >/dev/null" _ "$1" "$2" 2>/dev/null' _ "${TARGET}" "${tmp_missing}"
-
-no "path file rejects dir" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"%s\n\" \"\$2\" | input::path \"\" \"\" file 1 >/dev/null" _ "$1" "$2" 2>/dev/null' _ "${TARGET}" "${tmp_dir}"
-
-no "path dir rejects file" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"%s\n\" \"\$2\" | input::path \"\" \"\" dir 1 >/dev/null" _ "$1" "$2" 2>/dev/null' _ "${TARGET}" "${tmp_file}"
-
-no "path exists rejects missing" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"%s\n\" \"\$2\" | input::path \"\" \"\" exists 1 >/dev/null" _ "$1" "$2" 2>/dev/null' _ "${TARGET}" "${tmp_missing}"
-
-no "path executable rejects normal file" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"%s\n\" \"\$2\" | input::path \"\" \"\" executable 1 >/dev/null" _ "$1" "$2" 2>/dev/null' _ "${TARGET}" "${tmp_file}"
-
-eq "file wrapper accepts file" \
-    "${tmp_file}" \
-    "$(run_no_tty "printf '%s\n' '${tmp_file}' | input::file '' '' 1")"
-
-eq "file wrapper supports default" \
-    "${tmp_file}" \
-    "$(run_no_tty "printf '\n' | input::file '' '${tmp_file}' 1")"
-
-eq "file wrapper retries then success" \
-    "${tmp_file}" \
-    "$(run_no_tty "printf '%s\n%s\n' '${tmp_missing}' '${tmp_file}' | input::file '' '' 2")"
-
-no "file wrapper rejects dir" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"%s\n\" \"\$2\" | input::file \"\" \"\" 1 >/dev/null" _ "$1" "$2" 2>/dev/null' _ "${TARGET}" "${tmp_dir}"
-
-no "file wrapper rejects missing" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"%s\n\" \"\$2\" | input::file \"\" \"\" 1 >/dev/null" _ "$1" "$2" 2>/dev/null' _ "${TARGET}" "${tmp_missing}"
-
-eq "dir wrapper accepts dir" \
-    "${tmp_dir}" \
-    "$(run_no_tty "printf '%s\n' '${tmp_dir}' | input::dir '' '' 1")"
-
-eq "dir wrapper supports default" \
-    "${tmp_dir}" \
-    "$(run_no_tty "printf '\n' | input::dir '' '${tmp_dir}' 1")"
-
-eq "dir wrapper retries then success" \
-    "${tmp_dir}" \
-    "$(run_no_tty "printf '%s\n%s\n' '${tmp_missing}' '${tmp_dir}' | input::dir '' '' 2")"
-
-no "dir wrapper rejects file" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"%s\n\" \"\$2\" | input::dir \"\" \"\" 1 >/dev/null" _ "$1" "$2" 2>/dev/null' _ "${TARGET}" "${tmp_file}"
-
-no "dir wrapper rejects missing" \
-    bash -c 'source "$1"; setsid bash -c "source \"\$1\"; printf \"%s\n\" \"\$2\" | input::dir \"\" \"\" 1 >/dev/null" _ "$1" "$2" 2>/dev/null' _ "${TARGET}" "${tmp_missing}"
-
-rm -rf "${tmp_dir}"
-
-echo
-echo "== result =="
-echo "pass: ${pass}"
-echo "fail: ${fail}"
+printf '\npass: %s\n' "${pass}"
+printf 'fail: %s\n' "${fail}"
 
 (( fail == 0 ))
