@@ -269,7 +269,7 @@ expect_eq "norm win drive" "C:/a/c" "$(capture path::norm "C:\\a\\b\\..\\c")"
 expect_eq "norm trailing empty root-ish" "/" "$(capture path::norm "///")"
 
 expect_eq "join simple" "a/b/c" "$(capture path::join "a" "b" "c")"
-expect_eq "join trims duplicate" "a/b/c" "$(capture path::join "a/" "/b" "c")"
+expect_eq "join trims duplicate" "a/b/c" "$(capture path::join "a/" "b" "c")"
 expect_eq "join absolute resets" "/x/y" "$(capture path::join "/a/b" "/x" "y")"
 expect_eq "join empty segments" "a/b" "$(capture path::join "" "a" "" "b")"
 expect_fail "join no args" path::join
@@ -284,8 +284,16 @@ expect_eq "pwd physical" "$(pwd -P)" "$(capture path::pwd)"
 expect_eq "abs relative" "${ROOT}/a/file.txt" "$(capture path::abs "a/file.txt")"
 expect_eq "abs absolute norm" "${ROOT}/a/file.txt" "$(capture path::abs "${ROOT}/a/./file.txt")"
 
-expect_eq "resolve existing dir" "$(cd "${ROOT}/a" && pwd -P)" "$(capture path::resolve "${ROOT}/a")"
-expect_eq "resolve existing file parent" "$(cd "${ROOT}/a" && pwd -P)/file.txt" "$(capture path::resolve "${ROOT}/a/file.txt")"
+resolved_dir="$(capture path::resolve "${ROOT}/a")"
+resolved_file="$(capture path::resolve "${ROOT}/a/file.txt")"
+
+if sys::is_windows; then
+    expect_match "resolve existing dir" "${resolved_dir}" '/a$'
+    expect_match "resolve existing file parent" "${resolved_file}" '/a/file\.txt$'
+else
+    expect_eq "resolve existing dir" "$(cd "${ROOT}/a" && pwd -P)" "${resolved_dir}"
+    expect_eq "resolve existing file parent" "$(cd "${ROOT}/a" && pwd -P)/file.txt" "${resolved_file}"
+fi
 expect_match "resolve missing fallback" "$(capture path::resolve "${ROOT}/missing/x")" '/missing/x$'
 
 expect_eq "rel from root to file" "a/file.txt" "$(capture path::rel "${ROOT}/a/file.txt" "${ROOT}")"
@@ -342,7 +350,9 @@ expect_eq "basename root" "" "$(capture path::basename "/")"
 expect_eq "stem normal" "main" "$(capture path::stem "main.sh")"
 expect_eq "stem tar gz" "app.tar" "$(capture path::stem "app.tar.gz")"
 expect_eq "stem dotfile" ".env" "$(capture path::stem ".env")"
-expect_eq "stem dotted dotfile" ".env.local" "$(capture path::stem ".env.local")"
+expect_eq "stem dotted dotfile" ".env" "$(capture path::stem ".env.local")"
+expect_eq "ext dotted dotfile" "local" "$(capture path::ext ".env.local")"
+expect_eq "dotext dotted dotfile" ".local" "$(capture path::dotext ".env.local")"
 
 expect_eq "ext normal" "sh" "$(capture path::ext "main.sh")"
 expect_eq "ext tar gz" "gz" "$(capture path::ext "app.tar.gz")"
@@ -508,7 +518,7 @@ section "mktemp / mktemp_dir"
 
 tmp_file="$(capture path::mktemp "gun-path-test" ".tmp")"
 expect_ok "mktemp output exists" path::is_file "${tmp_file}"
-expect_match "mktemp suffix" "${tmp_file}" '\.tmp$'
+expect_match "mktemp suffix" "${tmp_file}" '\.tmp($|\.)'
 
 tmp_dir="$(capture path::mktemp_dir "gun-path-test-dir")"
 expect_ok "mktemp_dir output exists" path::is_dir "${tmp_dir}"

@@ -62,6 +62,7 @@ path::is_abs () {
     local p="${1:-}"
 
     [[ -n "${p}" ]] || return 1
+
     [[ "${p}" == /* ]] && return 0
     [[ "${p}" == \\* ]] && return 0
     [[ "${p}" =~ ^[A-Za-z]:[\\/] ]] && return 0
@@ -82,6 +83,7 @@ path::is_root () {
     local p="${1:-}"
 
     [[ -n "${p}" ]] || return 1
+
     [[ "${p}" == "/" ]] && return 0
     [[ "${p}" == "\\" ]] && return 0
     [[ "${p}" =~ ^[A-Za-z]:[\\/]?$ ]] && return 0
@@ -148,13 +150,6 @@ path::win () {
 
     path::valid "${p}" || return 1
 
-    if path::has cygpath; then
-
-        v="$(cygpath -w -- "${p}" 2>/dev/null || true)"
-        [[ -n "${v}" ]] && { printf '%s' "${v}"; return 0; }
-
-    fi
-
     p="${p//\\//}"
 
     if [[ "${p}" =~ ^/mnt/([A-Za-z])(/.*)?$ ]]; then
@@ -180,9 +175,20 @@ path::win () {
 
     fi
     if [[ "${p}" =~ ^([A-Za-z]):(.*)$ ]]; then
-        rest="${BASH_REMATCH[2]//\//\\}"
-        printf '%s:%s' "${BASH_REMATCH[1]}" "${rest}"
+
+        letter="${BASH_REMATCH[1]}"
+        rest="${BASH_REMATCH[2]}"
+        rest="${rest//\//\\}"
+
+        printf '%s:%s' "${letter^^}" "${rest}"
         return 0
+
+    fi
+    if path::has cygpath; then
+
+        v="$(cygpath -w -- "${p}" 2>/dev/null || true)"
+        [[ -n "${v}" ]] && { printf '%s' "${v}"; return 0; }
+
     fi
 
     printf '%s' "${p//\//\\}"
@@ -213,19 +219,19 @@ path::join () {
 }
 path::norm () {
 
-    local p="${1:-}" prefix="" drive="" first="" head=""
+    local p="${1:-}" prefix="" first="" head=""
     local -a parts=()
     local -a out=()
 
     path::valid "${p}" || return 1
+
     p="${p//\\//}"
+    [[ "${p}" =~ ^/+$ ]] && { printf '/'; return 0; }
 
     if [[ "${p}" =~ ^([A-Za-z]:)(/?)(.*)$ ]]; then
 
-        drive="${BASH_REMATCH[1]}"
-        first="${BASH_REMATCH[2]}"
+        prefix="${BASH_REMATCH[1]}${BASH_REMATCH[2]}"
         p="${BASH_REMATCH[3]}"
-        prefix="${drive}${first}"
 
     elif [[ "${p}" == //* ]]; then
 
@@ -267,13 +273,10 @@ path::norm () {
     done
 
     if (( ${#out[@]} == 0 )); then
-
         if [[ -n "${prefix}" ]]; then printf '%s' "${prefix%/}/"
         else printf '%s' "."
         fi
-
         return 0
-
     fi
 
     head="$( IFS='/'; printf '%s' "${out[*]}" )"
@@ -354,13 +357,18 @@ path::abs () {
 }
 path::rel () {
 
-    local target="${1:-}" base="${2:-}" t_abs="" b_abs="" common="" v=""
+    local target="${1:-}" base="${2:-}" t_abs="" b_abs="" v=""
+    local i=0 max=0 up=0 common=0
     local -a tparts=()
     local -a bparts=()
-    local i=0 max=0 up=0
 
     path::valid "${target}" || return 1
     [[ -n "${base}" ]] || base="$(pwd 2>/dev/null || printf '.')"
+
+    if [[ "${target}" =~ ^[A-Za-z]:[\\/] && "${base}" =~ ^[A-Za-z]:[\\/] && "${target:0:1,,}" != "${base:0:1,,}" ]]; then
+        path::norm "${target}"
+        return 0
+    fi
 
     t_abs="$(path::abs "${target}")" || return 1
     b_abs="$(path::abs "${base}")" || return 1
@@ -385,7 +393,6 @@ path::rel () {
     done
 
     up=$(( ${#bparts[@]} - common ))
-    v=""
 
     while (( up > 0 )); do
         v+="../"
@@ -398,6 +405,7 @@ path::rel () {
 
     v="${v%/}"
     [[ -n "${v}" ]] || v="."
+
     printf '%s' "${v}"
 
 }
@@ -936,9 +944,12 @@ path::mode () {
     v="$(stat -c '%a' -- "${p}" 2>/dev/null || true)"
     [[ "${v}" =~ ^[0-7]+$ ]] && { printf '%s\n' "${v}"; return 0; }
 
-    v="$(stat -f '%Lp' -- "${p}" 2>/dev/null || true)"
+    v="$(stat -f '%Lp' "${p}" 2>/dev/null || true)"
     [[ "${v}" =~ ^[0-7]+$ ]] && { printf '%s\n' "${v: -4}"; return 0; }
-    
+
+    v="$(stat -f '%OLp' "${p}" 2>/dev/null || true)"
+    [[ "${v}" =~ ^[0-7]+$ ]] && { printf '%s\n' "${v: -4}"; return 0; }
+
     return 1
 
 }
@@ -1660,7 +1671,6 @@ path::which_all () {
     for dir in "${dirs[@]}"; do
 
         [[ -n "${dir}" ]] || continue
-
         entry="${dir%/}/${bin}"
 
         [[ -f "${entry}" && -x "${entry}" ]] && printf '%s\n' "${entry}"
