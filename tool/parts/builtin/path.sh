@@ -1,9 +1,5 @@
+# shellcheck shell=bash
 
-path::has () {
-
-    command -v "${1:-}" >/dev/null 2>&1
-
-}
 path::valid () {
 
     local p="${1:-}"
@@ -117,14 +113,16 @@ path::posix () {
 
     path::valid "${p}" || return 1
 
-    if path::has cygpath; then
+    [[ "${p}" =~ ^[A-Za-z]:([^\\/].*)?$ ]] && return 1
+
+    if sys::has cygpath; then
         v="$(cygpath -u -- "${p}" 2>/dev/null || true)"
         [[ -n "${v}" ]] && { printf '%s' "${v}"; return 0; }
     fi
 
     p="${p//\\//}"
 
-    if [[ "${p}" =~ ^([A-Za-z]):(/?)(.*)$ ]]; then
+    if [[ "${p}" =~ ^([A-Za-z]):/(.*)$ ]]; then
 
         letter="${BASH_REMATCH[1]}"
         letter="${letter,,}"
@@ -133,7 +131,7 @@ path::posix () {
         else printf '/%s' "${letter}"
         fi
 
-        [[ -n "${BASH_REMATCH[3]}" ]] && printf '/%s' "${BASH_REMATCH[3]}"
+        [[ -n "${BASH_REMATCH[2]}" ]] && printf '/%s' "${BASH_REMATCH[2]}"
         return 0
 
     fi
@@ -146,6 +144,13 @@ path::win () {
     local p="${1:-}" v="" letter="" rest=""
 
     path::valid "${p}" || return 1
+
+    if sys::has cygpath; then
+
+        v="$(cygpath -w -- "${p}" 2>/dev/null || true)"
+        [[ -n "${v}" ]] && { printf '%s' "${v}"; return 0; }
+
+    fi
 
     p="${p//\\//}"
 
@@ -160,7 +165,7 @@ path::win () {
         return 0
 
     fi
-    if [[ "${p}" =~ ^/([A-Za-z])(/.*)?$ ]]; then
+    if sys::is_windows && [[ "${p}" =~ ^/([A-Za-z])(/.*)?$ ]]; then
 
         letter="${BASH_REMATCH[1]}"
         letter="${letter^^}"
@@ -181,37 +186,8 @@ path::win () {
         return 0
 
     fi
-    if path::has cygpath; then
-
-        v="$(cygpath -w -- "${p}" 2>/dev/null || true)"
-        [[ -n "${v}" ]] && { printf '%s' "${v}"; return 0; }
-
-    fi
 
     printf '%s' "${p//\//\\}"
-
-}
-path::join () {
-
-    local acc="" seg="" sep="/" first=1
-
-    (( $# > 0 )) || return 1
-
-    for seg in "$@"; do
-
-        [[ -n "${seg}" ]] || continue
-        seg="${seg//\\//}"
-
-        if (( first )); then acc="${seg}"; first=0
-        elif path::is_abs "${seg}"; then acc="${seg}"
-        elif [[ "${acc}" == */ || "${acc}" == *\\ ]]; then acc="${acc}${seg}"
-        else acc="${acc}${sep}${seg}"
-        fi
-
-    done
-
-    [[ -n "${acc}" ]] || acc="."
-    path::norm "${acc}"
 
 }
 path::norm () {
@@ -270,10 +246,14 @@ path::norm () {
     done
 
     if (( ${#out[@]} == 0 )); then
-        if [[ -n "${prefix}" ]]; then printf '%s' "${prefix%/}/"
+
+        if [[ "${prefix}" == */ ]]; then printf '%s' "${prefix}"
+        elif [[ -n "${prefix}" ]]; then printf '%s' "${prefix}"
         else printf '%s' "."
         fi
+
         return 0
+
     fi
 
     head="$( IFS='/'; printf '%s' "${out[*]}" )"
@@ -283,13 +263,36 @@ path::norm () {
     fi
 
 }
+path::join () {
+
+    local acc="" seg="" sep="/" first=1
+
+    (( $# > 0 )) || return 1
+
+    for seg in "$@"; do
+
+        [[ -n "${seg}" ]] || continue
+        seg="${seg//\\//}"
+
+        if (( first )); then acc="${seg}"; first=0
+        elif path::is_abs "${seg}"; then acc="${seg}"
+        elif [[ "${acc}" == */ || "${acc}" == *\\ ]]; then acc="${acc}${seg}"
+        else acc="${acc}${sep}${seg}"
+        fi
+
+    done
+
+    [[ -n "${acc}" ]] || acc="."
+    path::norm "${acc}"
+
+}
 path::resolve () {
 
     local p="${1:-}" parent="" base="" v=""
 
     path::valid "${p}" || return 1
 
-    if path::has realpath; then
+    if sys::has realpath; then
 
         v="$(realpath -m -- "${p}" 2>/dev/null)" || true
         [[ -n "${v}" ]] && { printf '%s' "${v}"; return 0; }
@@ -298,7 +301,7 @@ path::resolve () {
         [[ -n "${v}" ]] && { printf '%s' "${v}"; return 0; }
 
     fi
-    if path::has readlink; then
+    if sys::has readlink; then
 
         v="$(readlink -f -- "${p}" 2>/dev/null)" || true
         [[ -n "${v}" ]] && { printf '%s' "${v}"; return 0; }
@@ -333,14 +336,6 @@ path::pwd () {
     pwd -P 2>/dev/null
 
 }
-path::drive () {
-
-    local p="${1:-}"
-
-    [[ "${p}" =~ ^([A-Za-z]):.* ]] || return 1
-    printf '%s:' "${BASH_REMATCH[1]}"
-
-}
 path::abs () {
 
     local p="${1:-}"
@@ -354,7 +349,8 @@ path::abs () {
 }
 path::rel () {
 
-    local target="${1:-}" base="${2:-}" t_abs="" b_abs="" common=0 v="" target_drive="" base_drive="" i=0 max=0 up=0
+    local target="${1:-}" base="${2:-}" t_abs="" b_abs="" common=0 v="" target_drive="" base_drive="" td="" bd="" i=0 max=0 up=0
+
     local -a tparts=()
     local -a bparts=()
 
@@ -375,7 +371,10 @@ path::rel () {
     t_abs="${t_abs//\\//}"
     b_abs="${b_abs//\\//}"
 
-    if [[ "${t_abs}" =~ ^[A-Za-z]: && "${b_abs}" =~ ^[A-Za-z]: && "${t_abs:0:1,,}" != "${b_abs:0:1,,}" ]]; then
+    td="${t_abs:0:1}"
+    bd="${b_abs:0:1}"
+
+    if [[ "${t_abs}" =~ ^[A-Za-z]: && "${b_abs}" =~ ^[A-Za-z]: && "${td,,}" != "${bd,,}" ]]; then
         printf '%s' "${t_abs}"
         return 0
     fi
@@ -406,6 +405,14 @@ path::rel () {
     [[ -n "${v}" ]] || v="."
 
     printf '%s' "${v}"
+
+}
+path::drive () {
+
+    local p="${1:-}"
+
+    [[ "${p}" =~ ^([A-Za-z]):.* ]] || return 1
+    printf '%s:' "${BASH_REMATCH[1]}"
 
 }
 path::expand () {
@@ -444,8 +451,8 @@ path::expand () {
     [[ -n "${user}" ]] || return 1
     [[ "${user}" =~ ^[A-Za-z0-9._-]+$ ]] || return 1
 
-    if path::has getent; then home="$(getent passwd "${user}" 2>/dev/null | awk -F: 'NR==1 {print $6}')"
-    elif sys::is_macos && path::has dscl; then home="$(dscl . -read "/Users/${user}" NFSHomeDirectory 2>/dev/null | awk 'NR==1 {print $2}')"
+    if sys::has getent; then home="$(getent passwd "${user}" 2>/dev/null | awk -F: 'NR==1 {print $6}')"
+    elif sys::is_macos && sys::has dscl; then home="$(dscl . -read "/Users/${user}" NFSHomeDirectory 2>/dev/null | awk 'NR==1 {print $2}')"
     else return 1
     fi
 
@@ -513,7 +520,7 @@ path::depth () {
 }
 path::common () {
 
-    local first="" cur="" i=0
+    local first="" cur="" prefix="" cur_prefix="" p="" head="" i=0
     local -a a=()
     local -a b=()
     local -a out=()
@@ -523,12 +530,48 @@ path::common () {
     first="$(path::abs "${1}")" || return 1
     shift || true
 
-    IFS='/' read -r -a a <<< "${first#/}"
+    p="${first//\\//}"
+
+    if [[ "${p}" =~ ^([A-Za-z]:)(/?)(.*)$ ]]; then
+        prefix="${BASH_REMATCH[1]}${BASH_REMATCH[2]}"
+        p="${BASH_REMATCH[3]}"
+    elif [[ "${p}" == //* ]]; then
+        p="${p#//}"
+        head="${p%%/*}"
+        p="${p#"${head}"}"
+        p="${p#/}"
+        prefix="//${head}/"
+    elif [[ "${p}" == /* ]]; then
+        prefix="/"
+        p="${p#/}"
+    fi
+
+    [[ -z "${p}" ]] || IFS='/' read -r -a a <<< "${p}"
 
     for cur in "$@"; do
 
         cur="$(path::abs "${cur}")" || return 1
-        IFS='/' read -r -a b <<< "${cur#/}"
+        p="${cur//\\//}"
+        cur_prefix=""
+
+        if [[ "${p}" =~ ^([A-Za-z]:)(/?)(.*)$ ]]; then
+            cur_prefix="${BASH_REMATCH[1]}${BASH_REMATCH[2]}"
+            p="${BASH_REMATCH[3]}"
+        elif [[ "${p}" == //* ]]; then
+            p="${p#//}"
+            head="${p%%/*}"
+            p="${p#"${head}"}"
+            p="${p#/}"
+            cur_prefix="//${head}/"
+        elif [[ "${p}" == /* ]]; then
+            cur_prefix="/"
+            p="${p#/}"
+        fi
+
+        [[ "${prefix,,}" == "${cur_prefix,,}" ]] || return 1
+
+        b=()
+        [[ -z "${p}" ]] || IFS='/' read -r -a b <<< "${p}"
 
         out=()
         i=0
@@ -543,17 +586,37 @@ path::common () {
 
     done
 
-    if (( ${#a[@]} == 0 )); then printf '/'
-    else printf '/%s' "$( IFS='/'; printf '%s' "${a[*]}" )"
+    if (( ${#a[@]} == 0 )); then
+        [[ -n "${prefix}" ]] && printf '%s' "${prefix}" || printf '.'
+    elif [[ -n "${prefix}" ]]; then
+        printf '%s%s' "${prefix}" "$( IFS='/'; printf '%s' "${a[*]}" )"
+    else
+        printf '%s' "$( IFS='/'; printf '%s' "${a[*]}" )"
     fi
 
 }
 path::dirname () {
 
-    local p="${1:-}" dir=""
+    local p="${1:-}" dir="" drive="" rest=""
 
     path::valid "${p}" || return 1
     p="${p//\\//}"
+
+    if [[ "${p}" =~ ^([A-Za-z]:)(.*)$ ]]; then
+
+        drive="${BASH_REMATCH[1]}"
+        rest="${BASH_REMATCH[2]}"
+
+        [[ -n "${rest}" ]] || { printf '%s' "${drive}"; return 0; }
+        [[ "${rest}" == */* ]] || { printf '%s' "${drive}"; return 0; }
+
+        dir="${rest%/*}"
+        [[ -n "${dir}" ]] || dir="/"
+
+        printf '%s%s' "${drive}" "${dir}"
+        return 0
+
+    fi
 
     if [[ "${p}" != */* ]]; then printf '.'; return 0; fi
 
@@ -579,35 +642,41 @@ path::basename () {
 }
 path::stem () {
 
-    local path_base="" path_stem=""
+    local path_base="" lead="" rest=""
 
     path_base="$(path::basename "${1:-}")" || return 1
 
-    if [[ "${path_base}" != *.* || "${path_base}" == .* && "${path_base}" != *.*.* ]]; then printf '%s' "${path_base}"
-    else path_stem="${path_base%.*}"; printf '%s' "${path_stem}"
-    fi
+    lead="${path_base%%[!.]*}"
+    rest="${path_base#"${lead}"}"
+
+    [[ "${rest}" == *.* ]] && { printf '%s' "${path_base%.*}"; return 0; }
+    printf '%s' "${path_base}"
 
 }
 path::ext () {
 
-    local path_base=""
+    local path_base="" lead="" rest=""
 
     path_base="$(path::basename "${1:-}")" || return 1
 
-    if [[ "${path_base}" != *.* || "${path_base}" == .* && "${path_base}" != *.*.* ]]; then printf ''
-    else printf '%s' "${path_base##*.}"
-    fi
+    lead="${path_base%%[!.]*}"
+    rest="${path_base#"${lead}"}"
+
+    [[ "${rest}" == *.* ]] && { printf '%s' "${path_base##*.}"; return 0; }
+    printf ''
 
 }
 path::dotext () {
 
-    local path_base=""
+    local path_base="" lead="" rest=""
 
     path_base="$(path::basename "${1:-}")" || return 1
 
-    if [[ "${path_base}" != *.* || "${path_base}" == .* && "${path_base}" != *.*.* ]]; then printf ''
-    else printf '.%s' "${path_base##*.}"
-    fi
+    lead="${path_base%%[!.]*}"
+    rest="${path_base#"${lead}"}"
+
+    [[ "${rest}" == *.* ]] && { printf '.%s' "${path_base##*.}"; return 0; }
+    printf ''
 
 }
 
@@ -656,12 +725,12 @@ path::chext () {
     fi
 
 }
-path::chmode () {
+path::chmod () {
 
     local p="${1:-}" mode="${2:-}"
 
     path::valid "${p}" || return 1
-    path::has chmod || return 1
+    sys::has chmod || return 1
 
     [[ -n "${mode}" ]] || return 1
     [[ -e "${p}" || -L "${p}" ]] || return 1
@@ -826,7 +895,7 @@ path::size () {
     path::valid "${p}" || return 1
     [[ -e "${p}" || -L "${p}" ]] || return 1
 
-    if [[ -f "${p}" ]] && path::has stat; then
+    if [[ -f "${p}" ]] && sys::has stat; then
 
         v="$(stat -c '%s' -- "${p}" 2>/dev/null || true)"
         [[ "${v}" =~ ^[0-9]+$ ]] && { printf '%s\n' "${v}"; return 0; }
@@ -835,13 +904,13 @@ path::size () {
         [[ "${v}" =~ ^[0-9]+$ ]] && { printf '%s\n' "${v}"; return 0; }
 
     fi
-    if path::has wc && [[ -f "${p}" ]]; then
+    if sys::has wc && [[ -f "${p}" ]]; then
 
         v="$(wc -c < "${p}" 2>/dev/null | tr -d '[:space:]' || true)"
         [[ "${v}" =~ ^[0-9]+$ ]] && { printf '%s\n' "${v}"; return 0; }
 
     fi
-    if [[ -d "${p}" ]] && path::has du; then
+    if [[ -d "${p}" ]] && sys::has du; then
 
         v="$(du -sk -- "${p}" 2>/dev/null | awk 'NR==1 {print $1}' | head -n 1)"
         [[ "${v}" =~ ^[0-9]+$ ]] && { printf '%s\n' "$(( v * 1024 ))"; return 0; }
@@ -856,7 +925,7 @@ path::mtime () {
     local p="${1:-}" v=""
 
     path::valid "${p}" || return 1
-    path::has stat || return 1
+    sys::has stat || return 1
 
     [[ -e "${p}" || -L "${p}" ]] || return 1
 
@@ -874,7 +943,7 @@ path::atime () {
     local p="${1:-}" v=""
 
     path::valid "${p}" || return 1
-    path::has stat || return 1
+    sys::has stat || return 1
 
     [[ -e "${p}" || -L "${p}" ]] || return 1
 
@@ -892,7 +961,7 @@ path::ctime () {
     local p="${1:-}" v=""
 
     path::valid "${p}" || return 1
-    path::has stat || return 1
+    sys::has stat || return 1
 
     [[ -e "${p}" || -L "${p}" ]] || return 1
 
@@ -924,7 +993,7 @@ path::owner () {
     local p="${1:-}" v=""
 
     path::valid "${p}" || return 1
-    path::has stat || return 1
+    sys::has stat || return 1
 
     [[ -e "${p}" || -L "${p}" ]] || return 1
 
@@ -942,7 +1011,7 @@ path::group () {
     local p="${1:-}" v=""
 
     path::valid "${p}" || return 1
-    path::has stat || return 1
+    sys::has stat || return 1
 
     [[ -e "${p}" || -L "${p}" ]] || return 1
 
@@ -960,7 +1029,7 @@ path::mode () {
     local p="${1:-}" v=""
 
     path::valid "${p}" || return 1
-    path::has stat || return 1
+    sys::has stat || return 1
 
     [[ -e "${p}" || -L "${p}" ]] || return 1
 
@@ -978,7 +1047,7 @@ path::inode () {
     local p="${1:-}" v=""
 
     path::valid "${p}" || return 1
-    path::has stat || return 1
+    sys::has stat || return 1
 
     [[ -e "${p}" || -L "${p}" ]] || return 1
 
@@ -1319,7 +1388,7 @@ path::desktop_dir () {
     home="$(path::home_dir 2>/dev/null || true)"
     [[ -n "${home}" ]] || return 1
 
-    if ( sys::is_linux || sys::is_wsl ) && path::has xdg-user-dir; then
+    if ( sys::is_linux || sys::is_wsl ) && sys::has xdg-user-dir; then
 
         v="$(xdg-user-dir DESKTOP 2>/dev/null || true)"
         [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
@@ -1336,7 +1405,7 @@ path::downloads_dir () {
     home="$(path::home_dir 2>/dev/null || true)"
     [[ -n "${home}" ]] || return 1
 
-    if ( sys::is_linux || sys::is_wsl ) && path::has xdg-user-dir; then
+    if ( sys::is_linux || sys::is_wsl ) && sys::has xdg-user-dir; then
 
         v="$(xdg-user-dir DOWNLOAD 2>/dev/null || true)"
         [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
@@ -1353,7 +1422,7 @@ path::documents_dir () {
     home="$(path::home_dir 2>/dev/null || true)"
     [[ -n "${home}" ]] || return 1
 
-    if ( sys::is_linux || sys::is_wsl ) && path::has xdg-user-dir; then
+    if ( sys::is_linux || sys::is_wsl ) && sys::has xdg-user-dir; then
 
         v="$(xdg-user-dir DOCUMENTS 2>/dev/null || true)"
         [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
@@ -1370,7 +1439,7 @@ path::pictures_dir () {
     home="$(path::home_dir 2>/dev/null || true)"
     [[ -n "${home}" ]] || return 1
 
-    if ( sys::is_linux || sys::is_wsl ) && path::has xdg-user-dir; then
+    if ( sys::is_linux || sys::is_wsl ) && sys::has xdg-user-dir; then
 
         v="$(xdg-user-dir PICTURES 2>/dev/null || true)"
         [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
@@ -1387,7 +1456,7 @@ path::music_dir () {
     home="$(path::home_dir 2>/dev/null || true)"
     [[ -n "${home}" ]] || return 1
 
-    if ( sys::is_linux || sys::is_wsl ) && path::has xdg-user-dir; then
+    if ( sys::is_linux || sys::is_wsl ) && sys::has xdg-user-dir; then
 
         v="$(xdg-user-dir MUSIC 2>/dev/null || true)"
         [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
@@ -1404,7 +1473,7 @@ path::videos_dir () {
     home="$(path::home_dir 2>/dev/null || true)"
     [[ -n "${home}" ]] || return 1
 
-    if ( sys::is_linux || sys::is_wsl ) && path::has xdg-user-dir; then
+    if ( sys::is_linux || sys::is_wsl ) && sys::has xdg-user-dir; then
 
         v="$(xdg-user-dir VIDEOS 2>/dev/null || true)"
         [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
@@ -1421,7 +1490,7 @@ path::public_dir () {
     home="$(path::home_dir 2>/dev/null || true)"
     [[ -n "${home}" ]] || return 1
 
-    if ( sys::is_linux || sys::is_wsl ) && path::has xdg-user-dir; then
+    if ( sys::is_linux || sys::is_wsl ) && sys::has xdg-user-dir; then
 
         v="$(xdg-user-dir PUBLICSHARE 2>/dev/null || true)"
         [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
@@ -1440,7 +1509,7 @@ path::templates_dir () {
     home="$(path::home_dir 2>/dev/null || true)"
     [[ -n "${home}" ]] || return 1
 
-    if ( sys::is_linux || sys::is_wsl ) && path::has xdg-user-dir; then
+    if ( sys::is_linux || sys::is_wsl ) && sys::has xdg-user-dir; then
 
         v="$(xdg-user-dir TEMPLATES 2>/dev/null || true)"
         [[ -n "${v}" ]] && { printf '%s\n' "${v}"; return 0; }
@@ -1451,15 +1520,32 @@ path::templates_dir () {
 
 }
 
+path::make () {
+
+    local p="${1:-}" mode="${2:-}"
+
+    path::valid "${p}" || return 1
+
+    [[ -d "${p}" && -z "${mode}" ]] && return 0
+    [[ -d "${p}" ]] && { chmod "${mode}" "${p}" 2>/dev/null || return 1; return 0; }
+    [[ -e "${p}" || -L "${p}" ]] && return 1
+
+    mkdir -p -- "${p}" 2>/dev/null || mkdir -p "${p}" 2>/dev/null || return 1
+    [[ -n "${mode}" ]] && { chmod "${mode}" "${p}" 2>/dev/null || return 1; }
+
+    return 0
+
+}
 path::touch () {
 
     local p="${1:-}" parent=""
 
     path::valid "${p}" || return 1
+
     parent="$(path::dirname "${p}")"
     [[ -d "${parent}" ]] || mkdir -p -- "${parent}" 2>/dev/null || return 1
 
-    path::has touch && touch -- "${p}" 2>/dev/null && return 0
+    sys::has touch && touch -- "${p}" 2>/dev/null && return 0
     : > "${p}" 2>/dev/null
 
 }
@@ -1484,6 +1570,33 @@ path::remove () {
     rm -f -- "${p}" 2>/dev/null
 
 }
+path::clear () {
+
+    local p="${1:-}" entry=""
+
+    path::exists "${p}" || return 1
+    path::is_root "${p}" && return 1
+
+    [[ -d "${p}" || -f "${p}" ]] || return 1
+
+    if [[ -f "${p}" ]]; then
+
+        : > "${p}" 2>/dev/null || return 1
+
+    else
+
+        for entry in "${p%/}"/* "${p%/}"/.[!.]* "${p%/}"/..?*; do
+
+            [[ -e "${entry}" || -L "${entry}" ]] || continue
+            rm -rf -- "${entry}" 2>/dev/null || rm -rf "${entry}" 2>/dev/null || return 1
+
+        done
+
+    fi
+
+    return 0
+
+}
 path::rename () {
 
     local from="${1:-}" to="${2:-}"
@@ -1492,7 +1605,7 @@ path::rename () {
     path::valid "${to}" || return 1
 
     [[ -e "${from}" || -L "${from}" ]] || return 1
-    path::has mv || return 1
+    sys::has mv || return 1
 
     mv -f -- "${from}" "${to}" 2>/dev/null
 
@@ -1510,13 +1623,13 @@ path::copy () {
     path::valid "${to}" || return 1
 
     [[ -e "${from}" || -L "${from}" ]] || return 1
-    path::has cp || return 1
+    sys::has cp || return 1
 
     parent="$(path::dirname "${to}")"
     [[ -d "${parent}" ]] || mkdir -p -- "${parent}" 2>/dev/null || return 1
 
-    if [[ -d "${from}" ]]; then cp -R -- "${from}" "${to}" 2>/dev/null
-    else cp -f -- "${from}" "${to}" 2>/dev/null
+    if [[ -d "${from}" && ! -L "${from}" ]]; then cp -a -- "${from}" "${to}" 2>/dev/null || cp -R -p -- "${from}" "${to}" 2>/dev/null
+    else cp -P -p -f -- "${from}" "${to}" 2>/dev/null || cp -p -f -- "${from}" "${to}" 2>/dev/null || cp -f -- "${from}" "${to}" 2>/dev/null
     fi
 
 }
@@ -1528,7 +1641,7 @@ path::link () {
     path::valid "${to}" || return 1
 
     [[ -e "${from}" ]] || return 1
-    path::has ln || return 1
+    sys::has ln || return 1
 
     ln -f -- "${from}" "${to}" 2>/dev/null
 
@@ -1543,18 +1656,18 @@ path::symlink () {
     parent="$(path::dirname "${to}")"
     [[ -d "${parent}" ]] || mkdir -p -- "${parent}" 2>/dev/null || return 1
 
-    if path::has ln; then
+    if sys::has ln; then
 
         ln -sfn -- "${from}" "${to}" 2>/dev/null && return 0
         ln -sf -- "${from}" "${to}" 2>/dev/null && return 0
 
     fi
-    if sys::is_windows && path::has cmd.exe; then
+    if sys::is_windows && sys::has cmd.exe; then
 
         winfrom="${from}"
         winto="${to}"
 
-        if path::has cygpath; then
+        if sys::has cygpath; then
             winfrom="$(cygpath -aw -- "${from}" 2>/dev/null || printf '%s' "${from}")"
             winto="$(cygpath -aw -- "${to}" 2>/dev/null || printf '%s' "${to}")"
         else
@@ -1580,13 +1693,13 @@ path::readlink () {
     path::valid "${p}" || return 1
     [[ -L "${p}" ]] || return 1
 
-    if path::has readlink; then
+    if sys::has readlink; then
 
         v="$(readlink -- "${p}" 2>/dev/null || true)"
         [[ -n "${v}" ]] && { printf '%s' "${v}"; return 0; }
 
     fi
-    if path::has stat; then
+    if sys::has stat; then
 
         v="$(stat -c '%N' -- "${p}" 2>/dev/null || true)"
         [[ "${v}" =~ ' -> '\'(.*)\'$ ]] && { printf '%s' "${BASH_REMATCH[1]}"; return 0; }
@@ -1599,7 +1712,6 @@ path::readlink () {
     return 1
 
 }
-
 path::mktemp () {
 
     local prefix="${1:-tmp}" suffix="${2:-}" tmp="" name="" v=""
@@ -1607,7 +1719,7 @@ path::mktemp () {
     tmp="$(path::tmp_dir 2>/dev/null || true)"
     [[ -n "${tmp}" ]] || return 1
 
-    if path::has mktemp; then
+    if sys::has mktemp; then
 
         if [[ -n "${suffix}" ]]; then
 
@@ -1632,8 +1744,7 @@ path::mktemp () {
     name="${prefix}.$$.${RANDOM}${RANDOM}${suffix}"
     v="${tmp%/}/${name}"
 
-    [[ -e "${v}" || -L "${v}" ]] && return 1
-    : > "${v}" 2>/dev/null || return 1
+    ( set -C; : > "${v}" ) 2>/dev/null || return 1
 
     printf '%s' "${v}"
 
@@ -1645,7 +1756,7 @@ path::mktemp_dir () {
     tmp="$(path::tmp_dir 2>/dev/null || true)"
     [[ -n "${tmp}" ]] || return 1
 
-    if path::has mktemp; then
+    if sys::has mktemp; then
 
         v="$(mktemp -d "${tmp%/}/${prefix}.XXXXXXXX" 2>/dev/null || true)"
         [[ -n "${v}" ]] && { printf '%s' "${v}"; return 0; }
@@ -1664,6 +1775,7 @@ path::mktemp_dir () {
     printf '%s' "${v}"
 
 }
+
 path::which () {
 
     local bin="${1:-}" v=""
@@ -1691,8 +1803,797 @@ path::which_all () {
 
         [[ -n "${dir}" ]] || continue
         entry="${dir%/}/${bin}"
-
         [[ -f "${entry}" && -x "${entry}" ]] && printf '%s\n' "${entry}"
+
+    done
+
+}
+path::archive () {
+
+    local src="" archive_out="" format="" arg="" parent="" name="" out_parent="" pat="" lower=""
+
+    local -a exclude=()
+    local -a positional=()
+    local -a args=()
+    local -a fallback=()
+
+    for arg in "$@"; do
+
+        case "${arg}" in
+            --exclude=*) exclude+=( "${arg#--exclude=}" ) ;;
+            --format=*)  format="${arg#--format=}" ;;
+            --) ;;
+            -*) return 1 ;;
+            *) positional+=( "${arg}" ) ;;
+        esac
+
+    done
+
+    src="${positional[0]:-}"
+    archive_out="${positional[1]:-}"
+
+    path::exists "${src}" || return 1
+
+    if [[ -n "${format}" ]]; then
+
+        case "${format,,}" in
+            zip|rar|7z|tar) format="${format,,}" ;;
+            tgz|gz|tar.gz) format="tar.gz" ;;
+            txz|xz|tar.xz) format="tar.xz" ;;
+            tbz2|bz2|tar.bz2) format="tar.bz2" ;;
+            tzst|zst|tar.zst) format="tar.zst" ;;
+            *) return 1 ;;
+        esac
+
+    fi
+    if [[ -z "${archive_out}" ]]; then
+
+        [[ -n "${format}" ]] || format="tar.gz"
+        archive_out="${src%/}.${format#.}"
+
+    fi
+    if [[ -n "${format}" ]]; then
+
+        archive_out="${archive_out%.tar.zst}"
+        archive_out="${archive_out%.tar.gz}"
+        archive_out="${archive_out%.tar.xz}"
+        archive_out="${archive_out%.tar.bz2}"
+        archive_out="${archive_out%.tgz}"
+        archive_out="${archive_out%.txz}"
+        archive_out="${archive_out%.tbz2}"
+        archive_out="${archive_out%.tzst}"
+        archive_out="${archive_out%.tar}"
+        archive_out="${archive_out%.zip}"
+        archive_out="${archive_out%.rar}"
+        archive_out="${archive_out%.7z}"
+        archive_out="${archive_out}.${format#.}"
+
+    fi
+
+    path::valid "${archive_out}" || return 1
+
+    case "${archive_out}" in
+        /*|[A-Za-z]:*) ;;
+        *) archive_out="${PWD}/${archive_out#./}" ;;
+    esac
+
+    parent="$(path::dirname "${src}")" || return 1
+    name="$(path::basename "${src}")" || return 1
+    out_parent="$(path::dirname "${archive_out}")" || return 1
+
+    [[ -n "${parent}" && -n "${name}" ]] || return 1
+    mkdir -p -- "${out_parent}" 2>/dev/null || mkdir -p "${out_parent}" 2>/dev/null || return 1
+
+    lower="${archive_out,,}"
+
+    case "${lower}" in
+        *.tar.gz|*.tgz)
+
+            sys::has tar || return 1
+            args=( -czf "${archive_out}" )
+
+            for pat in "${exclude[@]}"; do
+                [[ -n "${pat}" ]] && args+=( "--exclude=${pat}" )
+            done
+
+            args+=( -C "${parent}" "${name}" )
+            tar "${args[@]}" 2>/dev/null
+
+        ;;
+        *.tar.bz2|*.tbz2)
+
+            sys::has tar || return 1
+            args=( -cjf "${archive_out}" )
+
+            for pat in "${exclude[@]}"; do
+                [[ -n "${pat}" ]] && args+=( "--exclude=${pat}" )
+            done
+
+            args+=( -C "${parent}" "${name}" )
+            tar "${args[@]}" 2>/dev/null
+
+        ;;
+        *.tar.xz|*.txz)
+
+            sys::has tar || return 1
+            args=( -cJf "${archive_out}" )
+
+            for pat in "${exclude[@]}"; do
+                [[ -n "${pat}" ]] && args+=( "--exclude=${pat}" )
+            done
+
+            args+=( -C "${parent}" "${name}" )
+            tar "${args[@]}" 2>/dev/null
+
+        ;;
+        *.tar.zst|*.tzst)
+
+            sys::has tar || return 1
+
+            args=( --zstd -cf "${archive_out}" )
+
+            for pat in "${exclude[@]}"; do
+                [[ -n "${pat}" ]] && args+=( "--exclude=${pat}" )
+            done
+
+            args+=( -C "${parent}" "${name}" )
+
+            tar "${args[@]}" 2>/dev/null && { printf '%s\n' "${archive_out}"; return 0; }
+
+            sys::has zstd || return 1
+
+            fallback=( -cf - )
+
+            for pat in "${exclude[@]}"; do
+                [[ -n "${pat}" ]] && fallback+=( "--exclude=${pat}" )
+            done
+
+            fallback+=( -C "${parent}" "${name}" )
+
+            (
+                set -o pipefail
+                tar "${fallback[@]}" 2>/dev/null | zstd -T0 -q -o "${archive_out}" >/dev/null 2>&1
+            )
+
+        ;;
+        *.tar)
+
+            sys::has tar || return 1
+            args=( -cf "${archive_out}" )
+
+            for pat in "${exclude[@]}"; do
+                [[ -n "${pat}" ]] && args+=( "--exclude=${pat}" )
+            done
+
+            args+=( -C "${parent}" "${name}" )
+            tar "${args[@]}" 2>/dev/null
+
+        ;;
+        *.zip)
+
+            if sys::has zip; then
+
+                args=( -qr "${archive_out}" "${name}" )
+
+                if (( ${#exclude[@]} > 0 )); then
+
+                    args+=( -x )
+
+                    for pat in "${exclude[@]}"; do
+                        [[ -n "${pat}" ]] && args+=( "${pat}" )
+                    done
+
+                fi
+
+                (
+                    builtin cd -- "${parent}" 2>/dev/null || exit 1
+                    zip "${args[@]}" >/dev/null 2>&1
+                ) || return 1
+
+                printf '%s\n' "${archive_out}"
+                return 0
+
+            fi
+            if sys::has 7z; then
+
+                args=( a -tzip -bd -y "${archive_out}" "${name}" )
+
+                for pat in "${exclude[@]}"; do
+                    [[ -n "${pat}" ]] && args+=( "-xr!${pat}" )
+                done
+
+                (
+                    builtin cd -- "${parent}" 2>/dev/null || exit 1
+                    7z "${args[@]}" >/dev/null 2>&1
+                ) || return 1
+
+                printf '%s\n' "${archive_out}"
+                return 0
+
+            fi
+
+            return 1
+
+        ;;
+        *.rar)
+
+            sys::has rar || return 1
+
+            args=( a -idq -r )
+
+            for pat in "${exclude[@]}"; do
+                [[ -n "${pat}" ]] && args+=( "-x${pat}" )
+            done
+
+            args+=( "${archive_out}" "${name}" )
+
+            (
+                builtin cd -- "${parent}" 2>/dev/null || exit 1
+                rar "${args[@]}" >/dev/null 2>&1
+            )
+
+        ;;
+        *.7z)
+
+            sys::has 7z || return 1
+
+            args=( a -bd -y "${archive_out}" "${name}" )
+
+            for pat in "${exclude[@]}"; do
+                [[ -n "${pat}" ]] && args+=( "-xr!${pat}" )
+            done
+
+            (
+                builtin cd -- "${parent}" 2>/dev/null || exit 1
+                7z "${args[@]}" >/dev/null 2>&1
+            )
+
+        ;;
+        *)
+            return 1
+        ;;
+    esac || return 1
+
+    printf '%s\n' "${archive_out}"
+
+}
+path::backup () {
+
+    local src="${1:-}" backup_out="" stamp="" name=""
+
+    path::exists "${src}" || return 1
+    shift || true
+
+    if (( $# > 0 )) && [[ "${1:-}" != --* ]]; then
+        backup_out="${1:-}"
+        shift || true
+    fi
+
+    stamp="$(date +%Y%m%d-%H%M%S 2>/dev/null)" || return 1
+    name="$(path::basename "${src}")" || return 1
+
+    [[ -n "${backup_out}" ]] || backup_out="${name}.backup.${stamp}.tar.gz"
+
+    path::archive "${src}" "${backup_out}" "$@"
+
+}
+path::strip () {
+
+    local target="${1:-}" n="${2:-1}" tmp_new="" tmp_old="" parent=""
+
+    path::exists "${target}" || return 1
+    path::is_dir "${target}" || return 1
+    path::is_root "${target}" && return 1
+
+    sys::has tar || return 1
+    sys::has mktemp || return 1
+    sys::has mv || return 1
+
+    [[ "${n}" =~ ^[0-9]+$ ]] || return 1
+    (( n > 0 )) || return 0
+
+    target="${target%/}"
+    parent="$(path::dirname "${target}")" || return 1
+
+    tmp_new="$(mktemp -d -- "${parent%/}/.strip.new.XXXXXXXX" 2>/dev/null ||
+        mktemp -d "${parent%/}/.strip.new.XXXXXXXX" 2>/dev/null)" ||
+        return 1
+
+    tmp_old="$(mktemp -d -- "${parent%/}/.strip.old.XXXXXXXX" 2>/dev/null ||
+        mktemp -d "${parent%/}/.strip.old.XXXXXXXX" 2>/dev/null)" ||
+        { rm -rf -- "${tmp_new}" 2>/dev/null; return 1; }
+
+    rmdir -- "${tmp_old}" 2>/dev/null || { rm -rf -- "${tmp_new}" "${tmp_old}" 2>/dev/null; return 1; }
+
+    if ! (
+        set -o pipefail
+        tar -C "${target}" -cf - . 2>/dev/null | tar -C "${tmp_new}" --strip-components="$(( n + 1 ))" -xpf - 2>/dev/null
+    ); then
+        rm -rf -- "${tmp_new}" "${tmp_old}" 2>/dev/null
+        return 1
+    fi
+
+    if ! mv -- "${target}" "${tmp_old}" 2>/dev/null; then
+        rm -rf -- "${tmp_new}" "${tmp_old}" 2>/dev/null
+        return 1
+    fi
+    if ! mv -- "${tmp_new}" "${target}" 2>/dev/null; then
+        mv -- "${tmp_old}" "${target}" 2>/dev/null
+        rm -rf -- "${tmp_new}" "${tmp_old}" 2>/dev/null
+        return 1
+    fi
+
+    rm -rf -- "${tmp_old}" 2>/dev/null
+    return 0
+
+}
+path::extract () {
+
+    local archive="" to="" strip=0 arg="" base="" parent="" pat="" lower=""
+
+    local -a exclude=()
+    local -a positional=()
+    local -a args=()
+    local -a fallback=()
+
+    for arg in "$@"; do
+
+        case "${arg}" in
+            --exclude=*) exclude+=( "${arg#--exclude=}" ) ;;
+            --strip=*)   strip="${arg#--strip=}" ;;
+            --) ;;
+            -*) return 1 ;;
+            *) positional+=( "${arg}" ) ;;
+        esac
+
+    done
+
+    archive="${positional[0]:-}"
+    to="${positional[1]:-}"
+
+    [[ -n "${archive}" && -f "${archive}" ]] || return 1
+    [[ "${strip}" =~ ^[0-9]+$ ]] || return 1
+
+    if [[ -z "${to}" ]]; then
+
+        base="$(path::basename "${archive}")" || return 1
+
+        case "${base,,}" in
+            *.tar.gz|*.tar.bz2|*.tar.xz|*.tar.zst)
+                base="${base%.*}"
+                base="${base%.*}"
+            ;;
+            *.tgz|*.tbz2|*.txz|*.tzst|*.tar|*.zip|*.rar|*.7z)
+                base="${base%.*}"
+            ;;
+        esac
+
+        parent="$(path::dirname "${archive}")" || return 1
+
+        if [[ "${parent}" == "." ]]; then to="${base}"
+        else to="${parent}/${base}"
+        fi
+
+    fi
+
+    path::valid "${to}" || return 1
+    mkdir -p -- "${to}" 2>/dev/null || mkdir -p "${to}" 2>/dev/null || return 1
+
+    lower="${archive,,}"
+
+    case "${lower}" in
+        *.tar.gz|*.tgz)
+
+            sys::has tar || return 1
+            args=( -xzf "${archive}" )
+
+            for pat in "${exclude[@]}"; do
+                [[ -n "${pat}" ]] && args+=( "--exclude=${pat}" )
+            done
+
+            (( strip > 0 )) && args+=( "--strip-components=${strip}" )
+            tar "${args[@]}" -C "${to}" 2>/dev/null
+
+        ;;
+        *.tar.bz2|*.tbz2)
+
+            sys::has tar || return 1
+            args=( -xjf "${archive}" )
+
+            for pat in "${exclude[@]}"; do
+                [[ -n "${pat}" ]] && args+=( "--exclude=${pat}" )
+            done
+
+            (( strip > 0 )) && args+=( "--strip-components=${strip}" )
+            tar "${args[@]}" -C "${to}" 2>/dev/null
+
+        ;;
+        *.tar.xz|*.txz)
+
+            sys::has tar || return 1
+            args=( -xJf "${archive}" )
+
+            for pat in "${exclude[@]}"; do
+                [[ -n "${pat}" ]] && args+=( "--exclude=${pat}" )
+            done
+
+            (( strip > 0 )) && args+=( "--strip-components=${strip}" )
+            tar "${args[@]}" -C "${to}" 2>/dev/null
+
+        ;;
+        *.tar.zst|*.tzst)
+
+            sys::has tar || return 1
+            args=( --zstd -xf "${archive}" )
+
+            for pat in "${exclude[@]}"; do
+                [[ -n "${pat}" ]] && args+=( "--exclude=${pat}" )
+            done
+
+            (( strip > 0 )) && args+=( "--strip-components=${strip}" )
+            tar "${args[@]}" -C "${to}" 2>/dev/null && { printf '%s\n' "${to}"; return 0; }
+
+            sys::has zstd || return 1
+            fallback=( -xf - )
+
+            for pat in "${exclude[@]}"; do
+                [[ -n "${pat}" ]] && fallback+=( "--exclude=${pat}" )
+            done
+
+            (( strip > 0 )) && fallback+=( "--strip-components=${strip}" )
+
+            (
+                set -o pipefail
+                zstd -dc -- "${archive}" 2>/dev/null | tar "${fallback[@]}" -C "${to}" 2>/dev/null
+            )
+
+        ;;
+        *.tar)
+
+            sys::has tar || return 1
+            args=( -xf "${archive}" )
+
+            for pat in "${exclude[@]}"; do
+                [[ -n "${pat}" ]] && args+=( "--exclude=${pat}" )
+            done
+
+            (( strip > 0 )) && args+=( "--strip-components=${strip}" )
+            tar "${args[@]}" -C "${to}" 2>/dev/null
+
+        ;;
+        *.zip)
+
+            if sys::has unzip; then
+
+                args=( -qo "${archive}" -d "${to}" )
+
+                if (( ${#exclude[@]} > 0 )); then
+
+                    args+=( -x )
+
+                    for pat in "${exclude[@]}"; do
+                        [[ -n "${pat}" ]] && args+=( "${pat}" )
+                    done
+
+                fi
+
+                unzip "${args[@]}" 2>/dev/null || return 1
+                (( strip > 0 )) && { path::strip "${to}" "${strip}" 2>/dev/null || return 1; }
+
+                printf '%s\n' "${to}";
+                return 0
+
+            fi
+            if sys::has 7z; then
+
+                args=( x -bd -y "-o${to}" "${archive}" )
+
+                for pat in "${exclude[@]}"; do
+                    [[ -n "${pat}" ]] && args+=( "-xr!${pat}" )
+                done
+
+                7z "${args[@]}" >/dev/null 2>&1 || return 1
+                (( strip > 0 )) && { path::strip "${to}" "${strip}" 2>/dev/null || return 1; }
+
+                printf '%s\n' "${to}";
+                return 0
+
+            fi
+            if sys::has bsdtar; then
+
+                bsdtar -xf "${archive}" -C "${to}" 2>/dev/null || return 1
+                (( strip > 0 )) && { path::strip "${to}" "${strip}" 2>/dev/null || return 1; }
+
+                printf '%s\n' "${to}";
+                return 0
+
+            fi
+
+            return 1
+
+        ;;
+        *.rar)
+
+            if sys::has unrar; then
+
+                args=( x -idq -y )
+
+                for pat in "${exclude[@]}"; do
+                    [[ -n "${pat}" ]] && args+=( "-x${pat}" )
+                done
+
+                args+=( "${archive}" "${to}/" )
+
+                unrar "${args[@]}" >/dev/null 2>&1 || return 1
+                (( strip > 0 )) && { path::strip "${to}" "${strip}" 2>/dev/null || return 1; }
+
+                printf '%s\n' "${to}";
+                return 0
+
+            fi
+            if sys::has 7z; then
+
+                args=( x -bd -y "-o${to}" "${archive}" )
+
+                for pat in "${exclude[@]}"; do
+                    [[ -n "${pat}" ]] && args+=( "-xr!${pat}" )
+                done
+
+                7z "${args[@]}" >/dev/null 2>&1 || return 1
+                (( strip > 0 )) && { path::strip "${to}" "${strip}" 2>/dev/null || return 1; }
+
+                printf '%s\n' "${to}";
+                return 0
+
+            fi
+
+            return 1
+
+        ;;
+        *.7z)
+
+            sys::has 7z || return 1
+            args=( x -bd -y "-o${to}" "${archive}" )
+
+            for pat in "${exclude[@]}"; do
+                [[ -n "${pat}" ]] && args+=( "-xr!${pat}" )
+            done
+
+            7z "${args[@]}" >/dev/null 2>&1 || return 1
+            (( strip > 0 )) && { path::strip "${to}" "${strip}" 2>/dev/null || return 1; }
+
+            printf '%s\n' "${to}";
+            return 0
+
+        ;;
+        *)
+            return 1
+        ;;
+    esac || return 1
+
+    printf '%s\n' "${to}"
+
+}
+path::sync () {
+
+    local from="${1:-}" to="${2:-}" parent=""
+
+    path::exists "${from}" || return 1
+    path::valid "${to}" || return 1
+    path::is_root "${to}" && return 1
+
+    [[ "${from%/}" != "${to%/}" ]] || return 1
+
+    if [[ -d "${from}" && ! -L "${from}" ]]; then
+
+        if sys::has rsync; then
+
+            mkdir -p -- "${to}" 2>/dev/null || mkdir -p "${to}" 2>/dev/null || return 1
+
+            rsync -a --delete -- "${from%/}/" "${to%/}/" >/dev/null 2>&1 ||
+            rsync -a --delete "${from%/}/" "${to%/}/" >/dev/null 2>&1
+
+            return
+
+        fi
+
+        path::remove "${to}" || return 1
+        path::copy "${from}" "${to}"
+        return
+
+    fi
+
+    parent="$(path::dirname "${to}")" || return 1
+    mkdir -p -- "${parent}" 2>/dev/null || mkdir -p "${parent}" 2>/dev/null || return 1
+
+    path::copy "${from}" "${to}"
+
+}
+path::watch () {
+
+    local p="${1:-}" interval="${2:-1}" callback="${3:-}" once="${4:-0}" on_error="${5:-abort}" prev="" cur="" stat_kind="" _
+    local -a recurse=()
+
+    path::valid "${p}" || return 1
+
+    [[ "${interval}" =~ ^[0-9]+([.][0-9]+)?$ ]] && [[ ! "${interval}" =~ ^0+([.]0+)?$ ]] || interval=1
+
+    case "${once}" in
+        1|true|yes|on|once) once=1 ;;
+        *) once=0 ;;
+    esac
+    case "${on_error}" in
+        abort|continue) ;;
+        *) on_error="abort" ;;
+    esac
+
+    if sys::has inotifywait; then
+
+        while :; do
+
+            if [[ ! -e "${p}" && ! -L "${p}" ]]; then
+                sleep "${interval}" 2>/dev/null || return 1
+                continue
+            fi
+
+            recurse=()
+            [[ -d "${p}" && ! -L "${p}" ]] && recurse=( -r )
+
+            if (( once == 1 )); then
+
+                inotifywait "${recurse[@]}" -q -e close_write,create,delete,move,attrib -- "${p}" >/dev/null 2>&1 || {
+                    sleep "${interval}" 2>/dev/null || return 1
+                    continue
+                }
+
+                if [[ -n "${callback}" ]]; then "${callback}" "${p}" || return 1
+                else printf '%s\n' "${p}"
+                fi
+
+                return 0
+
+            fi
+
+            while IFS= read -r _; do
+
+                if [[ -n "${callback}" ]]; then "${callback}" "${p}" || { [[ "${on_error}" == "continue" ]] || return 1; }
+                else printf '%s\n' "${p}"
+                fi
+
+            done < <(inotifywait -m "${recurse[@]}" -q -e close_write,create,delete,move,attrib -- "${p}" 2>/dev/null)
+
+            sleep "${interval}" 2>/dev/null || return 1
+
+        done
+
+    fi
+    if sys::has fswatch; then
+
+        while :; do
+
+            if [[ ! -e "${p}" && ! -L "${p}" ]]; then
+                sleep "${interval}" 2>/dev/null || return 1
+                continue
+            fi
+            if (( once == 1 )); then
+
+                fswatch -1 \
+                    --event Created \
+                    --event Updated \
+                    --event Removed \
+                    --event Renamed \
+                    --event MovedFrom \
+                    --event MovedTo \
+                    --event AttributeModified \
+                    -- "${p}" >/dev/null 2>&1 || {
+                    sleep "${interval}" 2>/dev/null || return 1
+                    continue
+                }
+
+                if [[ -n "${callback}" ]]; then "${callback}" "${p}" || return 1
+                else printf '%s\n' "${p}"
+                fi
+
+                return 0
+
+            fi
+
+            while IFS= read -r _; do
+
+                if [[ -n "${callback}" ]]; then "${callback}" "${p}" || { [[ "${on_error}" == "continue" ]] || return 1; }
+                else printf '%s\n' "${p}"
+                fi
+
+            done < <(
+                fswatch \
+                    --event Created \
+                    --event Updated \
+                    --event Removed \
+                    --event Renamed \
+                    --event MovedFrom \
+                    --event MovedTo \
+                    --event AttributeModified \
+                    -- "${p}" 2>/dev/null
+            )
+
+            sleep "${interval}" 2>/dev/null || return 1
+
+        done
+
+    fi
+    if sys::has stat; then
+
+        if stat -c '%s' -- /dev/null >/dev/null 2>&1; then stat_kind="gnu"
+        elif stat -f '%z' -- /dev/null >/dev/null 2>&1; then stat_kind="bsd"
+        else stat_kind=""
+        fi
+
+    fi
+
+    while :; do
+
+        if [[ -d "${p}" && ! -L "${p}" ]]; then
+
+            if sys::has find && [[ "${stat_kind}" == "gnu" ]]; then
+                cur="$(
+                    {
+                        stat -c '%n|%s|%Y|%F' -- "${p}" 2>/dev/null
+                        find "${p}" -mindepth 1 -printf '%p|%s|%T@|%y\n' 2>/dev/null
+                    } | LC_ALL=C sort 2>/dev/null
+                )"
+
+            elif sys::has find && [[ "${stat_kind}" == "bsd" ]]; then
+                cur="$(
+                    {
+                        stat -f '%N|%z|%m|%HT' -- "${p}" 2>/dev/null
+                        find "${p}" -mindepth 1 -print0 2>/dev/null |
+                            xargs -0 stat -f '%N|%z|%m|%HT' 2>/dev/null
+                    } | LC_ALL=C sort 2>/dev/null
+                )"
+
+            elif sys::has find; then
+                cur="$(
+                    {
+                        printf '%s\n' "${p}"
+                        find "${p}" -mindepth 1 -print 2>/dev/null
+                    } | LC_ALL=C sort 2>/dev/null
+                )"
+
+            else
+                cur="$(LC_ALL=C ls -laR "${p}" 2>/dev/null || true)"
+            fi
+
+        else
+
+            if [[ -e "${p}" || -L "${p}" ]]; then
+                case "${stat_kind}" in
+                    gnu) cur="$(stat -c '%n|%s|%Y|%F' -- "${p}" 2>/dev/null || printf '%s\n' "${p}")" ;;
+                    bsd) cur="$(stat -f '%N|%z|%m|%HT' -- "${p}" 2>/dev/null || printf '%s\n' "${p}")" ;;
+                    *)   cur="$(LC_ALL=C ls -la "${p}" 2>/dev/null || printf '%s\n' "${p}")" ;;
+                esac
+            else
+                cur="__missing__:${p}"
+            fi
+
+        fi
+
+        if [[ "${cur}" != "${prev}" ]]; then
+
+            if [[ -n "${prev}" ]]; then
+
+                if [[ -n "${callback}" ]]; then "${callback}" "${p}" || { [[ "${on_error}" == "continue" ]] || return 1; }
+                else printf '%s\n' "${p}"
+                fi
+
+                (( once == 1 )) && return 0
+
+            fi
+
+            prev="${cur}"
+
+        fi
+
+        sleep "${interval}" 2>/dev/null || return 1
 
     done
 
