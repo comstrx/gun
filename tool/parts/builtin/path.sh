@@ -62,7 +62,6 @@ path::is_abs () {
     local p="${1:-}"
 
     [[ -n "${p}" ]] || return 1
-
     [[ "${p}" == /* ]] && return 0
     [[ "${p}" == \\* ]] && return 0
     [[ "${p}" =~ ^[A-Za-z]:[\\/] ]] && return 0
@@ -83,7 +82,6 @@ path::is_root () {
     local p="${1:-}"
 
     [[ -n "${p}" ]] || return 1
-
     [[ "${p}" == "/" ]] && return 0
     [[ "${p}" == "\\" ]] && return 0
     [[ "${p}" =~ ^[A-Za-z]:[\\/]?$ ]] && return 0
