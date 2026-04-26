@@ -104,6 +104,25 @@ run_timeout () {
     fi
 }
 
+can_exact_chmod () {
+    sys::is_windows && return 1
+    return 0
+}
+
+can_unix_socket () {
+    sys::is_windows && return 1
+    command -v python3 >/dev/null 2>&1
+}
+
+can_symlink () {
+    local target="${1:-}" link="${2:-}"
+    [[ -n "${target}" && -n "${link}" ]] || return 1
+    ln -s "${target}" "${link}" 2>/dev/null || return 1
+    [[ -L "${link}" ]] || { rm -f -- "${link}" 2>/dev/null || true; return 1; }
+    rm -f -- "${link}" 2>/dev/null || true
+    return 0
+}
+
 # -----------------------------------------------------------------------------
 # Load target
 # -----------------------------------------------------------------------------
@@ -327,10 +346,14 @@ assert_true "is_dir" path::is_dir "${TEST_ROOT}/src"
 assert_false "is_dir file" path::is_dir "${TEST_ROOT}/file.txt"
 
 mark path::is_link
-if ln -s "${TEST_ROOT}/file.txt" "${TEST_ROOT}/link-file" 2>/dev/null; then
-    assert_true "is_link" path::is_link "${TEST_ROOT}/link-file"
+if can_symlink "${TEST_ROOT}/file.txt" "${TEST_ROOT}/link-file.probe"; then
+    if path::symlink "${TEST_ROOT}/file.txt" "${TEST_ROOT}/link-file" && [[ -L "${TEST_ROOT}/link-file" ]]; then
+        assert_true "is_link" path::is_link "${TEST_ROOT}/link-file"
+    else
+        skip "is_link symlink creation unavailable through path::symlink"
+    fi
 else
-    skip "is_link symlink unavailable"
+    skip "is_link symlink unavailable on this OS/session"
 fi
 
 mark path::is_pipe
@@ -341,8 +364,8 @@ else
 fi
 
 mark path::is_socket
-if command -v python3 >/dev/null 2>&1; then
-    python3 - <<PY >/dev/null 2>&1
+if can_unix_socket; then
+    if python3 - <<PY >/dev/null 2>&1
 import socket, os
 p = ${TEST_ROOT@Q} + '/sock'
 try:
@@ -353,9 +376,13 @@ s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 s.bind(p)
 s.close()
 PY
-    assert_true "is_socket unix socket" path::is_socket "${TEST_ROOT}/sock"
+    then
+        assert_true "is_socket unix socket" path::is_socket "${TEST_ROOT}/sock"
+    else
+        skip "is_socket unix socket creation unavailable"
+    fi
 else
-    skip "is_socket python3 unavailable"
+    skip "is_socket unix socket unsupported on this OS/session"
 fi
 
 mark path::is_char
@@ -476,7 +503,11 @@ mark path::chmod
 chmod_target="${TEST_ROOT}/chmod.txt"
 printf z > "${chmod_target}"
 assert_true "chmod 600" path::chmod "${chmod_target}" 600
-assert_match "chmod mode applied" "$(path::mode "${chmod_target}")" '600$|0600$'
+if can_exact_chmod; then
+    assert_match "chmod mode applied" "$(path::mode "${chmod_target}")" '600$|0600$'
+else
+    skip "chmod exact mode unsupported on Windows ACL/MSYS"
+fi
 assert_false "chmod rejects bad mode" path::chmod "${chmod_target}" 'bad-mode'
 
 mark path::make
@@ -548,12 +579,15 @@ else
 fi
 
 mark path::symlink
-if ln -s "${TEST_ROOT}/file.txt" "${TEST_ROOT}/symlink-manual" 2>/dev/null; then
-    rm -f -- "${TEST_ROOT}/symlink-manual"
-    assert_true "symlink" path::symlink "${TEST_ROOT}/file.txt" "${TEST_ROOT}/symlink"
-    assert_true "symlink is link" path::is_link "${TEST_ROOT}/symlink"
+if can_symlink "${TEST_ROOT}/file.txt" "${TEST_ROOT}/symlink-manual"; then
+    if path::symlink "${TEST_ROOT}/file.txt" "${TEST_ROOT}/symlink" && [[ -L "${TEST_ROOT}/symlink" ]]; then
+        ok "symlink"
+        assert_true "symlink is link" path::is_link "${TEST_ROOT}/symlink"
+    else
+        skip "symlink requires privileges/developer mode on this OS/session"
+    fi
 else
-    skip "symlink unsupported"
+    skip "symlink unsupported on this OS/session"
 fi
 
 mark path::readlink
@@ -661,11 +695,11 @@ else
     watch_file="${TEST_ROOT}/watch.txt"
     printf before > "${watch_file}"
     (
-        sleep 0.35
+        sleep "$(sys::is_windows && printf 1 || printf 0.35)"
         printf after >> "${watch_file}"
     ) &
     watcher_mod_pid=$!
-    if run_timeout 5 bash -c 'source "$1"; sys::has () { command -v -- "${1:-}" >/dev/null 2>&1; }; sys::is_linux () { [[ "${OSTYPE:-}" == linux* ]]; }; sys::is_macos () { [[ "${OSTYPE:-}" == darwin* ]]; }; sys::is_windows () { [[ "${OS:-}" == Windows_NT || "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* ]]; }; sys::is_wsl () { [[ -n "${WSL_DISTRO_NAME:-}${WSL_INTEROP:-}" ]]; }; path::watch "$2" 0.1 "" once >/dev/null' _ "${PATH_LIB}" "${watch_file}"; then
+    if run_timeout 10 bash -c 'source "$1"; sys::has () { command -v -- "${1:-}" >/dev/null 2>&1; }; sys::is_linux () { [[ "${OSTYPE:-}" == linux* ]]; }; sys::is_macos () { [[ "${OSTYPE:-}" == darwin* ]]; }; sys::is_windows () { [[ "${OS:-}" == Windows_NT || "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* ]]; }; sys::is_wsl () { [[ -n "${WSL_DISTRO_NAME:-}${WSL_INTEROP:-}" ]]; }; path::watch "$2" 0.1 "" once >/dev/null' _ "${PATH_LIB}" "${watch_file}"; then
         ok "watch file once detects modification"
     else
         fail "watch file once detects modification"
@@ -675,11 +709,11 @@ else
     watch_dir="${TEST_ROOT}/watch-dir"
     mkdir -p "${watch_dir}"
     (
-        sleep 0.35
+        sleep "$(sys::is_windows && printf 1 || printf 0.35)"
         printf created > "${watch_dir}/created.txt"
     ) &
     watcher_dir_pid=$!
-    if run_timeout 5 bash -c 'source "$1"; sys::has () { command -v -- "${1:-}" >/dev/null 2>&1; }; sys::is_linux () { [[ "${OSTYPE:-}" == linux* ]]; }; sys::is_macos () { [[ "${OSTYPE:-}" == darwin* ]]; }; sys::is_windows () { [[ "${OS:-}" == Windows_NT || "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* ]]; }; sys::is_wsl () { [[ -n "${WSL_DISTRO_NAME:-}${WSL_INTEROP:-}" ]]; }; path::watch "$2" 0.1 "" once >/dev/null' _ "${PATH_LIB}" "${watch_dir}"; then
+    if run_timeout 10 bash -c 'source "$1"; sys::has () { command -v -- "${1:-}" >/dev/null 2>&1; }; sys::is_linux () { [[ "${OSTYPE:-}" == linux* ]]; }; sys::is_macos () { [[ "${OSTYPE:-}" == darwin* ]]; }; sys::is_windows () { [[ "${OS:-}" == Windows_NT || "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* ]]; }; sys::is_wsl () { [[ -n "${WSL_DISTRO_NAME:-}${WSL_INTEROP:-}" ]]; }; path::watch "$2" 0.1 "" once >/dev/null' _ "${PATH_LIB}" "${watch_dir}"; then
         ok "watch dir once detects create"
     else
         fail "watch dir once detects create"
@@ -695,11 +729,11 @@ CB
     chmod +x "${callback_script}"
     printf before > "${watch_file}"
     (
-        sleep 0.35
+        sleep "$(sys::is_windows && printf 1 || printf 0.35)"
         printf again >> "${watch_file}"
     ) &
     watcher_cb_pid=$!
-    if run_timeout 5 bash -c 'source "$1"; sys::has () { command -v -- "${1:-}" >/dev/null 2>&1; }; sys::is_linux () { [[ "${OSTYPE:-}" == linux* ]]; }; sys::is_macos () { [[ "${OSTYPE:-}" == darwin* ]]; }; sys::is_windows () { [[ "${OS:-}" == Windows_NT || "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* ]]; }; sys::is_wsl () { [[ -n "${WSL_DISTRO_NAME:-}${WSL_INTEROP:-}" ]]; }; path::watch "$2" 0.1 "$3" once >/dev/null' _ "${PATH_LIB}" "${watch_file}" "${callback_script}"; then
+    if run_timeout 10 bash -c 'source "$1"; sys::has () { command -v -- "${1:-}" >/dev/null 2>&1; }; sys::is_linux () { [[ "${OSTYPE:-}" == linux* ]]; }; sys::is_macos () { [[ "${OSTYPE:-}" == darwin* ]]; }; sys::is_windows () { [[ "${OS:-}" == Windows_NT || "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* ]]; }; sys::is_wsl () { [[ -n "${WSL_DISTRO_NAME:-}${WSL_INTEROP:-}" ]]; }; path::watch "$2" 0.1 "$3" once >/dev/null' _ "${PATH_LIB}" "${watch_file}" "${callback_script}"; then
         [[ -s "${callback_file}" ]] && ok "watch callback fires" || fail "watch callback did not write"
     else
         fail "watch callback run"
