@@ -357,18 +357,17 @@ path::abs () {
 }
 path::rel () {
 
-    local target="${1:-}" base="${2:-}" t_abs="" b_abs="" common=0 v=""
+    local target="${1:-}" base="${2:-}" t_abs="" b_abs="" common=0 v="" target_drive="" base_drive="" i=0 max=0 up=0
     local -a tparts=()
     local -a bparts=()
-    local i=0 max=0 up=0
 
     path::valid "${target}" || return 1
     [[ -n "${base}" ]] || base="$(pwd 2>/dev/null || printf '.')"
 
-printf 'DBG target=[%s] base=[%s] t1=[%s] b1=[%s]\n' \
-    "${target}" "${base}" "${target:1:1}" "${base:1:1}" >&2
+    target_drive="${target:0:1}"
+    base_drive="${base:0:1}"
 
-    if [[ "${target:1:1}" == ":" && "${base:1:1}" == ":" && "${target:0:1,,}" != "${base:0:1,,}" ]]; then
+    if [[ "${target:1:1}" == ":" && "${base:1:1}" == ":" && "${target_drive,,}" != "${base_drive,,}" ]]; then
         printf '%s' "${target//\\//}"
         return 0
     fi
