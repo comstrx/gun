@@ -145,13 +145,6 @@ path::win () {
 
     path::valid "${p}" || return 1
 
-    if sys::has cygpath; then
-
-        v="$(cygpath -w -- "${p}" 2>/dev/null || true)"
-        [[ -n "${v}" ]] && { printf '%s' "${v}"; return 0; }
-
-    fi
-
     p="${p//\\//}"
 
     if [[ "${p}" =~ ^/mnt/([A-Za-z])(/.*)?$ ]]; then
@@ -184,6 +177,13 @@ path::win () {
 
         printf '%s:%s' "${letter^^}" "${rest}"
         return 0
+
+    fi
+
+    if sys::has cygpath; then
+
+        v="$(cygpath -w -- "${p}" 2>/dev/null || true)"
+        [[ -n "${v}" ]] && { printf '%s' "${v}"; return 0; }
 
     fi
 
