@@ -491,7 +491,12 @@ script_path="$(capture path::script "${TEST_FILE}")"
 expect_match "script explicit path" "${script_path}" 'path.*\.sh$|/'
 
 script_dir="$(capture path::script_dir "${TEST_FILE}")"
-expect_ok "script_dir is dir" path::is_dir "${script_dir}"
+
+if [[ -d "${script_dir}" ]]; then
+    ok "script_dir is dir"
+else
+    bad "script_dir is dir | got=[${script_dir}] TEST_FILE=[${TEST_FILE}]"
+fi
 
 section "standard dirs"
 
