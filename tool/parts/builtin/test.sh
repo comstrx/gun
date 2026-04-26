@@ -41,7 +41,6 @@ fi
 
 # shellcheck source=/dev/null
 source "${TEST_FILE}"
-path::rel 'D:/x/y' 'C:/a/b'
 
 TOTAL=0
 PASS=0
