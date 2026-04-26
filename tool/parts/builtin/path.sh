@@ -967,7 +967,7 @@ path::mode () {
     v="$(stat -c '%a' "${p}" 2>/dev/null || true)"
     [[ "${v}" =~ ^[0-7]{3,4}$ ]] && { printf '%s\n' "${v}"; return 0; }
 
-    v="$(stat -f '%Lp' "${p}" 2>/dev/null || true)"
+    v="$(stat -f '%p' "${p}" 2>/dev/null || true)"
     [[ "${v}" =~ ^[0-7]+$ ]] && { printf '%s\n' "${v: -4}"; return 0; }
 
     return 1
