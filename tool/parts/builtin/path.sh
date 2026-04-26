@@ -57,6 +57,7 @@ path::filled () {
     [[ -e "${1:-}" || -L "${1:-}" ]]
 
 }
+
 path::is_abs () {
 
     local p="${1:-}"
@@ -117,10 +118,8 @@ path::posix () {
     path::valid "${p}" || return 1
 
     if path::has cygpath; then
-
         v="$(cygpath -u -- "${p}" 2>/dev/null || true)"
         [[ -n "${v}" ]] && { printf '%s' "${v}"; return 0; }
-
     fi
 
     p="${p//\\//}"
@@ -611,7 +610,37 @@ path::dotext () {
     fi
 
 }
-path::chext () {
+
+path::set_name () {
+
+    local p="${1:-}" name="${2:-}" dir=""
+
+    path::valid "${p}" || return 1
+    [[ -n "${name}" ]] || return 1
+
+    dir="$(path::dirname "${p}")"
+
+    if [[ "${dir}" == "." && "${p}" != ./* ]]; then printf '%s' "${name}"
+    else printf '%s/%s' "${dir%/}" "${name}"
+    fi
+
+}
+path::set_stem () {
+
+    local p="${1:-}" stem="${2:-}" dir="" ext=""
+
+    path::valid "${p}" || return 1
+    [[ -n "${stem}" ]] || return 1
+
+    dir="$(path::dirname "${p}")"
+    ext="$(path::dotext "${p}")"
+
+    if [[ "${dir}" == "." && "${p}" != ./* ]]; then printf '%s%s' "${stem}" "${ext}"
+    else printf '%s/%s%s' "${dir%/}" "${stem}" "${ext}"
+    fi
+
+}
+path::set_ext () {
 
     local p="${1:-}" ext="${2:-}" dir="" stem=""
 
@@ -627,33 +656,27 @@ path::chext () {
     fi
 
 }
-path::chname () {
+path::set_mode () {
 
-    local p="${1:-}" name="${2:-}" dir=""
-
-    path::valid "${p}" || return 1
-    [[ -n "${name}" ]] || return 1
-
-    dir="$(path::dirname "${p}")"
-
-    if [[ "${dir}" == "." && "${p}" != ./* ]]; then printf '%s' "${name}"
-    else printf '%s/%s' "${dir%/}" "${name}"
-    fi
-
-}
-path::chstem () {
-
-    local p="${1:-}" stem="${2:-}" dir="" ext=""
+    local p="${1:-}" mode="${2:-}"
 
     path::valid "${p}" || return 1
-    [[ -n "${stem}" ]] || return 1
+    path::has chmod || return 1
 
-    dir="$(path::dirname "${p}")"
-    ext="$(path::dotext "${p}")"
+    [[ -n "${mode}" ]] || return 1
+    [[ -e "${p}" || -L "${p}" ]] || return 1
 
-    if [[ "${dir}" == "." && "${p}" != ./* ]]; then printf '%s%s' "${stem}" "${ext}"
-    else printf '%s/%s%s' "${dir%/}" "${stem}" "${ext}"
-    fi
+    case "${mode}" in
+        [0-7][0-7][0-7]|[0-7][0-7][0-7][0-7]|u+*|u-*|u=*|g+*|g-*|g=*|o+*|o-*|o=*|a+*|a-*|a=*|+*|-*)
+            chmod -- "${mode}" "${p}" 2>/dev/null && return 0
+            chmod "${mode}" "${p}" 2>/dev/null && return 0
+        ;;
+        *)
+            return 1
+        ;;
+    esac
+
+    return 1
 
 }
 
@@ -947,7 +970,7 @@ path::mode () {
     v="$(stat -f '%Lp' "${p}" 2>/dev/null || true)"
     [[ "${v}" =~ ^[0-7]+$ ]] && { printf '%s\n' "${v: -4}"; return 0; }
 
-    v="$(stat -f '%OLp' "${p}" 2>/dev/null || true)"
+    v="$(stat -f '%p' "${p}" 2>/dev/null || true)"
     [[ "${v}" =~ ^[0-7]+$ ]] && { printf '%s\n' "${v: -4}"; return 0; }
 
     return 1
@@ -1436,7 +1459,6 @@ path::touch () {
     local p="${1:-}" parent=""
 
     path::valid "${p}" || return 1
-
     parent="$(path::dirname "${p}")"
     [[ -d "${parent}" ]] || mkdir -p -- "${parent}" 2>/dev/null || return 1
 
@@ -1525,10 +1547,8 @@ path::symlink () {
     [[ -d "${parent}" ]] || mkdir -p -- "${parent}" 2>/dev/null || return 1
 
     if path::has ln; then
-
         ln -sfn -- "${from}" "${to}" 2>/dev/null && return 0
         ln -sf -- "${from}" "${to}" 2>/dev/null && return 0
-
     fi
     if sys::is_windows && path::has cmd.exe; then
 
