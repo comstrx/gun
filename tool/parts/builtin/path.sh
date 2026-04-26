@@ -611,7 +611,7 @@ path::dotext () {
 
 }
 
-path::set_name () {
+path::chname () {
 
     local p="${1:-}" name="${2:-}" dir=""
 
@@ -625,7 +625,7 @@ path::set_name () {
     fi
 
 }
-path::set_stem () {
+path::chstem () {
 
     local p="${1:-}" stem="${2:-}" dir="" ext=""
 
@@ -640,7 +640,7 @@ path::set_stem () {
     fi
 
 }
-path::set_ext () {
+path::chext () {
 
     local p="${1:-}" ext="${2:-}" dir="" stem=""
 
@@ -656,7 +656,7 @@ path::set_ext () {
     fi
 
 }
-path::set_mode () {
+path::chmode () {
 
     local p="${1:-}" mode="${2:-}"
 
