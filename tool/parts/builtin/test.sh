@@ -4,6 +4,7 @@
 set -u
 
 TEST_FILE="${1:-tool/parts/builtin/path.sh}"
+TEST_FILE="$(cd -- "$(dirname -- "${TEST_FILE}")" 2>/dev/null && pwd -P)/$(basename -- "${TEST_FILE}")"
 
 if [[ ! -f "${TEST_FILE}" ]]; then
     printf '[FAIL] path.sh not found: %s\n' "${TEST_FILE}" >&2
