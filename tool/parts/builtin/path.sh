@@ -1,4 +1,3 @@
-# shellcheck shell=bash
 
 path::has () {
 
@@ -54,6 +53,7 @@ path::empty () {
 path::filled () {
 
     path::empty "$@" && return 1
+
     [[ -e "${1:-}" || -L "${1:-}" ]]
 
 }
@@ -1544,8 +1544,10 @@ path::symlink () {
     [[ -d "${parent}" ]] || mkdir -p -- "${parent}" 2>/dev/null || return 1
 
     if path::has ln; then
+
         ln -sfn -- "${from}" "${to}" 2>/dev/null && return 0
         ln -sf -- "${from}" "${to}" 2>/dev/null && return 0
+
     fi
     if sys::is_windows && path::has cmd.exe; then
 
