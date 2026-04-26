@@ -4,20 +4,9 @@ dir::has () {
     command -v "${1:-}" >/dev/null 2>&1
 
 }
-dir::die () {
-
-    local msg="${1:-}" code="${2:-1}"
-
-    [[ "${code}" =~ ^[0-9]+$ ]] || code=1
-    [[ -n "${msg}" ]] && printf '[ERR] %s\n' "${msg}" >&2
-    [[ "${-}" == *i* ]] && return "${code}"
-
-    exit "${code}"
-
-}
 dir::valid () {
 
-    local p="${1-}"
+    local p="${1:-}"
 
     [[ -n "${p}" ]] || return 1
     [[ "${p}" != *$'\n'* && "${p}" != *$'\r'* ]] || return 1
@@ -25,10 +14,9 @@ dir::valid () {
     return 0
 
 }
-
 dir::exists () {
 
-    local p="${1-}"
+    local p="${1:-}"
 
     dir::valid "${p}" || return 1
     [[ -d "${p}" ]]
@@ -36,15 +24,49 @@ dir::exists () {
 }
 dir::missing () {
 
-    local p="${1-}"
+    local p="${1:-}"
 
     dir::valid "${p}" || return 1
     [[ ! -d "${p}" ]]
 
 }
+dir::empty () {
+
+    local p="${1:-}" entry=""
+
+    dir::valid "${p}" || return 1
+    [[ -d "${p}" ]] || return 1
+
+    for entry in "${p%/}"/* "${p%/}"/.[!.]* "${p%/}"/..?*; do
+        [[ -e "${entry}" || -L "${entry}" ]] && return 1
+    done
+
+    return 0
+
+}
+
+dir::filled () {
+
+    dir::empty "${1:-}" && return 1
+    [[ -d "${1:-}" ]]
+
+}
+dir::is_root () {
+
+    local p="${1:-}"
+
+    dir::valid "${p}" || return 1
+
+    [[ "${p}" == "/" ]] && return 0
+    [[ "${p}" == "\\" ]] && return 0
+    [[ "${p}" =~ ^[A-Za-z]:[\\/]?$ ]] && return 0
+
+    return 1
+
+}
 dir::is_link () {
 
-    local p="${1-}"
+    local p="${1:-}"
 
     dir::valid "${p}" || return 1
     [[ -L "${p}" && -d "${p}" ]]
@@ -52,7 +74,7 @@ dir::is_link () {
 }
 dir::readable () {
 
-    local p="${1-}"
+    local p="${1:-}"
 
     dir::valid "${p}" || return 1
     [[ -d "${p}" && -r "${p}" ]]
@@ -60,7 +82,7 @@ dir::readable () {
 }
 dir::writable () {
 
-    local p="${1-}"
+    local p="${1:-}"
 
     dir::valid "${p}" || return 1
     [[ -d "${p}" && -w "${p}" ]]
@@ -68,166 +90,187 @@ dir::writable () {
 }
 dir::executable () {
 
-    local p="${1-}"
+    local p="${1:-}"
 
     dir::valid "${p}" || return 1
     [[ -d "${p}" && -x "${p}" ]]
 
 }
-dir::traversable () {
 
-    dir::executable "$@"
+dir::cd () {
 
-}
+    local p="${1:-}"
 
-dir::is_empty () {
-
-    local p="${1-}" entry=""
-
-    dir::valid "${p}" || return 1
-    [[ -d "${p}" ]] || return 1
-
-    for entry in "${p}"/* "${p}"/.[!.]* "${p}"/..?*; do
-        [[ -e "${entry}" || -L "${entry}" ]] && return 1
-    done
-
-    return 0
+    dir::exists "${p}" || return 1
+    builtin cd -- "${p}" 2>/dev/null
 
 }
-dir::is_filled () {
+dir::pushd () {
 
-    dir::is_empty "${1-}" && return 1
-    [[ -d "${1-}" ]]
+    local p="${1:-}"
+
+    dir::exists "${p}" || return 1
+    pushd -- "${p}" >/dev/null 2>&1
 
 }
-dir::is_root () {
+dir::popd () {
 
-    local p="${1-}"
+    popd >/dev/null 2>&1
 
-    dir::valid "${p}" || return 1
-    [[ -d "${p}" ]] || return 1
+}
+dir::with () {
 
-    [[ "${p}" == "/" ]] && return 0
-    [[ "${p}" =~ ^[A-Za-z]:[\\/]?$ ]] && return 0
+    local p="${1:-}"
+
+    dir::exists "${p}" || return 1
+    shift || true
+
+    (( $# > 0 )) || return 1
+    ( builtin cd -- "${p}" 2>/dev/null || exit 1; "$@" )
+
+}
+dir::size () {
+
+    local p="${1:-}" v=""
+
+    dir::exists "${p}" || return 1
+    dir::has du || return 1
+
+    v="$(du -sk -- "${p}" 2>/dev/null | awk 'NR==1 {print $1}' | head -n 1)"
+    [[ "${v}" =~ ^[0-9]+$ ]] && { printf '%s\n' "$(( v * 1024 ))"; return 0; }
+
+    v="$(du -sk "${p}" 2>/dev/null | awk 'NR==1 {print $1}' | head -n 1)"
+    [[ "${v}" =~ ^[0-9]+$ ]] && { printf '%s\n' "$(( v * 1024 ))"; return 0; }
 
     return 1
 
 }
+dir::depth () {
 
-dir::make () {
+    local p="${1:-}" current="" max=0 d=0 base_d=""
 
-    local p="${1-}" mode="${2:-}"
+    dir::exists "${p}" || return 1
+    dir::has find || return 1
+
+    while IFS= read -r current; do
+
+        d="${current//[^\/]//}"
+        d="${#d}"
+
+        (( d > max )) && max="${d}"
+
+    done < <(find "${p}" -type d 2>/dev/null)
+
+    base_d="${p//[^\/]//}"
+    printf '%s\n' "$(( max - ${#base_d} ))"
+
+}
+dir::dirname () {
+
+    local p="${1:-}" dir=""
+
+    dir::valid "${p}" || return 1
+    p="${p//\\//}"
+
+    [[ "${p}" != */* ]] && { printf '.'; return 0; }
+
+    dir="${p%/*}"
+    [[ -n "${dir}" ]] || dir="/"
+
+    printf '%s' "${dir}"
+
+}
+dir::basename () {
+
+    local p="${1:-}"
+
+    dir::valid "${p}" || return 1
+    p="${p//\\//}"
+
+    while [[ "${p}" == */ && ${#p} -gt 1 ]]; do
+        p="${p%/}"
+    done
+
+    printf '%s' "${p##*/}"
+
+}
+
+dir::ensure () {
+
+    local p="${1:-}" mode="${2:-}"
 
     dir::valid "${p}" || return 1
 
-    if [[ -d "${p}" ]]; then
-        [[ -n "${mode}" ]] && chmod -- "${mode}" "${p}" 2>/dev/null
-        return 0
-    fi
-    if [[ -e "${p}" || -L "${p}" ]]; then
-        return 1
-    fi
+    [[ -d "${p}" && -z "${mode}" ]] && return 0
+    [[ -d "${p}" ]] && { chmod "${mode}" "${p}" 2>/dev/null || return 1; return 0; }
+    [[ -e "${p}" || -L "${p}" ]] && return 1
 
-    mkdir -p -- "${p}" 2>/dev/null || return 1
-
-    if [[ -n "${mode}" ]]; then
-        chmod -- "${mode}" "${p}" 2>/dev/null || return 1
-    fi
+    mkdir -p -- "${p}" 2>/dev/null || mkdir -p "${p}" 2>/dev/null || return 1
+    [[ -n "${mode}" ]] && { chmod "${mode}" "${p}" 2>/dev/null || return 1; }
 
     return 0
 
 }
-dir::ensure () {
-
-    dir::make "$@"
-
-}
-dir::make_temp () {
-
-    path::mktemp_dir "$@"
-
-}
-
 dir::remove () {
 
-    local p="${1-}"
+    local p="${1:-}"
 
     dir::valid "${p}" || return 1
+    dir::is_root "${p}" && return 1
 
     [[ -d "${p}" || -L "${p}" ]] || return 0
-    [[ -L "${p}" ]] && { rm -f -- "${p}" 2>/dev/null; return; }
+    [[ -L "${p}" ]] && { rm -f -- "${p}" 2>/dev/null || rm -f "${p}" 2>/dev/null; return; }
 
-    rm -rf -- "${p}" 2>/dev/null
+    rm -rf -- "${p}" 2>/dev/null || rm -rf "${p}" 2>/dev/null
 
 }
 dir::clear () {
 
-    local p="${1-}" entry=""
+    local p="${1:-}" entry=""
 
-    dir::valid "${p}" || return 1
-    [[ -d "${p}" ]] || return 1
+    dir::exists "${p}" || return 1
+    dir::is_root "${p}" && return 1
 
-    for entry in "${p}"/* "${p}"/.[!.]* "${p}"/..?*; do
+    for entry in "${p%/}"/* "${p%/}"/.[!.]* "${p%/}"/..?*; do
+
         [[ -e "${entry}" || -L "${entry}" ]] || continue
-        rm -rf -- "${entry}" 2>/dev/null || return 1
+        rm -rf -- "${entry}" 2>/dev/null || rm -rf "${entry}" 2>/dev/null || return 1
+
     done
 
     return 0
 
 }
-dir::clean () {
-
-    dir::clear "$@"
-
-}
-
 dir::copy () {
 
-    local from="${1-}" to="${2-}" parent=""
+    local from="${1:-}" to="${2:-}" parent=""
 
-    dir::valid "${from}" || return 1
     dir::valid "${to}" || return 1
+    dir::exists "${from}" || return 1
+    dir::has cp || return 1
 
-    [[ -d "${from}" ]] || return 1
-    sys::has cp || return 1
+    parent="$(dir::dirname "${to}")" || return 1
+    [[ -d "${parent}" ]] || dir::ensure "${parent}" || return 1
 
-    parent="$(path::dir "${to}" 2>/dev/null || true)"
-    [[ -n "${parent}" && -d "${parent}" ]] || mkdir -p -- "${parent}" 2>/dev/null || return 1
-
-    if [[ -d "${to}" ]]; then cp -R -- "${from}/." "${to}/" 2>/dev/null
-    else cp -R -- "${from}" "${to}" 2>/dev/null
+    if [[ -d "${to}" ]]; then cp -R -- "${from%/}/." "${to%/}/" 2>/dev/null || cp -R "${from%/}/." "${to%/}/" 2>/dev/null
+    else cp -R -- "${from}" "${to}" 2>/dev/null || cp -R "${from}" "${to}" 2>/dev/null
     fi
-
-}
-dir::sync () {
-
-    local from="${1-}" to="${2-}"
-
-    dir::valid "${from}" || return 1
-    dir::valid "${to}" || return 1
-
-    [[ -d "${from}" ]] || return 1
-
-    if sys::has rsync; then
-        rsync -a --delete -- "${from%/}/" "${to%/}/" >/dev/null 2>&1
-        return
-    fi
-
-    dir::remove "${to}" || return 1
-    dir::copy "${from}" "${to}"
 
 }
 dir::move () {
 
-    local from="${1-}" to="${2-}"
+    local from="${1:-}" to="${2:-}" parent=""
 
-    dir::valid "${from}" || return 1
     dir::valid "${to}" || return 1
+    dir::exists "${from}" || return 1
+    dir::is_root "${from}" && return 1
 
-    [[ -d "${from}" ]] || return 1
-    sys::has mv || return 1
+    dir::has mv || return 1
 
-    mv -f -- "${from}" "${to}" 2>/dev/null
+    parent="$(dir::dirname "${to}")" || return 1
+    [[ -d "${parent}" ]] || dir::ensure "${parent}" || return 1
+
+    mv -f -- "${from}" "${to}" 2>/dev/null || mv -f "${from}" "${to}" 2>/dev/null
 
 }
 dir::rename () {
@@ -236,178 +279,27 @@ dir::rename () {
 
 }
 
-dir::list () {
-
-    local p="${1-}" sort="${2:-name}" entry="" base=""
-    local -a names=()
-
-    dir::valid "${p}" || return 1
-    [[ -d "${p}" ]] || return 1
-
-    for entry in "${p}"/* "${p}"/.[!.]* "${p}"/..?*; do
-        [[ -e "${entry}" || -L "${entry}" ]] || continue
-        base="$(path::base "${entry}" 2>/dev/null || true)"
-        [[ -n "${base}" ]] && names+=( "${base}" )
-    done
-
-    (( ${#names[@]} > 0 )) || return 0
-
-    case "${sort}" in
-        name|"")
-            if sys::has sort; then printf '%s\n' "${names[@]}" | LC_ALL=C sort
-            else printf '%s\n' "${names[@]}"
-            fi
-        ;;
-        none) printf '%s\n' "${names[@]}" ;;
-        reverse|desc)
-            if sys::has sort; then printf '%s\n' "${names[@]}" | LC_ALL=C sort -r
-            else printf '%s\n' "${names[@]}"
-            fi
-        ;;
-        *) return 1 ;;
-    esac
-
-}
-dir::list_all () {
-
-    local p="${1-}" entry="" base=""
-    local -a names=()
-
-    dir::valid "${p}" || return 1
-    [[ -d "${p}" ]] || return 1
-
-    for entry in "${p}"/* "${p}"/.[!.]* "${p}"/..?*; do
-        [[ -e "${entry}" || -L "${entry}" ]] || continue
-        base="$(path::base "${entry}" 2>/dev/null || true)"
-        [[ -n "${base}" ]] && names+=( "${base}" )
-    done
-
-    (( ${#names[@]} > 0 )) || return 0
-
-    if sys::has sort; then printf '%s\n' "${names[@]}" | LC_ALL=C sort
-    else printf '%s\n' "${names[@]}"
-    fi
-
-}
-dir::list_files () {
-
-    local p="${1-}" entry="" base=""
-    local -a names=()
-
-    dir::valid "${p}" || return 1
-    [[ -d "${p}" ]] || return 1
-
-    for entry in "${p}"/* "${p}"/.[!.]*; do
-        [[ -f "${entry}" && ! -L "${entry}" ]] || continue
-        base="$(path::base "${entry}" 2>/dev/null || true)"
-        [[ -n "${base}" ]] && names+=( "${base}" )
-    done
-
-    (( ${#names[@]} > 0 )) || return 0
-
-    if sys::has sort; then printf '%s\n' "${names[@]}" | LC_ALL=C sort
-    else printf '%s\n' "${names[@]}"
-    fi
-
-}
-dir::list_dirs () {
-
-    local p="${1-}" entry="" base=""
-    local -a names=()
-
-    dir::valid "${p}" || return 1
-    [[ -d "${p}" ]] || return 1
-
-    for entry in "${p}"/* "${p}"/.[!.]*; do
-        [[ -d "${entry}" && ! -L "${entry}" ]] || continue
-        base="$(path::base "${entry}" 2>/dev/null || true)"
-        [[ -n "${base}" ]] && names+=( "${base}" )
-    done
-
-    (( ${#names[@]} > 0 )) || return 0
-
-    if sys::has sort; then printf '%s\n' "${names[@]}" | LC_ALL=C sort
-    else printf '%s\n' "${names[@]}"
-    fi
-
-}
-dir::list_links () {
-
-    local p="${1-}" entry="" base=""
-    local -a names=()
-
-    dir::valid "${p}" || return 1
-    [[ -d "${p}" ]] || return 1
-
-    for entry in "${p}"/* "${p}"/.[!.]*; do
-        [[ -L "${entry}" ]] || continue
-        base="$(path::base "${entry}" 2>/dev/null || true)"
-        [[ -n "${base}" ]] && names+=( "${base}" )
-    done
-
-    (( ${#names[@]} > 0 )) || return 0
-
-    if sys::has sort; then printf '%s\n' "${names[@]}" | LC_ALL=C sort
-    else printf '%s\n' "${names[@]}"
-    fi
-
-}
-dir::list_hidden () {
-
-    local p="${1-}" entry="" base=""
-    local -a names=()
-
-    dir::valid "${p}" || return 1
-    [[ -d "${p}" ]] || return 1
-
-    for entry in "${p}"/.[!.]* "${p}"/..?*; do
-        [[ -e "${entry}" || -L "${entry}" ]] || continue
-        base="$(path::base "${entry}" 2>/dev/null || true)"
-        [[ -n "${base}" ]] && names+=( "${base}" )
-    done
-
-    (( ${#names[@]} > 0 )) || return 0
-
-    if sys::has sort; then printf '%s\n' "${names[@]}" | LC_ALL=C sort
-    else printf '%s\n' "${names[@]}"
-    fi
-
-}
-dir::list_paths () {
-
-    local p="${1-}" name=""
-
-    dir::valid "${p}" || return 1
-    [[ -d "${p}" ]] || return 1
-
-    while IFS= read -r name; do
-        printf '%s/%s\n' "${p%/}" "${name}"
-    done < <(dir::list "${p}")
-
-}
-
 dir::glob () {
 
-    local p="${1-}" pattern="${2:-*}" old_nullglob="" old_dotglob="" entry="" base=""
+    local p="${1:-}" pattern="${2:-*}" old_nullglob="" old_dotglob="" entry="" base=""
     local -a matches=()
 
-    dir::valid "${p}" || return 1
-    [[ -d "${p}" ]] || return 1
+    dir::exists "${p}" || return 1
     [[ -n "${pattern}" ]] || return 1
 
     old_nullglob="$(shopt -p nullglob)"
     old_dotglob="$(shopt -p dotglob)"
 
     shopt -s nullglob
-
-    case "${pattern}" in
-        .*) shopt -s dotglob ;;
-    esac
+    case "${pattern}" in .*) shopt -s dotglob ;; esac
 
     for entry in "${p%/}"/${pattern}; do
+
         [[ -e "${entry}" || -L "${entry}" ]] || continue
-        base="$(path::base "${entry}" 2>/dev/null || true)"
+        base="$(dir::basename "${entry}")" || return 1
+
         [[ -n "${base}" ]] && matches+=( "${base}" )
+
     done
 
     eval "${old_nullglob}"
@@ -415,117 +307,265 @@ dir::glob () {
 
     (( ${#matches[@]} > 0 )) || return 0
 
-    if sys::has sort; then printf '%s\n' "${matches[@]}" | LC_ALL=C sort
+    if dir::has sort; then printf '%s\n' "${matches[@]}" | LC_ALL=C sort
     else printf '%s\n' "${matches[@]}"
     fi
 
 }
+dir::in_glob () {
+
+    local p="${1:-}" pattern="${2:-}" old_nullglob="" old_dotglob="" entry="" found=1
+
+    dir::exists "${p}" || return 1
+    [[ -n "${pattern}" ]] || return 1
+
+    old_nullglob="$(shopt -p nullglob)"
+    old_dotglob="$(shopt -p dotglob)"
+
+    shopt -s nullglob
+    case "${pattern}" in .*) shopt -s dotglob ;; esac
+
+    for entry in "${p%/}"/${pattern}; do
+        [[ -e "${entry}" || -L "${entry}" ]] && { found=0; break; }
+    done
+
+    eval "${old_nullglob}"
+    eval "${old_dotglob}"
+
+    return "${found}"
+
+}
 dir::find () {
 
-    local p="${1-}" name="${2:-*}" type="${3:-any}" depth="${4:-}" find_type=""
+    local p="${1:-}" name="${2:-*}" type="${3:-any}" depth="${4:-}" find_type=""
 
-    dir::valid "${p}" || return 1
-    [[ -d "${p}" ]] || return 1
+    dir::exists "${p}" || return 1
+    dir::has find || return 1
 
-    sys::has find || return 1
+    [[ -n "${depth}" && ! "${depth}" =~ ^[0-9]+$ ]] && return 1
 
     case "${type}" in
-        any|"") find_type="" ;;
+        ""|any) find_type="" ;;
         file)   find_type="-type f" ;;
         dir)    find_type="-type d" ;;
         link)   find_type="-type l" ;;
         *)      return 1 ;;
     esac
 
-    if [[ -n "${depth}" ]]; then
-        [[ "${depth}" =~ ^[0-9]+$ ]] || return 1
-        # shellcheck disable=SC2086
-        find "${p}" -mindepth 1 -maxdepth "${depth}" ${find_type} -name "${name}" 2>/dev/null
-    else
-        # shellcheck disable=SC2086
-        find "${p}" -mindepth 1 ${find_type} -name "${name}" 2>/dev/null
+    if [[ -n "${depth}" ]]; then find "${p}" -mindepth 1 -maxdepth "${depth}" ${find_type} -name "${name}" 2>/dev/null
+    else find "${p}" -mindepth 1 ${find_type} -name "${name}" 2>/dev/null
     fi
 
 }
 dir::find_files () {
 
-    dir::find "${1-}" "${2:-*}" file "${3:-}"
+    dir::find "${1:-}" "${2:-*}" file "${3:-}"
 
 }
 dir::find_dirs () {
 
-    dir::find "${1-}" "${2:-*}" dir "${3:-}"
+    dir::find "${1:-}" "${2:-*}" dir "${3:-}"
 
 }
 dir::find_links () {
 
-    dir::find "${1-}" "${2:-*}" link "${3:-}"
+    dir::find "${1:-}" "${2:-*}" link "${3:-}"
 
 }
 dir::walk () {
 
-    local p="${1-}" entry=""
+    local p="${1:-}"
 
-    dir::valid "${p}" || return 1
-    [[ -d "${p}" ]] || return 1
+    dir::exists "${p}" || return 1
+    dir::has find || return 1
 
-    if sys::has find; then
-        find "${p}" -mindepth 1 2>/dev/null
-        return
-    fi
-
-    for entry in "${p%/}"/* "${p%/}"/.[!.]* "${p%/}"/..?*; do
-        [[ -e "${entry}" || -L "${entry}" ]] || continue
-        printf '%s\n' "${entry}"
-        [[ -d "${entry}" && ! -L "${entry}" ]] && dir::walk "${entry}"
-    done
+    find "${p}" -mindepth 1 2>/dev/null
 
 }
 dir::walk_files () {
 
-    local p="${1-}"
+    local p="${1:-}"
 
-    dir::valid "${p}" || return 1
-    [[ -d "${p}" ]] || return 1
+    dir::exists "${p}" || return 1
+    dir::has find || return 1
 
-    if sys::has find; then
-        find "${p}" -mindepth 1 -type f 2>/dev/null
-        return
-    fi
-
-    while IFS= read -r entry; do
-        [[ -f "${entry}" && ! -L "${entry}" ]] && printf '%s\n' "${entry}"
-    done < <(dir::walk "${p}")
+    find "${p}" -mindepth 1 -type f 2>/dev/null
 
 }
 dir::walk_dirs () {
 
-    local p="${1-}"
+    local p="${1:-}"
 
-    dir::valid "${p}" || return 1
-    [[ -d "${p}" ]] || return 1
+    dir::exists "${p}" || return 1
+    dir::has find || return 1
 
-    if sys::has find; then
-        find "${p}" -mindepth 1 -type d 2>/dev/null
-        return
+    find "${p}" -mindepth 1 -type d 2>/dev/null
+
+}
+dir::walk_links () {
+
+    local p="${1:-}"
+
+    dir::exists "${p}" || return 1
+    dir::has find || return 1
+
+    find "${p}" -mindepth 1 -type l 2>/dev/null
+
+}
+
+dir::list () {
+
+    local p="${1:-}" sort="${2:-name}" entry="" base=""
+    local -a names=()
+
+    dir::exists "${p}" || return 1
+
+    for entry in "${p%/}"/* "${p%/}"/.[!.]* "${p%/}"/..?*; do
+
+        [[ -e "${entry}" || -L "${entry}" ]] || continue
+        base="$(dir::basename "${entry}")" || return 1
+
+        [[ -n "${base}" ]] && names+=( "${base}" )
+
+    done
+
+    (( ${#names[@]} > 0 )) || return 0
+
+    case "${sort}" in
+        name|"")
+            if dir::has sort; then printf '%s\n' "${names[@]}" | LC_ALL=C sort
+            else printf '%s\n' "${names[@]}"
+            fi
+        ;;
+        none)
+            printf '%s\n' "${names[@]}"
+        ;;
+        reverse|desc)
+            if dir::has sort; then printf '%s\n' "${names[@]}" | LC_ALL=C sort -r
+            else printf '%s\n' "${names[@]}"
+            fi
+        ;;
+        *)
+            return 1
+        ;;
+    esac
+
+}
+dir::list_paths () {
+
+    local p="${1:-}" name=""
+
+    dir::exists "${p}" || return 1
+
+    while IFS= read -r name; do
+        printf '%s/%s\n' "${p%/}" "${name}"
+    done < <(dir::list "${p}")
+
+}
+dir::list_files () {
+
+    local p="${1:-}" entry="" base=""
+    local -a names=()
+
+    dir::exists "${p}" || return 1
+
+    for entry in "${p%/}"/* "${p%/}"/.[!.]* "${p%/}"/..?*; do
+
+        [[ -f "${entry}" && ! -L "${entry}" ]] || continue
+        base="$(dir::basename "${entry}")" || return 1
+
+        [[ -n "${base}" ]] && names+=( "${base}" )
+
+    done
+
+    (( ${#names[@]} > 0 )) || return 0
+
+    if dir::has sort; then printf '%s\n' "${names[@]}" | LC_ALL=C sort
+    else printf '%s\n' "${names[@]}"
     fi
 
-    while IFS= read -r entry; do
-        [[ -d "${entry}" && ! -L "${entry}" ]] && printf '%s\n' "${entry}"
-    done < <(dir::walk "${p}")
+}
+dir::list_dirs () {
+
+    local p="${1:-}" entry="" base=""
+    local -a names=()
+
+    dir::exists "${p}" || return 1
+
+    for entry in "${p%/}"/* "${p%/}"/.[!.]* "${p%/}"/..?*; do
+
+        [[ -d "${entry}" && ! -L "${entry}" ]] || continue
+        base="$(dir::basename "${entry}")" || return 1
+
+        [[ -n "${base}" ]] && names+=( "${base}" )
+
+    done
+
+    (( ${#names[@]} > 0 )) || return 0
+
+    if dir::has sort; then printf '%s\n' "${names[@]}" | LC_ALL=C sort
+    else printf '%s\n' "${names[@]}"
+    fi
+
+}
+dir::list_links () {
+
+    local p="${1:-}" entry="" base=""
+    local -a names=()
+
+    dir::exists "${p}" || return 1
+
+    for entry in "${p%/}"/* "${p%/}"/.[!.]* "${p%/}"/..?*; do
+
+        [[ -L "${entry}" ]] || continue
+        base="$(dir::basename "${entry}")" || return 1
+
+        [[ -n "${base}" ]] && names+=( "${base}" )
+
+    done
+
+    (( ${#names[@]} > 0 )) || return 0
+
+    if dir::has sort; then printf '%s\n' "${names[@]}" | LC_ALL=C sort
+    else printf '%s\n' "${names[@]}"
+    fi
+
+}
+dir::list_hidden () {
+
+    local p="${1:-}" entry="" base=""
+    local -a names=()
+
+    dir::exists "${p}" || return 1
+
+    for entry in "${p%/}"/.[!.]* "${p%/}"/..?*; do
+
+        [[ -e "${entry}" || -L "${entry}" ]] || continue
+        base="$(dir::basename "${entry}")" || return 1
+
+        [[ -n "${base}" ]] && names+=( "${base}" )
+
+    done
+
+    (( ${#names[@]} > 0 )) || return 0
+
+    if dir::has sort; then printf '%s\n' "${names[@]}" | LC_ALL=C sort
+    else printf '%s\n' "${names[@]}"
+    fi
 
 }
 
 dir::count () {
 
-    local p="${1-}" entry="" n=0
+    local p="${1:-}" entry="" n=0
 
-    dir::valid "${p}" || return 1
-    [[ -d "${p}" ]] || return 1
+    dir::exists "${p}" || return 1
 
-    for entry in "${p}"/* "${p}"/.[!.]* "${p}"/..?*; do
+    for entry in "${p%/}"/* "${p%/}"/.[!.]* "${p%/}"/..?*; do
+
         [[ -e "${entry}" || -L "${entry}" ]] || continue
         n=$(( n + 1 ))
+
     done
 
     printf '%s\n' "${n}"
@@ -533,14 +573,15 @@ dir::count () {
 }
 dir::count_files () {
 
-    local p="${1-}" entry="" n=0
+    local p="${1:-}" entry="" n=0
 
-    dir::valid "${p}" || return 1
-    [[ -d "${p}" ]] || return 1
+    dir::exists "${p}" || return 1
 
-    for entry in "${p}"/* "${p}"/.[!.]*; do
+    for entry in "${p%/}"/* "${p%/}"/.[!.]* "${p%/}"/..?*; do
+
         [[ -f "${entry}" && ! -L "${entry}" ]] || continue
         n=$(( n + 1 ))
+
     done
 
     printf '%s\n' "${n}"
@@ -548,14 +589,15 @@ dir::count_files () {
 }
 dir::count_dirs () {
 
-    local p="${1-}" entry="" n=0
+    local p="${1:-}" entry="" n=0
 
-    dir::valid "${p}" || return 1
-    [[ -d "${p}" ]] || return 1
+    dir::exists "${p}" || return 1
 
-    for entry in "${p}"/* "${p}"/.[!.]*; do
+    for entry in "${p%/}"/* "${p%/}"/.[!.]* "${p%/}"/..?*; do
+
         [[ -d "${entry}" && ! -L "${entry}" ]] || continue
         n=$(( n + 1 ))
+
     done
 
     printf '%s\n' "${n}"
@@ -563,14 +605,31 @@ dir::count_dirs () {
 }
 dir::count_links () {
 
-    local p="${1-}" entry="" n=0
+    local p="${1:-}" entry="" n=0
 
-    dir::valid "${p}" || return 1
-    [[ -d "${p}" ]] || return 1
+    dir::exists "${p}" || return 1
 
-    for entry in "${p}"/* "${p}"/.[!.]*; do
+    for entry in "${p%/}"/* "${p%/}"/.[!.]* "${p%/}"/..?*; do
+
         [[ -L "${entry}" ]] || continue
         n=$(( n + 1 ))
+
+    done
+
+    printf '%s\n' "${n}"
+
+}
+dir::count_hidden () {
+
+    local p="${1:-}" entry="" n=0
+
+    dir::exists "${p}" || return 1
+
+    for entry in "${p%/}"/.[!.]* "${p%/}"/..?*; do
+
+        [[ -L "${entry}" ]] || continue
+        n=$(( n + 1 ))
+
     done
 
     printf '%s\n' "${n}"
@@ -578,12 +637,11 @@ dir::count_links () {
 }
 dir::count_recursive () {
 
-    local p="${1-}" n=0
+    local p="${1:-}" n=0
 
-    dir::valid "${p}" || return 1
-    [[ -d "${p}" ]] || return 1
+    dir::exists "${p}" || return 1
 
-    if sys::has find; then
+    if dir::has find; then
         n="$(find "${p}" -mindepth 1 2>/dev/null | wc -l | tr -d '[:space:]')"
         [[ "${n}" =~ ^[0-9]+$ ]] && { printf '%s\n' "${n}"; return 0; }
     fi
@@ -595,114 +653,12 @@ dir::count_recursive () {
     printf '%s\n' "${n}"
 
 }
-dir::size () {
-
-    local p="${1-}" v=""
-
-    dir::valid "${p}" || return 1
-    [[ -d "${p}" ]] || return 1
-
-    if sys::has du; then
-        v="$(du -sk -- "${p}" 2>/dev/null | awk 'NR==1 {print $1}' | head -n 1)"
-        [[ "${v}" =~ ^[0-9]+$ ]] && { printf '%s\n' "$(( v * 1024 ))"; return 0; }
-    fi
-
-    return 1
-
-}
-dir::depth () {
-
-    local p="${1-}" current="" max=0 d=0
-
-    dir::valid "${p}" || return 1
-    [[ -d "${p}" ]] || return 1
-
-    if sys::has find; then
-
-        while IFS= read -r current; do
-
-            d="${current//[!\/]/}"
-            d="${#d}"
-
-            (( d > max )) && max="${d}"
-
-        done < <(find "${p}" -type d 2>/dev/null)
-
-        local base_d="${p//[!\/]/}"
-        printf '%s\n' "$(( max - ${#base_d} ))"
-        return 0
-
-    fi
-
-    return 1
-
-}
-
-dir::cd () {
-
-    local p="${1-}" rc=0
-
-    dir::valid "${p}" || return 1
-    [[ -d "${p}" ]] || return 1
-
-    # shellcheck disable=SC2164
-    cd -- "${p}" 2>/dev/null
-    rc=$?
-
-    return "${rc}"
-
-}
-dir::pushd () {
-
-    local p="${1-}" rc=0
-
-    dir::valid "${p}" || return 1
-    [[ -d "${p}" ]] || return 1
-
-    # shellcheck disable=SC2164
-    pushd -- "${p}" >/dev/null 2>&1
-    rc=$?
-
-    return "${rc}"
-
-}
-dir::popd () {
-
-    local rc=0
-
-    # shellcheck disable=SC2164
-    popd >/dev/null 2>&1
-    rc=$?
-
-    return "${rc}"
-
-}
-dir::with () {
-
-    local p="${1-}" rc=0
-
-    dir::valid "${p}" || return 1
-    [[ -d "${p}" ]] || return 1
-    shift || true
-
-    (( $# > 0 )) || return 1
-
-    (
-        cd -- "${p}" 2>/dev/null || exit 1
-        "$@"
-    )
-
-    rc=$?
-    return "${rc}"
-
-}
 
 dir::contains () {
 
-    local parent="${1-}" name="${2-}"
+    local parent="${1:-}" name="${2:-}"
 
-    dir::valid "${parent}" || return 1
-    [[ -d "${parent}" ]] || return 1
+    dir::exists "${parent}" || return 1
     [[ -n "${name}" ]] || return 1
 
     [[ -e "${parent%/}/${name}" || -L "${parent%/}/${name}" ]]
@@ -710,10 +666,9 @@ dir::contains () {
 }
 dir::contains_file () {
 
-    local parent="${1-}" name="${2-}"
+    local parent="${1:-}" name="${2:-}"
 
-    dir::valid "${parent}" || return 1
-    [[ -d "${parent}" ]] || return 1
+    dir::exists "${parent}" || return 1
     [[ -n "${name}" ]] || return 1
 
     [[ -f "${parent%/}/${name}" ]]
@@ -721,86 +676,39 @@ dir::contains_file () {
 }
 dir::contains_dir () {
 
-    local parent="${1-}" name="${2-}"
+    local parent="${1:-}" name="${2:-}"
 
-    dir::valid "${parent}" || return 1
-    [[ -d "${parent}" ]] || return 1
+    dir::exists "${parent}" || return 1
     [[ -n "${name}" ]] || return 1
 
     [[ -d "${parent%/}/${name}" ]]
 
 }
-dir::has_glob () {
+dir::contains_link () {
 
-    local p="${1-}" pattern="${2-}" old_nullglob="" old_dotglob="" entry="" found=1
-    local -a matches=()
+    local parent="${1:-}" name="${2:-}"
 
-    dir::valid "${p}" || return 1
-    [[ -d "${p}" ]] || return 1
-    [[ -n "${pattern}" ]] || return 1
+    dir::exists "${parent}" || return 1
+    [[ -n "${name}" ]] || return 1
 
-    old_nullglob="$(shopt -p nullglob)"
-    old_dotglob="$(shopt -p dotglob)"
+    [[ -L "${parent%/}/${name}" ]]
 
-    shopt -s nullglob
+}
+dir::contains_hidden () {
 
-    case "${pattern}" in
-        .*) shopt -s dotglob ;;
-    esac
+    local parent="${1:-}" name="${2:-}"
 
-    for entry in "${p%/}"/${pattern}; do
-        [[ -e "${entry}" || -L "${entry}" ]] && { found=0; break; }
-        matches+=( "${entry}" )
-    done
+    dir::exists "${parent}" || return 1
+    [[ -n "${name}" ]] || return 1
 
-    eval "${old_nullglob}"
-    eval "${old_dotglob}"
+    [[ "${name}" == .* ]] || name=".${name}"
+    [[ "${name}" != "." && "${name}" != ".." ]] || return 1
 
-    return "${found}"
+    [[ -e "${parent%/}/${name}" || -L "${parent%/}/${name}" ]]
 
 }
 
-dir::is_under () {
-
-    path::is_under "$@"
-
-}
-dir::is_parent () {
-
-    path::is_parent "$@"
-
-}
-dir::same () {
-
-    local a="${1-}" b="${2-}"
-
-    dir::valid "${a}" || return 1
-    dir::valid "${b}" || return 1
-
-    [[ -d "${a}" && -d "${b}" ]] || return 1
-
-    path::same "${a}" "${b}"
-
-}
-
-dir::touch () {
-
-    local p="${1-}" name="" entry=""
-
-    dir::valid "${p}" || return 1
-    [[ -d "${p}" ]] || return 1
-    shift || true
-
-    (( $# > 0 )) || return 1
-
-    for name in "$@"; do
-        [[ -n "${name}" ]] || return 1
-        entry="${p%/}/${name}"
-        : > "${entry}" 2>/dev/null || touch -- "${entry}" 2>/dev/null || return 1
-    done
-
-}
-dir::ensure_chain () {
+dir::chain () {
 
     local cur=""
 
@@ -811,164 +719,63 @@ dir::ensure_chain () {
     done
 
 }
+dir::touch () {
 
-dir::owner () {
+    local p="${1:-}" name="" entry=""
 
-    path::owner "$@"
+    dir::exists "${p}" || return 1
+    shift || true
 
-}
-dir::group () {
+    (( $# > 0 )) || return 1
 
-    path::group "$@"
+    for name in "$@"; do
 
-}
-dir::mode () {
+        [[ -n "${name}" ]] || return 1
 
-    local p="${1-}"
+        entry="${p%/}/${name}"
+        : > "${entry}" 2>/dev/null || touch -- "${entry}" 2>/dev/null || touch "${entry}" 2>/dev/null || return 1
 
-    dir::valid "${p}" || return 1
-    [[ -d "${p}" ]] || return 1
-
-    path::mode "${p}"
+    done
 
 }
-dir::mtime () {
+dir::sync () {
 
-    local p="${1-}"
+    local from="${1:-}" to="${2:-}"
 
-    dir::valid "${p}" || return 1
-    [[ -d "${p}" ]] || return 1
-
-    path::mtime "${p}"
-
-}
-dir::age () {
-
-    local p="${1-}"
-
-    dir::valid "${p}" || return 1
-    [[ -d "${p}" ]] || return 1
-
-    path::age "${p}"
-
-}
-
-dir::abs () {
-
-    local p="${1-}"
-
-    dir::valid "${p}" || return 1
-    [[ -d "${p}" ]] || return 1
-
-    path::abs "${p}"
-
-}
-dir::resolve () {
-
-    local p="${1-}"
-
-    dir::valid "${p}" || return 1
-    [[ -d "${p}" ]] || return 1
-
-    path::resolve "${p}"
-
-}
-dir::rel () {
-
-    local target="${1-}" base="${2:-}"
-
-    dir::valid "${target}" || return 1
-    [[ -d "${target}" ]] || return 1
-
-    path::rel "${target}" "${base}"
-
-}
-
-dir::archive () {
-
-    local p="${1-}" out="${2-}" parent="" name=""
-
-    dir::valid "${p}" || return 1
-    dir::valid "${out}" || return 1
-
-    [[ -d "${p}" ]] || return 1
-    sys::has tar || return 1
-
-    parent="$(path::dir "${p}" 2>/dev/null || true)"
-    name="$(path::base "${p}" 2>/dev/null || true)"
-
-    [[ -n "${parent}" && -n "${name}" ]] || return 1
-
-    case "${out}" in
-        *.tar.gz|*.tgz) tar -czf "${out}" -C "${parent}" "${name}" 2>/dev/null ;;
-        *.tar.bz2|*.tbz2) tar -cjf "${out}" -C "${parent}" "${name}" 2>/dev/null ;;
-        *.tar.xz|*.txz) tar -cJf "${out}" -C "${parent}" "${name}" 2>/dev/null ;;
-        *.tar.zst|*.tzst) tar --zstd -cf "${out}" -C "${parent}" "${name}" 2>/dev/null ;;
-        *.tar) tar -cf "${out}" -C "${parent}" "${name}" 2>/dev/null ;;
-        *.zip)
-            sys::has zip || return 1
-            ( cd -- "${parent}" 2>/dev/null && zip -qr -- "${out}" "${name}" ) 2>/dev/null
-        ;;
-        *) return 1 ;;
-    esac
-
-}
-dir::extract () {
-
-    local archive="${1-}" to="${2:-}" v=""
-
-    [[ -n "${archive}" ]] || return 1
-    [[ -f "${archive}" ]] || return 1
-    [[ -n "${to}" ]] || to="$(path::dir "${archive}" 2>/dev/null || printf '.')"
-
+    dir::exists "${from}" || return 1
     dir::valid "${to}" || return 1
-    dir::ensure "${to}" || return 1
+    dir::is_root "${to}" && return 1
 
-    case "${archive}" in
-        *.tar.gz|*.tgz)
-            sys::has tar || return 1
-            tar -xzf "${archive}" -C "${to}" 2>/dev/null
-        ;;
-        *.tar.bz2|*.tbz2)
-            sys::has tar || return 1
-            tar -xjf "${archive}" -C "${to}" 2>/dev/null
-        ;;
-        *.tar.xz|*.txz)
-            sys::has tar || return 1
-            tar -xJf "${archive}" -C "${to}" 2>/dev/null
-        ;;
-        *.tar.zst|*.tzst)
-            sys::has tar || return 1
-            tar --zstd -xf "${archive}" -C "${to}" 2>/dev/null
-        ;;
-        *.tar)
-            sys::has tar || return 1
-            tar -xf "${archive}" -C "${to}" 2>/dev/null
-        ;;
-        *.zip)
-            if sys::has unzip; then unzip -qo -- "${archive}" -d "${to}" 2>/dev/null
-            elif sys::has bsdtar; then bsdtar -xf "${archive}" -C "${to}" 2>/dev/null
-            else return 1
-            fi
-        ;;
-        *) return 1 ;;
-    esac
+    [[ "${from%/}" != "${to%/}" ]] || return 1
+
+    if dir::has rsync; then
+
+        dir::ensure "${to}" || return 1
+
+        rsync -a --delete -- "${from%/}/" "${to%/}/" >/dev/null 2>&1 ||
+        rsync -a --delete "${from%/}/" "${to%/}/" >/dev/null 2>&1
+
+        return
+
+    fi
+
+    dir::remove "${to}" || return 1
+    dir::copy "${from}" "${to}"
 
 }
-
 dir::watch () {
 
-    local p="${1-}" interval="${2:-1}" prev="" cur=""
+    local p="${1:-}" interval="${2:-1}" prev="" cur=""
 
-    dir::valid "${p}" || return 1
-    [[ -d "${p}" ]] || return 1
-
+    dir::exists "${p}" || return 1
     [[ "${interval}" =~ ^[0-9]+([.][0-9]+)?$ ]] || interval=1
 
     while :; do
 
-        cur="$(dir::list "${p}" 2>/dev/null | sha1sum 2>/dev/null | awk '{print $1}')"
-        [[ -z "${cur}" ]] && cur="$(dir::list "${p}" 2>/dev/null)"
+        if dir::has sha1sum; then cur="$(dir::walk "${p}" 2>/dev/null | sha1sum 2>/dev/null | awk '{print $1}')"
+        elif dir::has shasum; then cur="$(dir::walk "${p}" 2>/dev/null | shasum 2>/dev/null | awk '{print $1}')"
+        else cur="$(dir::walk "${p}" 2>/dev/null)"
+        fi
 
         if [[ "${cur}" != "${prev}" ]]; then
             [[ -n "${prev}" ]] && return 0
@@ -981,80 +788,542 @@ dir::watch () {
 
 }
 
-dir::config () {
+dir::unwrap () {
+ 
+    local target="${1:-}" n="${2:-1}" i=0 sub="" inner=""
+    local -a entries=()
+ 
+    dir::exists "${target}" || return 1
+    [[ "${n}" =~ ^[0-9]+$ ]] || return 1
+ 
+    (( n > 0 )) || return 0
+ 
+    while (( i < n )); do
+ 
+        entries=()
+ 
+        for sub in "${target}"/* "${target}"/.[!.]* "${target}"/..?*; do
+            [[ -e "${sub}" || -L "${sub}" ]] && entries+=( "${sub}" )
+        done
+ 
+        (( ${#entries[@]} > 0 )) || return 0
+ 
+        for inner in "${entries[@]}"; do
+ 
+            [[ -d "${inner}" && ! -L "${inner}" ]] || continue
+ 
+            for sub in "${inner}"/* "${inner}"/.[!.]* "${inner}"/..?*; do
+                [[ -e "${sub}" || -L "${sub}" ]] || continue
+                mv -- "${sub}" "${target}/" 2>/dev/null || return 1
+            done
+ 
+            rmdir -- "${inner}" 2>/dev/null || return 1
+ 
+        done
+ 
+        i=$(( i + 1 ))
+ 
+    done
+ 
+    return 0
+ 
+}
+dir::archive () {
 
-    local app="${1:-}" base=""
+    local src="" out="" format="" arg="" parent="" name="" out_parent="" pat="" lower=""
 
-    base="$(path::config_dir 2>/dev/null || true)"
-    [[ -n "${base}" ]] || return 1
+    local -a exclude=()
+    local -a positional=()
+    local -a args=()
+    local -a fallback=()
 
-    if [[ -n "${app}" ]]; then printf '%s/%s\n' "${base%/}" "${app}"
-    else printf '%s\n' "${base}"
+    for arg in "$@"; do
+
+        case "${arg}" in
+            --exclude=*) exclude+=( "${arg#--exclude=}" ) ;;
+            --format=*)  format="${arg#--format=}" ;;
+            --) ;;
+            -*) return 1 ;;
+            *) positional+=( "${arg}" ) ;;
+        esac
+
+    done
+
+    src="${positional[0]:-}"
+    out="${positional[1]:-}"
+
+    dir::exists "${src}" || return 1
+
+    if [[ -n "${format}" ]]; then
+
+        case "${format,,}" in
+            zip|rar|7z|tar) format="${format,,}" ;;
+            tgz|gz|tar.gz) format="tar.gz" ;;
+            txz|xz|tar.xz) format="tar.xz" ;;
+            tbz2|bz2|tar.bz2) format="tar.bz2" ;;
+            tzst|zst|tar.zst) format="tar.zst" ;;
+            *) return 1 ;;
+        esac
+
+    fi
+    if [[ -z "${out}" ]]; then
+
+        [[ -n "${format}" ]] || format="tar.gz"
+        out="${src%/}.${format#.}"
+
+    fi
+    if [[ -n "${format}" ]]; then
+
+        out="${out%.tar.zst}"
+        out="${out%.tar.gz}"
+        out="${out%.tar.xz}"
+        out="${out%.tar.bz2}"
+        out="${out%.tgz}"
+        out="${out%.txz}"
+        out="${out%.tbz2}"
+        out="${out%.tzst}"
+        out="${out%.tar}"
+        out="${out%.zip}"
+        out="${out%.rar}"
+        out="${out%.7z}"
+        out="${out}.${format#.}"
+
     fi
 
+    dir::valid "${out}" || return 1
+
+    case "${out}" in
+        /*|[A-Za-z]:*) ;;
+        *) out="${PWD}/${out#./}" ;;
+    esac
+
+    parent="$(dir::dirname "${src}")" || return 1
+    name="$(dir::basename "${src}")" || return 1
+    out_parent="$(dir::dirname "${out}")" || return 1
+
+    [[ -n "${parent}" && -n "${name}" ]] || return 1
+    dir::ensure "${out_parent}" || return 1
+
+    lower="${out,,}"
+
+    case "${lower}" in
+        *.tar.gz|*.tgz)
+
+            dir::has tar || return 1
+            args=( -czf "${out}" )
+
+            for pat in "${exclude[@]}"; do
+                [[ -n "${pat}" ]] && args+=( "--exclude=${pat}" )
+            done
+
+            args+=( -C "${parent}" "${name}" )
+            tar "${args[@]}" 2>/dev/null
+
+        ;;
+        *.tar.bz2|*.tbz2)
+
+            dir::has tar || return 1
+            args=( -cjf "${out}" )
+
+            for pat in "${exclude[@]}"; do
+                [[ -n "${pat}" ]] && args+=( "--exclude=${pat}" )
+            done
+
+            args+=( -C "${parent}" "${name}" )
+            tar "${args[@]}" 2>/dev/null
+
+        ;;
+        *.tar.xz|*.txz)
+
+            dir::has tar || return 1
+            args=( -cJf "${out}" )
+
+            for pat in "${exclude[@]}"; do
+                [[ -n "${pat}" ]] && args+=( "--exclude=${pat}" )
+            done
+
+            args+=( -C "${parent}" "${name}" )
+            tar "${args[@]}" 2>/dev/null
+
+        ;;
+        *.tar.zst|*.tzst)
+
+            dir::has tar || return 1
+
+            args=( --zstd -cf "${out}" )
+
+            for pat in "${exclude[@]}"; do
+                [[ -n "${pat}" ]] && args+=( "--exclude=${pat}" )
+            done
+
+            args+=( -C "${parent}" "${name}" )
+
+            tar "${args[@]}" 2>/dev/null && { printf '%s\n' "${out}"; return 0; }
+
+            dir::has zstd || return 1
+
+            fallback=( -cf - )
+
+            for pat in "${exclude[@]}"; do
+                [[ -n "${pat}" ]] && fallback+=( "--exclude=${pat}" )
+            done
+
+            fallback+=( -C "${parent}" "${name}" )
+
+            tar "${fallback[@]}" 2>/dev/null | zstd -T0 -q -o "${out}" >/dev/null 2>&1
+
+        ;;
+        *.tar)
+
+            dir::has tar || return 1
+            args=( -cf "${out}" )
+
+            for pat in "${exclude[@]}"; do
+                [[ -n "${pat}" ]] && args+=( "--exclude=${pat}" )
+            done
+
+            args+=( -C "${parent}" "${name}" )
+            tar "${args[@]}" 2>/dev/null
+
+        ;;
+        *.zip)
+
+            if dir::has zip; then
+
+                args=( -qr "${out}" "${name}" )
+
+                if (( ${#exclude[@]} > 0 )); then
+
+                    args+=( -x )
+
+                    for pat in "${exclude[@]}"; do
+                        [[ -n "${pat}" ]] && args+=( "${pat}" )
+                    done
+
+                fi
+
+                (
+                    builtin cd -- "${parent}" 2>/dev/null || exit 1
+                    zip "${args[@]}" >/dev/null 2>&1
+                ) || return 1
+
+                printf '%s\n' "${out}";
+                return 0
+
+            fi
+            if dir::has 7z; then
+
+                args=( a -tzip -bd -y "${out}" "${name}" )
+
+                for pat in "${exclude[@]}"; do
+                    [[ -n "${pat}" ]] && args+=( "-xr!${pat}" )
+                done
+
+                (
+                    builtin cd -- "${parent}" 2>/dev/null || exit 1
+                    7z "${args[@]}" >/dev/null 2>&1
+                ) || return 1
+
+                printf '%s\n' "${out}";
+                return 0
+
+            fi
+
+            return 1
+
+        ;;
+        *.rar)
+
+            dir::has rar || return 1
+
+            args=( a -idq -r )
+
+            for pat in "${exclude[@]}"; do
+                [[ -n "${pat}" ]] && args+=( "-x${pat}" )
+            done
+
+            args+=( "${out}" "${name}" )
+
+            (
+                builtin cd -- "${parent}" 2>/dev/null || exit 1
+                rar "${args[@]}" >/dev/null 2>&1
+            )
+
+        ;;
+        *.7z)
+
+            dir::has 7z || return 1
+
+            args=( a -bd -y "${out}" "${name}" )
+
+            for pat in "${exclude[@]}"; do
+                [[ -n "${pat}" ]] && args+=( "-xr!${pat}" )
+            done
+
+            (
+                builtin cd -- "${parent}" 2>/dev/null || exit 1
+                7z "${args[@]}" >/dev/null 2>&1
+            )
+
+        ;;
+        *)
+            return 1
+        ;;
+    esac || return 1
+
+    printf '%s\n' "${out}"
+
 }
-dir::data () {
+dir::extract () {
 
-    local app="${1:-}" base=""
+    local archive="" to="" strip=0 arg="" base="" parent="" pat="" lower=""
 
-    base="$(path::data_dir 2>/dev/null || true)"
-    [[ -n "${base}" ]] || return 1
+    local -a exclude=()
+    local -a positional=()
+    local -a args=()
+    local -a fallback=()
 
-    if [[ -n "${app}" ]]; then printf '%s/%s\n' "${base%/}" "${app}"
-    else printf '%s\n' "${base}"
+    for arg in "$@"; do
+
+        case "${arg}" in
+            --exclude=*) exclude+=( "${arg#--exclude=}" ) ;;
+            --strip=*)   strip="${arg#--strip=}" ;;
+            --) ;;
+            -*) return 1 ;;
+            *) positional+=( "${arg}" ) ;;
+        esac
+
+    done
+
+    archive="${positional[0]:-}"
+    to="${positional[1]:-}"
+
+    [[ -n "${archive}" && -f "${archive}" ]] || return 1
+    [[ "${strip}" =~ ^[0-9]+$ ]] || return 1
+
+    if [[ -z "${to}" ]]; then
+
+        base="$(dir::basename "${archive}")" || return 1
+
+        case "${base,,}" in
+            *.tar.gz|*.tar.bz2|*.tar.xz|*.tar.zst)
+                base="${base%.*}"
+                base="${base%.*}"
+            ;;
+            *.tgz|*.tbz2|*.txz|*.tzst|*.tar|*.zip|*.rar|*.7z)
+                base="${base%.*}"
+            ;;
+        esac
+
+        parent="$(dir::dirname "${archive}")" || return 1
+
+        if [[ "${parent}" == "." ]]; then to="${base}"
+        else to="${parent}/${base}"
+        fi
+
     fi
 
-}
-dir::cache () {
+    dir::valid "${to}" || return 1
+    dir::ensure "${to}" || return 1
 
-    local app="${1:-}" base=""
+    lower="${archive,,}"
 
-    base="$(path::cache_dir 2>/dev/null || true)"
-    [[ -n "${base}" ]] || return 1
+    case "${lower}" in
+        *.tar.gz|*.tgz)
 
-    if [[ -n "${app}" ]]; then printf '%s/%s\n' "${base%/}" "${app}"
-    else printf '%s\n' "${base}"
-    fi
+            dir::has tar || return 1
+            args=( -xzf "${archive}" )
 
-}
-dir::state () {
+            for pat in "${exclude[@]}"; do
+                [[ -n "${pat}" ]] && args+=( "--exclude=${pat}" )
+            done
 
-    local app="${1:-}" base=""
+            (( strip > 0 )) && args+=( "--strip-components=${strip}" )
+            args+=( -C "${to}" )
 
-    base="$(path::state_dir 2>/dev/null || true)"
-    [[ -n "${base}" ]] || return 1
+            tar "${args[@]}" 2>/dev/null
 
-    if [[ -n "${app}" ]]; then printf '%s/%s\n' "${base%/}" "${app}"
-    else printf '%s\n' "${base}"
-    fi
+        ;;
+        *.tar.bz2|*.tbz2)
 
-}
-dir::logs () {
+            dir::has tar || return 1
+            args=( -xjf "${archive}" )
 
-    local app="${1:-}" base=""
+            for pat in "${exclude[@]}"; do
+                [[ -n "${pat}" ]] && args+=( "--exclude=${pat}" )
+            done
 
-    base="$(path::log_dir 2>/dev/null || true)"
-    [[ -n "${base}" ]] || return 1
+            (( strip > 0 )) && args+=( "--strip-components=${strip}" )
+            args+=( -C "${to}" )
 
-    if [[ -n "${app}" ]]; then printf '%s/%s\n' "${base%/}" "${app}"
-    else printf '%s\n' "${base}"
-    fi
+            tar "${args[@]}" 2>/dev/null
 
-}
-dir::tmp () {
+        ;;
+        *.tar.xz|*.txz)
 
-    local app="${1:-}" base=""
+            dir::has tar || return 1
+            args=( -xJf "${archive}" )
 
-    base="$(path::tmp_dir 2>/dev/null || true)"
-    [[ -n "${base}" ]] || return 1
+            for pat in "${exclude[@]}"; do
+                [[ -n "${pat}" ]] && args+=( "--exclude=${pat}" )
+            done
 
-    if [[ -n "${app}" ]]; then printf '%s/%s\n' "${base%/}" "${app}"
-    else printf '%s\n' "${base}"
-    fi
+            (( strip > 0 )) && args+=( "--strip-components=${strip}" )
+            args+=( -C "${to}" )
 
-}
-dir::home () {
+            tar "${args[@]}" 2>/dev/null
 
-    path::home_dir
+        ;;
+        *.tar.zst|*.tzst)
+
+            dir::has tar || return 1
+
+            args=( --zstd -xf "${archive}" )
+
+            for pat in "${exclude[@]}"; do
+                [[ -n "${pat}" ]] && args+=( "--exclude=${pat}" )
+            done
+
+            (( strip > 0 )) && args+=( "--strip-components=${strip}" )
+            args+=( -C "${to}" )
+
+            tar "${args[@]}" 2>/dev/null && { printf '%s\n' "${to}"; return 0; }
+
+            dir::has zstd || return 1
+            fallback=( -xf - )
+
+            for pat in "${exclude[@]}"; do
+                [[ -n "${pat}" ]] && fallback+=( "--exclude=${pat}" )
+            done
+
+            (( strip > 0 )) && fallback+=( "--strip-components=${strip}" )
+            fallback+=( -C "${to}" )
+
+            zstd -dc -- "${archive}" 2>/dev/null | tar "${fallback[@]}" 2>/dev/null
+
+        ;;
+        *.tar)
+
+            dir::has tar || return 1
+            args=( -xf "${archive}" )
+
+            for pat in "${exclude[@]}"; do
+                [[ -n "${pat}" ]] && args+=( "--exclude=${pat}" )
+            done
+
+            (( strip > 0 )) && args+=( "--strip-components=${strip}" )
+            args+=( -C "${to}" )
+
+            tar "${args[@]}" 2>/dev/null
+
+        ;;
+        *.zip)
+
+            (( strip == 0 )) || return 1
+
+            if dir::has unzip; then
+
+                args=( -qo "${archive}" -d "${to}" )
+
+                if (( ${#exclude[@]} > 0 )); then
+
+                    args+=( -x )
+
+                    for pat in "${exclude[@]}"; do
+                        [[ -n "${pat}" ]] && args+=( "${pat}" )
+                    done
+
+                fi
+
+                unzip "${args[@]}" 2>/dev/null || return 1
+
+                printf '%s\n' "${to}";
+                return 0
+
+            fi
+            if dir::has 7z; then
+
+                args=( x -bd -y "-o${to}" "${archive}" )
+
+                for pat in "${exclude[@]}"; do
+                    [[ -n "${pat}" ]] && args+=( "-xr!${pat}" )
+                done
+
+                7z "${args[@]}" >/dev/null 2>&1 || return 1
+
+                printf '%s\n' "${to}";
+                return 0
+
+            fi
+            if dir::has bsdtar; then
+
+                bsdtar -xf "${archive}" -C "${to}" 2>/dev/null || return 1
+
+                printf '%s\n' "${to}";
+                return 0
+
+            fi
+
+            return 1
+
+        ;;
+        *.rar)
+
+            (( strip == 0 )) || return 1
+
+            if dir::has unrar; then
+
+                args=( x -idq -y )
+
+                for pat in "${exclude[@]}"; do
+                    [[ -n "${pat}" ]] && args+=( "-x${pat}" )
+                done
+
+                args+=( "${archive}" "${to}/" )
+
+                unrar "${args[@]}" >/dev/null 2>&1 || return 1
+
+                printf '%s\n' "${to}";
+                return 0
+
+            fi
+            if dir::has 7z; then
+
+                args=( x -bd -y "-o${to}" "${archive}" )
+
+                for pat in "${exclude[@]}"; do
+                    [[ -n "${pat}" ]] && args+=( "-xr!${pat}" )
+                done
+
+                7z "${args[@]}" >/dev/null 2>&1 || return 1
+
+                printf '%s\n' "${to}";
+                return 0
+
+            fi
+
+            return 1
+
+        ;;
+        *.7z)
+
+            (( strip == 0 )) || return 1
+            dir::has 7z || return 1
+
+            args=( x -bd -y "-o${to}" "${archive}" )
+
+            for pat in "${exclude[@]}"; do
+                [[ -n "${pat}" ]] && args+=( "-xr!${pat}" )
+            done
+
+            7z "${args[@]}" >/dev/null 2>&1
+
+        ;;
+        *)
+            return 1
+        ;;
+    esac || return 1
+
+    printf '%s\n' "${to}"
 
 }
