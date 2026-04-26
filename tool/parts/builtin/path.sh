@@ -1,4 +1,3 @@
-# shellcheck shell=bash
 
 path::valid () {
 
@@ -53,7 +52,6 @@ path::filled () {
     [[ -e "${1:-}" || -L "${1:-}" ]]
 
 }
-
 path::is_abs () {
 
     local p="${1:-}"
@@ -74,27 +72,10 @@ path::is_rel () {
     return 0
 
 }
-path::is_root () {
+path::is_drive () {
 
     local p="${1:-}"
 
-    [[ -n "${p}" ]] || return 1
-    [[ "${p}" == "/" ]] && return 0
-    [[ "${p}" == "\\" ]] && return 0
-    [[ "${p}" =~ ^[A-Za-z]:[\\/]?$ ]] && return 0
-
-    return 1
-
-}
-path::is_unc () {
-
-    local p="${1:-}"
-    [[ "${p}" == //* || "${p}" == \\\\* ]]
-
-}
-path::has_drive () {
-
-    local p="${1:-}"
     [[ "${p}" =~ ^[A-Za-z]: ]]
 
 }
@@ -139,7 +120,7 @@ path::posix () {
     printf '%s' "${p}"
 
 }
-path::win () {
+path::windows () {
 
     local p="${1:-}" v="" letter="" rest=""
 
@@ -190,7 +171,7 @@ path::win () {
     printf '%s' "${p//\//\\}"
 
 }
-path::norm () {
+path::normalize () {
 
     local p="${1:-}" prefix="" first="" head=""
     local -a parts=()
@@ -263,29 +244,6 @@ path::norm () {
     fi
 
 }
-path::join () {
-
-    local acc="" seg="" sep="/" first=1
-
-    (( $# > 0 )) || return 1
-
-    for seg in "$@"; do
-
-        [[ -n "${seg}" ]] || continue
-        seg="${seg//\\//}"
-
-        if (( first )); then acc="${seg}"; first=0
-        elif path::is_abs "${seg}"; then acc="${seg}"
-        elif [[ "${acc}" == */ || "${acc}" == *\\ ]]; then acc="${acc}${seg}"
-        else acc="${acc}${sep}${seg}"
-        fi
-
-    done
-
-    [[ -n "${acc}" ]] || acc="."
-    path::norm "${acc}"
-
-}
 path::resolve () {
 
     local p="${1:-}" parent="" base="" v=""
@@ -325,6 +283,29 @@ path::resolve () {
     path::abs "${p}"
 
 }
+path::join () {
+
+    local acc="" seg="" sep="/" first=1
+
+    (( $# > 0 )) || return 1
+
+    for seg in "$@"; do
+
+        [[ -n "${seg}" ]] || continue
+        seg="${seg//\\//}"
+
+        if (( first )); then acc="${seg}"; first=0
+        elif path::is_abs "${seg}"; then acc="${seg}"
+        elif [[ "${acc}" == */ || "${acc}" == *\\ ]]; then acc="${acc}${seg}"
+        else acc="${acc}${sep}${seg}"
+        fi
+
+    done
+
+    [[ -n "${acc}" ]] || acc="."
+    path::normalize "${acc}"
+
+}
 
 path::cwd () {
 
@@ -342,8 +323,8 @@ path::abs () {
 
     path::valid "${p}" || return 1
 
-    if path::is_abs "${p}"; then path::norm "${p}"
-    else path::norm "$(pwd 2>/dev/null || printf '.')/${p}"
+    if path::is_abs "${p}"; then path::normalize "${p}"
+    else path::normalize "$(pwd 2>/dev/null || printf '.')/${p}"
     fi
 
 }
@@ -405,14 +386,6 @@ path::rel () {
     [[ -n "${v}" ]] || v="."
 
     printf '%s' "${v}"
-
-}
-path::drive () {
-
-    local p="${1:-}"
-
-    [[ "${p}" =~ ^([A-Za-z]):.* ]] || return 1
-    printf '%s:' "${BASH_REMATCH[1]}"
 
 }
 path::expand () {
@@ -640,6 +613,14 @@ path::basename () {
     printf '%s' "${p##*/}"
 
 }
+path::drive () {
+
+    local p="${1:-}"
+
+    [[ "${p}" =~ ^([A-Za-z]):.* ]] || return 1
+    printf '%s:' "${BASH_REMATCH[1]}"
+
+}
 path::stem () {
 
     local path_base="" lead="" rest=""
@@ -749,6 +730,24 @@ path::chmod () {
 
 }
 
+path::is_root () {
+
+    local p="${1:-}"
+
+    [[ -n "${p}" ]] || return 1
+    [[ "${p}" == "/" ]] && return 0
+    [[ "${p}" == "\\" ]] && return 0
+    [[ "${p}" =~ ^[A-Za-z]:[\\/]?$ ]] && return 0
+
+    return 1
+
+}
+path::is_unc () {
+
+    local p="${1:-}"
+    [[ "${p}" == //* || "${p}" == \\\\* ]]
+
+}
 path::is_same () {
 
     local pa="${1:-}" pb="${2:-}" x="" y=""
@@ -774,13 +773,16 @@ path::is_under () {
     path::valid "${child}" || return 1
     path::valid "${parent}" || return 1
 
-    x="$(path::abs "${child}")" || return 1
-    y="$(path::abs "${parent}")" || return 1
+    x="$(path::resolve "${child}" 2>/dev/null || path::abs "${child}")" || return 1
+    y="$(path::resolve "${parent}" 2>/dev/null || path::abs "${parent}")" || return 1
 
-    x="${x%/}/"
-    y="${y%/}/"
+    x="${x%/}"
+    y="${y%/}"
 
-    [[ "${x}" == "${y}"* && "${x}" != "${y}" ]]
+    [[ -n "${x}" && -n "${y}" ]] || return 1
+    path::is_root "${y}" && return 1
+
+    [[ "${x}" == "${y}/"* ]]
 
 }
 path::is_parent () {
@@ -789,6 +791,7 @@ path::is_parent () {
     path::is_under "${child}" "${parent}"
 
 }
+
 path::is_file () {
 
     local p="${1:-}"
@@ -1058,6 +1061,38 @@ path::inode () {
     [[ "${v}" =~ ^[0-9]+$ ]] && { printf '%s\n' "${v}"; return 0; }
 
     return 1
+
+}
+path::which () {
+
+    local bin="${1:-}" v=""
+
+    [[ -n "${bin}" ]] || return 1
+    [[ "${bin}" != *$'\n'* && "${bin}" != *$'\r'* ]] || return 1
+
+    v="$(command -v -- "${bin}" 2>/dev/null || true)"
+    [[ -n "${v}" ]] && { printf '%s' "${v}"; return 0; }
+
+    return 1
+
+}
+path::which_all () {
+
+    local bin="${1:-}" dir="" entry=""
+    local -a dirs=()
+
+    [[ -n "${bin}" ]] || return 1
+    [[ "${bin}" != *$'\n'* && "${bin}" != *$'\r'* ]] || return 1
+
+    IFS=":" read -r -a dirs <<< "${PATH:-}"
+
+    for dir in "${dirs[@]}"; do
+
+        [[ -n "${dir}" ]] || continue
+        entry="${dir%/}/${bin}"
+        [[ -f "${entry}" && -x "${entry}" ]] && printf '%s\n' "${entry}"
+
+    done
 
 }
 
@@ -1520,52 +1555,20 @@ path::templates_dir () {
 
 }
 
-path::make () {
-
-    local p="${1:-}" mode="${2:-}"
-
-    path::valid "${p}" || return 1
-
-    [[ -d "${p}" && -z "${mode}" ]] && return 0
-    [[ -d "${p}" ]] && { chmod "${mode}" "${p}" 2>/dev/null || return 1; return 0; }
-    [[ -e "${p}" || -L "${p}" ]] && return 1
-
-    mkdir -p -- "${p}" 2>/dev/null || mkdir -p "${p}" 2>/dev/null || return 1
-    [[ -n "${mode}" ]] && { chmod "${mode}" "${p}" 2>/dev/null || return 1; }
-
-    return 0
-
-}
-path::touch () {
-
-    local p="${1:-}" parent=""
-
-    path::valid "${p}" || return 1
-
-    parent="$(path::dirname "${p}")"
-    [[ -d "${parent}" ]] || mkdir -p -- "${parent}" 2>/dev/null || return 1
-
-    sys::has touch && touch -- "${p}" 2>/dev/null && return 0
-    : > "${p}" 2>/dev/null
-
-}
 path::remove () {
 
-    local p="${1:-}"
+    local p="${1:-}" resolved=""
 
     path::valid "${p}" || return 1
     path::is_root "${p}" && return 1
 
+    resolved="$(path::resolve "${p}" 2>/dev/null || true)"
+
+    [[ -n "${resolved}" ]] && path::is_root "${resolved}" && return 1
     [[ -e "${p}" || -L "${p}" ]] || return 0
 
-    if [[ -L "${p}" || -f "${p}" ]]; then
-        rm -f -- "${p}" 2>/dev/null
-        return
-    fi
-    if [[ -d "${p}" ]]; then
-        rm -rf -- "${p}" 2>/dev/null
-        return
-    fi
+    [[ -L "${p}" || -f "${p}" ]] && { rm -f -- "${p}" 2>/dev/null; return; }
+    [[ -d "${p}" ]] && { rm -rf -- "${p}" 2>/dev/null; return; }
 
     rm -f -- "${p}" 2>/dev/null
 
@@ -1575,6 +1578,7 @@ path::clear () {
     local p="${1:-}" entry=""
 
     path::exists "${p}" || return 1
+    [[ -L "${p}" ]] && return 1
     path::is_root "${p}" && return 1
 
     [[ -d "${p}" || -f "${p}" ]] || return 1
@@ -1582,17 +1586,16 @@ path::clear () {
     if [[ -f "${p}" ]]; then
 
         : > "${p}" 2>/dev/null || return 1
-
-    else
-
-        for entry in "${p%/}"/* "${p%/}"/.[!.]* "${p%/}"/..?*; do
-
-            [[ -e "${entry}" || -L "${entry}" ]] || continue
-            rm -rf -- "${entry}" 2>/dev/null || rm -rf "${entry}" 2>/dev/null || return 1
-
-        done
+        return 0
 
     fi
+
+    for entry in "${p%/}"/* "${p%/}"/.[!.]* "${p%/}"/..?*; do
+
+        [[ -e "${entry}" || -L "${entry}" ]] || continue
+        rm -rf -- "${entry}" 2>/dev/null || rm -rf "${entry}" 2>/dev/null || return 1
+
+    done
 
     return 0
 
@@ -1671,8 +1674,8 @@ path::symlink () {
             winfrom="$(cygpath -aw -- "${from}" 2>/dev/null || printf '%s' "${from}")"
             winto="$(cygpath -aw -- "${to}" 2>/dev/null || printf '%s' "${to}")"
         else
-            winfrom="$(path::win "${from}")"
-            winto="$(path::win "${to}")"
+            winfrom="$(path::windows "${from}")"
+            winto="$(path::windows "${to}")"
         fi
 
         if [[ -d "${from}" ]]; then cmd.exe /C mklink /D "${winto}" "${winfrom}" >/dev/null 2>&1
@@ -1712,12 +1715,53 @@ path::readlink () {
     return 1
 
 }
+path::touch () {
+
+    local p="${1:-}" parent=""
+
+    path::valid "${p}" || return 1
+
+    parent="$(path::dirname "${p}")" || return 1
+    mkdir -p -- "${parent}" 2>/dev/null || mkdir -p "${parent}" 2>/dev/null || return 1
+
+    sys::has touch && touch -- "${p}" 2>/dev/null && return 0
+    : > "${p}" 2>/dev/null
+
+}
+path::mkdir () {
+
+    local p="${1:-}" mode="${2:-}"
+
+    path::valid "${p}" || return 1
+
+    [[ -d "${p}" && -z "${mode}" ]] && return 0
+    [[ -d "${p}" ]] && { chmod "${mode}" "${p}" 2>/dev/null || return 1; return 0; }
+    [[ -e "${p}" || -L "${p}" ]] && return 1
+
+    mkdir -p -- "${p}" 2>/dev/null || mkdir -p "${p}" 2>/dev/null || return 1
+    [[ -n "${mode}" ]] && { chmod "${mode}" "${p}" 2>/dev/null || return 1; }
+
+    return 0
+
+}
+path::mkparent () {
+
+    local p="${1:-}" parent=""
+
+    path::valid "${p}" || return 1
+
+    parent="$(path::dirname "${p}")" || return 1
+    [[ -n "${parent}" ]] || return 1
+
+    mkdir -p -- "${parent}" 2>/dev/null || mkdir -p "${parent}" 2>/dev/null
+
+}
 path::mktemp () {
 
-    local prefix="${1:-tmp}" suffix="${2:-}" tmp="" name="" v=""
+    local prefix="${1:-tmp}" suffix="${2:-}" tmp="" name="" v="" i=0
 
     tmp="$(path::tmp_dir 2>/dev/null || true)"
-    [[ -n "${tmp}" ]] || return 1
+    [[ -n "${tmp}" && -d "${tmp}" ]] || return 1
 
     if sys::has mktemp; then
 
@@ -1741,12 +1785,21 @@ path::mktemp () {
 
     fi
 
-    name="${prefix}.$$.${RANDOM}${RANDOM}${suffix}"
-    v="${tmp%/}/${name}"
+    while (( i < 16 )); do
 
-    ( set -C; : > "${v}" ) 2>/dev/null || return 1
+        name="${prefix}.$$.${RANDOM}${RANDOM}${RANDOM}${suffix}"
+        v="${tmp%/}/${name}"
 
-    printf '%s' "${v}"
+        if ( set -C; : > "${v}" ) 2>/dev/null; then
+            printf '%s' "${v}"
+            return 0
+        fi
+
+        i=$(( i + 1 ))
+
+    done
+
+    return 1
 
 }
 path::mktemp_dir () {
@@ -1769,43 +1822,219 @@ path::mktemp_dir () {
     name="${prefix}.$$.${RANDOM}${RANDOM}"
     v="${tmp%/}/${name}"
 
-    [[ -e "${v}" || -L "${v}" ]] && return 1
-    mkdir -- "${v}" 2>/dev/null || return 1
+    mkdir -- "${v}" 2>/dev/null || mkdir "${v}" 2>/dev/null || return 1
 
     printf '%s' "${v}"
 
 }
 
-path::which () {
+path::checksum () {
 
-    local bin="${1:-}" v=""
+    local p="${1:-}" algo="${2:-sha256}" item="" rel="" type="" sum="" target="" cmd=""
+    local -a rows=()
 
-    [[ -n "${bin}" ]] || return 1
-    [[ "${bin}" != *$'\n'* && "${bin}" != *$'\r'* ]] || return 1
+    path::exists "${p}" || return 1
 
-    v="$(command -v -- "${bin}" 2>/dev/null || true)"
-    [[ -n "${v}" ]] && { printf '%s' "${v}"; return 0; }
+    case "${algo}" in
+        sha256|"")
+            if sys::has sha256sum; then cmd="sha256sum"
+            elif sys::has shasum; then cmd="shasum -a 256"
+            else return 1
+            fi
+        ;;
+        sha1)
+            if sys::has sha1sum; then cmd="sha1sum"
+            elif sys::has shasum; then cmd="shasum -a 1"
+            else return 1
+            fi
+        ;;
+        md5)
+            if sys::has md5sum; then cmd="md5sum"
+            elif sys::has md5; then cmd="md5 -q"
+            else return 1
+            fi
+        ;;
+        *)
+            return 1
+        ;;
+    esac
 
-    return 1
+    if [[ -f "${p}" && ! -L "${p}" ]]; then
+
+        if [[ "${cmd}" == "md5 -q" ]]; then
+            md5 -q "${p}" 2>/dev/null
+        else
+            ${cmd} -- "${p}" 2>/dev/null | awk '{print $1}' ||
+            ${cmd} "${p}" 2>/dev/null | awk '{print $1}'
+        fi
+
+        return
+
+    fi
+    if [[ -L "${p}" ]]; then
+
+        target="$(path::readlink "${p}" 2>/dev/null || true)"
+
+        printf 'link\t%s\t%s\n' "${target}" "${p}" | {
+            if [[ "${cmd}" == "md5 -q" ]]; then md5 -q 2>/dev/null
+            else ${cmd} 2>/dev/null | awk '{print $1}'
+            fi
+        }
+
+        return
+
+    fi
+
+    [[ -d "${p}" ]] || return 1
+    sys::has find || return 1
+
+    while IFS= read -r item; do
+
+        rel="${item#"${p%/}/"}"
+        type="$(path::type "${item}" 2>/dev/null || printf other)"
+
+        case "${type}" in
+            file)
+                if [[ "${cmd}" == "md5 -q" ]]; then sum="$(md5 -q "${item}" 2>/dev/null || true)"
+                else sum="$(${cmd} -- "${item}" 2>/dev/null | awk '{print $1}' || ${cmd} "${item}" 2>/dev/null | awk '{print $1}' || true)"
+                fi
+
+                [[ -n "${sum}" ]] || return 1
+                rows+=( "file	${sum}	${rel}" )
+            ;;
+            link)
+                target="$(path::readlink "${item}" 2>/dev/null || true)"
+                rows+=( "link	${target}	${rel}" )
+            ;;
+            dir)
+                rows+=( "dir	-	${rel}" )
+            ;;
+            *)
+                rows+=( "${type}	-	${rel}" )
+            ;;
+        esac
+
+    done < <(find "${p}" -mindepth 1 2>/dev/null)
+
+    printf '%s\n' "${rows[@]}" | LC_ALL=C sort | {
+        if [[ "${cmd}" == "md5 -q" ]]; then md5 -q 2>/dev/null
+        else ${cmd} 2>/dev/null | awk '{print $1}'
+        fi
+    }
 
 }
-path::which_all () {
+path::snapshot () {
 
-    local bin="${1:-}" dir="" entry=""
-    local -a dirs=()
+    local p="${1:-}" item="" rel="" type="" size="" mtime="" mode="" target=""
 
-    [[ -n "${bin}" ]] || return 1
-    [[ "${bin}" != *$'\n'* && "${bin}" != *$'\r'* ]] || return 1
+    path::exists "${p}" || return 1
 
-    IFS=":" read -r -a dirs <<< "${PATH:-}"
+    if [[ -L "${p}" ]]; then
 
-    for dir in "${dirs[@]}"; do
+        target="$(path::readlink "${p}" 2>/dev/null || true)"
+        printf 'link\t-\t-\t-\t%s\t%s\n' "${target}" "${p}"
+        return 0
 
-        [[ -n "${dir}" ]] || continue
-        entry="${dir%/}/${bin}"
-        [[ -f "${entry}" && -x "${entry}" ]] && printf '%s\n' "${entry}"
+    fi
+    if [[ -f "${p}" ]]; then
 
-    done
+        size="$(path::size "${p}" 2>/dev/null || printf 0)"
+        mtime="$(path::mtime "${p}" 2>/dev/null || printf 0)"
+        mode="$(path::mode "${p}" 2>/dev/null || printf 0)"
+
+        printf 'file\t%s\t%s\t%s\t-\t%s\n' "${size}" "${mtime}" "${mode}" "${p}"
+        return 0
+
+    fi
+
+    [[ -d "${p}" ]] || return 1
+    sys::has find || return 1
+
+    while IFS= read -r item; do
+
+        rel="${item#"${p%/}/"}"
+        type="$(path::type "${item}" 2>/dev/null || printf other)"
+
+        case "${type}" in
+            file)
+                size="$(path::size "${item}" 2>/dev/null || printf 0)"
+                mtime="$(path::mtime "${item}" 2>/dev/null || printf 0)"
+                mode="$(path::mode "${item}" 2>/dev/null || printf 0)"
+                target="-"
+            ;;
+            dir)
+                size="-"
+                mtime="$(path::mtime "${item}" 2>/dev/null || printf 0)"
+                mode="$(path::mode "${item}" 2>/dev/null || printf 0)"
+                target="-"
+            ;;
+            link)
+                size="-"
+                mtime="-"
+                mode="-"
+                target="$(path::readlink "${item}" 2>/dev/null || true)"
+            ;;
+            *)
+                size="$(path::size "${item}" 2>/dev/null || printf 0)"
+                mtime="$(path::mtime "${item}" 2>/dev/null || printf 0)"
+                mode="$(path::mode "${item}" 2>/dev/null || printf 0)"
+                target="-"
+            ;;
+        esac
+
+        printf '%s\t%s\t%s\t%s\t%s\t%s\n' "${type}" "${size}" "${mtime}" "${mode}" "${target}" "${rel}"
+
+    done < <(find "${p}" -mindepth 1 2>/dev/null | LC_ALL=C sort)
+
+}
+path::strip () {
+
+    local target="${1:-}" n="${2:-1}" tmp_new="" tmp_old="" parent=""
+
+    path::exists "${target}" || return 1
+    path::is_dir "${target}" || return 1
+    path::is_root "${target}" && return 1
+
+    sys::has tar || return 1
+    sys::has mktemp || return 1
+    sys::has mv || return 1
+
+    [[ "${n}" =~ ^[0-9]+$ ]] || return 1
+    (( n > 0 )) || return 0
+
+    target="${target%/}"
+    parent="$(path::dirname "${target}")" || return 1
+
+    tmp_new="$(mktemp -d -- "${parent%/}/.strip.new.XXXXXXXX" 2>/dev/null ||
+        mktemp -d "${parent%/}/.strip.new.XXXXXXXX" 2>/dev/null)" ||
+        return 1
+
+    tmp_old="$(mktemp -d -- "${parent%/}/.strip.old.XXXXXXXX" 2>/dev/null ||
+        mktemp -d "${parent%/}/.strip.old.XXXXXXXX" 2>/dev/null)" ||
+        { rm -rf -- "${tmp_new}" 2>/dev/null; return 1; }
+
+    rmdir -- "${tmp_old}" 2>/dev/null || { rm -rf -- "${tmp_new}" "${tmp_old}" 2>/dev/null; return 1; }
+
+    if ! (
+        set -o pipefail
+        tar -C "${target}" -cf - . 2>/dev/null | tar -C "${tmp_new}" --strip-components="$(( n + 1 ))" -xpf - 2>/dev/null
+    ); then
+        rm -rf -- "${tmp_new}" "${tmp_old}" 2>/dev/null
+        return 1
+    fi
+
+    if ! mv -- "${target}" "${tmp_old}" 2>/dev/null; then
+        rm -rf -- "${tmp_new}" "${tmp_old}" 2>/dev/null
+        return 1
+    fi
+    if ! mv -- "${tmp_new}" "${target}" 2>/dev/null; then
+        mv -- "${tmp_old}" "${target}" 2>/dev/null
+        rm -rf -- "${tmp_new}" "${tmp_old}" 2>/dev/null
+        return 1
+    fi
+
+    rm -rf -- "${tmp_old}" 2>/dev/null
+    return 0
 
 }
 path::archive () {
@@ -2057,76 +2286,6 @@ path::archive () {
     printf '%s\n' "${archive_out}"
 
 }
-path::backup () {
-
-    local src="${1:-}" backup_out="" stamp="" name=""
-
-    path::exists "${src}" || return 1
-    shift || true
-
-    if (( $# > 0 )) && [[ "${1:-}" != --* ]]; then
-        backup_out="${1:-}"
-        shift || true
-    fi
-
-    stamp="$(date +%Y%m%d-%H%M%S 2>/dev/null)" || return 1
-    name="$(path::basename "${src}")" || return 1
-
-    [[ -n "${backup_out}" ]] || backup_out="${name}.backup.${stamp}.tar.gz"
-
-    path::archive "${src}" "${backup_out}" "$@"
-
-}
-path::strip () {
-
-    local target="${1:-}" n="${2:-1}" tmp_new="" tmp_old="" parent=""
-
-    path::exists "${target}" || return 1
-    path::is_dir "${target}" || return 1
-    path::is_root "${target}" && return 1
-
-    sys::has tar || return 1
-    sys::has mktemp || return 1
-    sys::has mv || return 1
-
-    [[ "${n}" =~ ^[0-9]+$ ]] || return 1
-    (( n > 0 )) || return 0
-
-    target="${target%/}"
-    parent="$(path::dirname "${target}")" || return 1
-
-    tmp_new="$(mktemp -d -- "${parent%/}/.strip.new.XXXXXXXX" 2>/dev/null ||
-        mktemp -d "${parent%/}/.strip.new.XXXXXXXX" 2>/dev/null)" ||
-        return 1
-
-    tmp_old="$(mktemp -d -- "${parent%/}/.strip.old.XXXXXXXX" 2>/dev/null ||
-        mktemp -d "${parent%/}/.strip.old.XXXXXXXX" 2>/dev/null)" ||
-        { rm -rf -- "${tmp_new}" 2>/dev/null; return 1; }
-
-    rmdir -- "${tmp_old}" 2>/dev/null || { rm -rf -- "${tmp_new}" "${tmp_old}" 2>/dev/null; return 1; }
-
-    if ! (
-        set -o pipefail
-        tar -C "${target}" -cf - . 2>/dev/null | tar -C "${tmp_new}" --strip-components="$(( n + 1 ))" -xpf - 2>/dev/null
-    ); then
-        rm -rf -- "${tmp_new}" "${tmp_old}" 2>/dev/null
-        return 1
-    fi
-
-    if ! mv -- "${target}" "${tmp_old}" 2>/dev/null; then
-        rm -rf -- "${tmp_new}" "${tmp_old}" 2>/dev/null
-        return 1
-    fi
-    if ! mv -- "${tmp_new}" "${target}" 2>/dev/null; then
-        mv -- "${tmp_old}" "${target}" 2>/dev/null
-        rm -rf -- "${tmp_new}" "${tmp_old}" 2>/dev/null
-        return 1
-    fi
-
-    rm -rf -- "${tmp_old}" 2>/dev/null
-    return 0
-
-}
 path::extract () {
 
     local archive="" to="" strip=0 arg="" base="" parent="" pat="" lower=""
@@ -2374,44 +2533,72 @@ path::extract () {
     printf '%s\n' "${to}"
 
 }
+path::backup () {
+
+    local src="${1:-}" backup_out="" stamp="" name=""
+
+    path::exists "${src}" || return 1
+    shift || true
+
+    if (( $# > 0 )) && [[ "${1:-}" != --* ]]; then
+        backup_out="${1:-}"
+        shift || true
+    fi
+
+    stamp="$(date +%Y%m%d-%H%M%S 2>/dev/null)" || return 1
+    name="$(path::basename "${src}")" || return 1
+
+    [[ -n "${backup_out}" ]] || backup_out="${name}.backup.${stamp}.tar.gz"
+
+    path::archive "${src}" "${backup_out}" "$@"
+
+}
 path::sync () {
 
-    local from="${1:-}" to="${2:-}" parent=""
+    local from="${1:-}" to="${2:-}" parent="" tmp="" old=""
 
     path::exists "${from}" || return 1
     path::valid "${to}" || return 1
     path::is_root "${to}" && return 1
 
-    [[ "${from%/}" != "${to%/}" ]] || return 1
+    parent="$(path::dirname "${to}")" || return 1
+    path::mkdir "${parent}" || return 1
 
-    if [[ -d "${from}" && ! -L "${from}" ]]; then
+    tmp="${parent%/}/.$(path::basename "${to}").tmp.$$"
+    old="${parent%/}/.$(path::basename "${to}").old.$$"
 
-        if sys::has rsync; then
+    path::remove "${tmp}" 2>/dev/null || true
 
-            mkdir -p -- "${to}" 2>/dev/null || mkdir -p "${to}" 2>/dev/null || return 1
+    path::copy "${from}" "${tmp}" || {
+        path::remove "${tmp}" 2>/dev/null || true
+        return 1
+    }
 
-            rsync -a --delete -- "${from%/}/" "${to%/}/" >/dev/null 2>&1 ||
-            rsync -a --delete "${from%/}/" "${to%/}/" >/dev/null 2>&1
+    if path::exists "${to}"; then
 
-            return
+        mv -- "${to}" "${old}" 2>/dev/null || {
+            path::remove "${tmp}" 2>/dev/null || true
+            return 1
+        }
 
-        fi
+    fi
+    if ! mv -- "${tmp}" "${to}" 2>/dev/null; then
 
-        path::remove "${to}" || return 1
-        path::copy "${from}" "${to}"
-        return
+        if [[ -e "${old}" || -L "${old}" ]]; then mv -- "${old}" "${to}" 2>/dev/null || true; fi
+        path::remove "${tmp}" 2>/dev/null || true
+        return 1
 
     fi
 
-    parent="$(path::dirname "${to}")" || return 1
-    mkdir -p -- "${parent}" 2>/dev/null || mkdir -p "${parent}" 2>/dev/null || return 1
-
-    path::copy "${from}" "${to}"
+    path::remove "${old}" 2>/dev/null || true
+    return 0
 
 }
 path::watch () {
 
-    local p="${1:-}" interval="${2:-1}" callback="${3:-}" once="${4:-0}" on_error="${5:-abort}" prev="" cur="" stat_kind="" _
+    local p="${1:-}" interval="${2:-1}" callback="${3:-}" once="${4:-0}" on_error="${5:-abort}"
+    local prev="" cur="" stat_kind="" _
+
     local -a recurse=()
 
     path::valid "${p}" || return 1
@@ -2566,11 +2753,13 @@ path::watch () {
         else
 
             if [[ -e "${p}" || -L "${p}" ]]; then
+
                 case "${stat_kind}" in
                     gnu) cur="$(stat -c '%n|%s|%Y|%F' -- "${p}" 2>/dev/null || printf '%s\n' "${p}")" ;;
                     bsd) cur="$(stat -f '%N|%z|%m|%HT' -- "${p}" 2>/dev/null || printf '%s\n' "${p}")" ;;
                     *)   cur="$(LC_ALL=C ls -la "${p}" 2>/dev/null || printf '%s\n' "${p}")" ;;
                 esac
+
             else
                 cur="__missing__:${p}"
             fi
