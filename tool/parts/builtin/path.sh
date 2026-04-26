@@ -1768,10 +1768,7 @@ path::mktemp () {
         if [[ -n "${suffix}" ]]; then
 
             v="$(mktemp --suffix="${suffix}" "${tmp%/}/${prefix}.XXXXXXXX" 2>/dev/null || true)"
-            [[ -n "${v}" ]] && { printf '%s' "${v}"; return 0; }
-
-            v="$(mktemp -t "${prefix}.XXXXXXXX${suffix}" 2>/dev/null || true)"
-            [[ -n "${v}" ]] && { printf '%s' "${v}"; return 0; }
+            [[ -n "${v}" && "${v}" == *"${suffix}" ]] && { printf '%s' "${v}"; return 0; }
 
         else
 
@@ -1823,7 +1820,6 @@ path::mktemp_dir () {
     v="${tmp%/}/${name}"
 
     mkdir -- "${v}" 2>/dev/null || mkdir "${v}" 2>/dev/null || return 1
-
     printf '%s' "${v}"
 
 }
@@ -1876,9 +1872,11 @@ path::checksum () {
         target="$(path::readlink "${p}" 2>/dev/null || true)"
 
         printf 'link\t%s\t%s\n' "${target}" "${p}" | {
+
             if [[ "${cmd}" == "md5 -q" ]]; then md5 -q 2>/dev/null
             else ${cmd} 2>/dev/null | awk '{print $1}'
             fi
+
         }
 
         return
@@ -1917,9 +1915,11 @@ path::checksum () {
     done < <(find "${p}" -mindepth 1 2>/dev/null)
 
     printf '%s\n' "${rows[@]}" | LC_ALL=C sort | {
+
         if [[ "${cmd}" == "md5 -q" ]]; then md5 -q 2>/dev/null
         else ${cmd} 2>/dev/null | awk '{print $1}'
         fi
+
     }
 
 }
