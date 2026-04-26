@@ -365,7 +365,7 @@ path::rel () {
     path::valid "${target}" || return 1
     [[ -n "${base}" ]] || base="$(pwd 2>/dev/null || printf '.')"
 
-    if [[ "${target}" =~ ^[A-Za-z]: && "${base}" =~ ^[A-Za-z]: && "${target:0:1,,}" != "${base:0:1,,}" ]]; then
+    if [[ "${target:1:1}" == ":" && "${base:1:1}" == ":" && "${target:0:1,,}" != "${base:0:1,,}" ]]; then
         path::norm "${target}"
         return 0
     fi
